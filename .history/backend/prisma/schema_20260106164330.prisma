@@ -1,0 +1,665 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// 1. MULTI-TENANT E CONFIGURAÇÕES
+// ==========================================
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  cnpj      String?  @unique
+  slug      String   @unique
+  plan      String   @default("basic") // basic, pro, enterprise
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relacionamentos
+  users              User[]
+  settings           OrganizationSettings?
+  profiles           Profile[]
+  materials          Material[]
+  products           Product[]
+  orders             Order[]
+  auditLogs          AuditLog[]
+  
+  // Novos módulos
+  inventoryMovements InventoryMovement[]
+  inventoryAlerts    InventoryAlert[]
+  productionQueue    ProductionQueue[]
+  machines           Machine[]
+  accounts           Account[]
+  transactions       Transaction[]
+  categories         Category[]
+
+  @@map("organizations")
+}
+
+model OrganizationSettings {
+  id               String  @id @default(uuid())
+  organizationId   String  @unique
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  // Feature Flags
+  enableEngineering Boolean @default(false)
+  enableWMS         Boolean @default(false)
+  enableProduction  Boolean @default(false)
+  enableFinance     Boolean @default(true)
+  
+  // Configurações de Negócio
+  defaultMarkup     Float   @default(2.0)
+  taxRate          Float   @default(0.0)
+  
+  // Configurações de Orçamento
+  validadeOrcamento Int     @default(7) // dias
+  
+  @@map("organization_settings")
+}
+
+model User {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  email          String
+  password       String
+  name           String
+  role           UserRole @default(USER)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relacionamentos
+  auditLogs          AuditLog[]
+  inventoryMovements InventoryMovement[]
+
+  @@unique([organizationId, email])
+  @@map("users")
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MANAGER
+  USER
+}
+
+// ==========================================
+// 2. AUDITORIA
+// ==========================================
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id])
+  
+  action         String   // CREATE, UPDATE, DELETE
+  tableName      String
+  recordId       String
+  oldValues      Json?
+  newValues      Json?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+// ==========================================
+// 3. CADASTROS UNIVERSAIS (PESSOAS)
+// ==========================================
+
+model Profile {
+  id             String      @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  type           ProfileType
+  name           String
+  document       String?     // CPF ou CNPJ
+  email          String?
+  phone          String?
+  
+  // Endereço
+  address        String?
+  city           String?
+  state          String?
+  zipCode        String?
+  
+  // Dados comerciais
+  isCustomer     Boolean     @default(false)
+  isSupplier     Boolean     @default(false)
+  isEmployee     Boolean     @default(false)
+  
+  // Configurações de cliente
+  creditLimit    Decimal?    @db.Decimal(10,2)
+  paymentTerms   Int?        // Dias para pagamento
+  
+  active         Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  // Relacionamentos
+  orders         Order[]
+
+  @@unique([organizationId, document])
+  @@map("profiles")
+}
+
+enum ProfileType {
+  INDIVIDUAL  // Pessoa Física
+  COMPANY     // Pessoa Jurídica
+}
+
+// ==========================================
+// 4. CATÁLOGO (PRODUTOS E MATERIAIS)
+// ==========================================
+
+enum MaterialFormat {
+  ROLL    // Rolo (Lona, Vinil) - controlado por comprimento
+  SHEET   // Chapa (ACM, Acrílico) - controlado por área
+  UNIT    // Unidade (Tinta, Fita) - controlado por quantidade
+}
+
+model Material {
+  id             String         @id @default(uuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  name           String
+  description    String?
+  format         MaterialFormat
+  costPerUnit    Decimal        @db.Decimal(10,4) // Custo por m², ml ou unidade
+  unit           String         // m², ml, un
+  
+  // Dimensões padrão (para rolos e chapas)
+  standardWidth  Float?         // mm
+  standardLength Float?         // mm
+  
+  active         Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  // Relacionamentos
+  inventoryItems  InventoryItem[]
+  components      ProductComponent[]
+  inventoryAlerts InventoryAlert[]
+
+  @@map("materials")
+}
+
+model InventoryItem {
+  id         String   @id @default(uuid())
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  
+  // Dimensões físicas reais
+  width      Float    // mm
+  length     Float?   // mm (para rolos)
+  height     Float?   // mm (para chapas)
+  thickness  Float?   // mm
+  
+  quantity   Int      @default(1)
+  location   String?  // Endereçamento no estoque
+  
+  isOffcut   Boolean  @default(false) // É retalho/sobra?
+  
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relacionamentos
+  movements  InventoryMovement[]
+
+  @@map("inventory_items")
+}
+
+enum PricingMode {
+  SIMPLE_AREA       // Preço por m²
+  SIMPLE_UNIT       // Preço por unidade
+  DYNAMIC_ENGINEER  // Custo + margem calculada
+}
+
+model Product {
+  id             String      @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  name           String
+  description    String?
+  pricingMode    PricingMode @default(SIMPLE_AREA)
+  
+  // Modo simples
+  salePrice      Decimal?    @db.Decimal(10,2)
+  minPrice       Decimal?    @db.Decimal(10,2)
+  
+  // Modo engenharia
+  markup         Float       @default(2.0)
+  
+  active         Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  // Relacionamentos
+  components     ProductComponent[]
+  operations     ProductOperation[]
+  orderItems     OrderItem[]
+  standardSizes  ProductStandardSize[]
+
+  @@map("products")
+}
+
+model ProductStandardSize {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  name      String  // Ex: "Cartão de Visita", "A4", "A3"
+  width     Float   // mm
+  height    Float   // mm
+  isDefault Boolean @default(false) // Tamanho padrão principal
+  
+  @@map("product_standard_sizes")
+}
+
+model ProductComponent {
+  id                String   @id @default(uuid())
+  productId         String
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  materialId        String
+  material          Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  
+  consumptionMethod String   // BOUNDING_BOX, LINEAR_NEST, FIXED_AMOUNT
+  wastePercentage   Float    @default(0.1) // 10% de perda
+  
+  @@map("product_components")
+}
+
+model ProductOperation {
+  id            String  @id @default(uuid())
+  productId     String
+  product       Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  name          String  // Ex: "Corte Laser", "Impressão Digital"
+  costPerMinute Decimal @db.Decimal(10,4)
+  setupTime     Int     @default(0) // Tempo de setup em minutos
+  
+  @@map("product_operations")
+}
+
+// ==========================================
+// 5. VENDAS (ORÇAMENTOS E PEDIDOS)
+// ==========================================
+
+enum OrderStatus {
+  DRAFT         // Rascunho/Orçamento
+  APPROVED      // Aprovado pelo cliente
+  IN_PRODUCTION // Em produção
+  FINISHED      // Finalizado
+  DELIVERED     // Entregue
+  CANCELLED     // Cancelado
+}
+
+model Order {
+  id             String      @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Profile     @relation(fields: [customerId], references: [id])
+  
+  orderNumber    String      // Número sequencial
+  status         OrderStatus @default(DRAFT)
+  
+  // Valores
+  subtotal       Decimal     @db.Decimal(10,2)
+  discount       Decimal     @default(0) @db.Decimal(10,2)
+  tax            Decimal     @default(0) @db.Decimal(10,2)
+  total          Decimal     @db.Decimal(10,2)
+  
+  // Prazos e Validade
+  deliveryDate   DateTime?
+  createdAt      DateTime    @default(now())
+  validUntil     DateTime?   // Validade do orçamento (calculada automaticamente)
+  updatedAt      DateTime    @updatedAt
+
+  notes          String?
+  
+  // Relacionamentos
+  items          OrderItem[]
+  
+  // Novos relacionamentos
+  inventoryMovements InventoryMovement[]
+  productionQueue    ProductionQueue[]
+  transactions       Transaction[]
+
+  @@unique([organizationId, orderNumber])
+  @@map("orders")
+}
+
+model OrderItem {
+  id              String  @id @default(uuid())
+  orderId         String
+  order           Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product @relation(fields: [productId], references: [id])
+  
+  // Especificações básicas
+  width           Float   // mm
+  height          Float   // mm
+  quantity        Int
+  
+  // Campos específicos por tipo de produto
+  // Para produtos por área (m²)
+  area            Float?  // m² calculada
+  
+  // Para produtos por unidade (folhas/impressão)
+  paperSize       String? // A3, A4, A5, etc.
+  paperType       String? // Sulfite, Couché, etc.
+  printColors     String? // 4x0, 4x1, 4x4, etc. (já define os lados automaticamente)
+  finishing       String? // Laminação, Verniz, etc.
+  
+  // Tamanho personalizado (quando não é padrão)
+  customSizeName  String? // Nome do tamanho personalizado
+  isCustomSize    Boolean @default(false) // Se é tamanho personalizado
+  
+  // Para produtos dinâmicos (tempo de máquina)
+  machineTime     Float?  // minutos
+  setupTime       Float?  // minutos de setup
+  complexity      String? // Simples, Médio, Complexo
+  
+  // Preços (a tríade vital)
+  costPrice       Decimal @db.Decimal(10,2) // Custo interno
+  calculatedPrice Decimal @db.Decimal(10,2) // Preço sugerido
+  unitPrice       Decimal @db.Decimal(10,2) // Preço praticado
+  totalPrice      Decimal @db.Decimal(10,2) // unitPrice * quantity
+  
+  notes           String?
+  
+  @@map("order_items")
+}
+
+// ==========================================
+// 6. MÓDULO WMS (WAREHOUSE MANAGEMENT)
+// ==========================================
+
+model InventoryMovement {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  
+  type           MovementType
+  quantity       Int
+  reason         String?
+  
+  // Referências opcionais
+  orderId        String?
+  order          Order?   @relation(fields: [orderId], references: [id])
+  
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  
+  createdAt      DateTime @default(now())
+  
+  @@map("inventory_movements")
+}
+
+enum MovementType {
+  IN          // Entrada
+  OUT         // Saída
+  TRANSFER    // Transferência
+  ADJUSTMENT  // Ajuste
+  WASTE       // Perda/Desperdício
+}
+
+model InventoryAlert {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  materialId     String
+  material       Material @relation(fields: [materialId], references: [id])
+  
+  type           AlertType
+  threshold      Float    // Limite para alerta
+  currentLevel   Float    // Nível atual
+  
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  
+  @@map("inventory_alerts")
+}
+
+enum AlertType {
+  LOW_STOCK     // Estoque baixo
+  OVERSTOCK     // Excesso de estoque
+  EXPIRING      // Próximo ao vencimento
+}
+
+// ==========================================
+// 7. MÓDULO DE PRODUÇÃO
+// ==========================================
+
+model ProductionQueue {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  orderId        String
+  order          Order    @relation(fields: [orderId], references: [id])
+  
+  priority       Int      @default(1) // 1 = alta, 5 = baixa
+  status         ProductionStatus @default(PENDING)
+  
+  // Datas de produção
+  scheduledStart DateTime?
+  actualStart    DateTime?
+  estimatedEnd   DateTime?
+  actualEnd      DateTime?
+  
+  // Recursos
+  assignedTo     String?  // ID do funcionário
+  machineId      String?
+  
+  notes          String?
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  // Relacionamentos
+  operations     ProductionOperation[]
+  
+  @@map("production_queue")
+}
+
+enum ProductionStatus {
+  PENDING       // Pendente
+  IN_PROGRESS   // Em andamento
+  PAUSED        // Pausado
+  COMPLETED     // Concluído
+  CANCELLED     // Cancelado
+}
+
+model ProductionOperation {
+  id                String   @id @default(uuid())
+  productionQueueId String
+  productionQueue   ProductionQueue @relation(fields: [productionQueueId], references: [id], onDelete: Cascade)
+  
+  name              String   // Nome da operação
+  description       String?
+  sequence          Int      // Ordem de execução
+  
+  estimatedMinutes  Int      // Tempo estimado
+  actualMinutes     Int?     // Tempo real
+  
+  status            OperationStatus @default(PENDING)
+  
+  startedAt         DateTime?
+  completedAt       DateTime?
+  
+  @@map("production_operations")
+}
+
+enum OperationStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+model Machine {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  name           String
+  type           MachineType
+  model          String?
+  serialNumber   String?
+  
+  status         MachineStatus @default(AVAILABLE)
+  
+  // Capacidades
+  maxWidth       Float?   // mm
+  maxHeight      Float?   // mm
+  speedPerMinute Float?   // unidade por minuto
+  
+  // Manutenção
+  lastMaintenance DateTime?
+  nextMaintenance DateTime?
+  
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  
+  @@map("machines")
+}
+
+enum MachineType {
+  PRINTER       // Impressora
+  CUTTER        // Cortadora
+  LAMINATOR     // Laminadora
+  PLOTTER       // Plotter de recorte
+  OTHER         // Outros
+}
+
+enum MachineStatus {
+  AVAILABLE     // Disponível
+  IN_USE        // Em uso
+  MAINTENANCE   // Em manutenção
+  BROKEN        // Quebrada
+}
+
+// ==========================================
+// 8. MÓDULO FINANCEIRO
+// ==========================================
+
+model Account {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  name           String
+  type           AccountType
+  balance        Decimal  @default(0) @db.Decimal(15,2)
+  
+  // Dados bancários (se aplicável)
+  bank           String?
+  agency         String?
+  accountNumber  String?
+  
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  
+  // Relacionamentos
+  transactions   Transaction[]
+  
+  @@map("accounts")
+}
+
+enum AccountType {
+  CHECKING      // Conta corrente
+  SAVINGS       // Poupança
+  CASH          // Dinheiro
+  CREDIT_CARD   // Cartão de crédito
+}
+
+model Transaction {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  accountId      String
+  account        Account  @relation(fields: [accountId], references: [id])
+  
+  type           TransactionType
+  amount         Decimal  @db.Decimal(15,2)
+  description    String
+  
+  // Categorização
+  categoryId     String?
+  category       Category? @relation(fields: [categoryId], references: [id])
+  
+  // Referências
+  orderId        String?
+  order          Order?   @relation(fields: [orderId], references: [id])
+  
+  // Datas
+  dueDate        DateTime?
+  paidAt         DateTime?
+  
+  status         TransactionStatus @default(PENDING)
+  
+  createdAt      DateTime @default(now())
+  
+  @@map("transactions")
+}
+
+enum TransactionType {
+  INCOME        // Receita
+  EXPENSE       // Despesa
+  TRANSFER      // Transferência
+}
+
+enum TransactionStatus {
+  PENDING       // Pendente
+  PAID          // Pago
+  OVERDUE       // Vencido
+  CANCELLED     // Cancelado
+}
+
+model Category {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  name           String
+  type           CategoryType
+  color          String?  // Cor para identificação
+  
+  parentId       String?
+  parent         Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children       Category[] @relation("CategoryHierarchy")
+  
+  active         Boolean  @default(true)
+  
+  // Relacionamentos
+  transactions   Transaction[]
+  
+  @@map("categories")
+}
+
+enum CategoryType {
+  INCOME        // Categoria de receita
+  EXPENSE       // Categoria de despesa
+}

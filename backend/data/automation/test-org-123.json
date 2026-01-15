@@ -1,0 +1,30 @@
+[
+  {
+    "id": "1",
+    "name": "Lembrete de Orçamento Vencendo",
+    "description": "Envia WhatsApp 1 dia antes do vencimento do orçamento",
+    "trigger": "time_based",
+    "action": "whatsapp",
+    "conditions": {
+      "daysBeforeExpiry": 1,
+      "status": "DRAFT"
+    },
+    "enabled": false,
+    "runCount": 2,
+    "lastRun": "2026-01-11T23:48:03.016Z"
+  },
+  {
+    "id": "2",
+    "name": "Notificação de Produção Iniciada",
+    "description": "Notifica cliente quando pedido entra em produção",
+    "trigger": "status_change",
+    "action": "whatsapp",
+    "conditions": {
+      "fromStatus": "APPROVED",
+      "toStatus": "IN_PRODUCTION"
+    },
+    "enabled": false,
+    "runCount": 3,
+    "lastRun": "2026-01-11T23:43:59.911Z"
+  }
+]

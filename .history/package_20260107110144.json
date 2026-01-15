@@ -1,0 +1,34 @@
+{
+  "name": "artplim-erp",
+  "version": "1.0.0",
+  "description": "Sistema ERP para Gráficas - Multi-tenant",
+  "packageManager": "pnpm@10.27.0",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:backend": "node scripts/check-port.js 3001 && cd backend && pnpm run dev",
+    "dev:frontend": "node scripts/check-port.js 3000 && cd frontend && pnpm run dev",
+    "build": "turbo run build",
+    "build:backend": "cd backend && pnpm run build",
+    "build:frontend": "cd frontend && pnpm run build",
+    "setup": "pnpm run setup:backend && pnpm run setup:frontend",
+    "setup:backend": "cd backend && pnpm install",
+    "setup:frontend": "cd frontend && pnpm install",
+    "db:push": "turbo run db:push",
+    "db:generate": "turbo run db:generate",
+    "db:studio": "cd backend && pnpm exec prisma studio",
+    "db:migrate": "cd backend && pnpm exec prisma migrate dev",
+    "db:reset": "cd backend && pnpm exec prisma migrate reset",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "docker:build": "docker-compose build",
+    "docker:restart": "docker-compose restart"
+  },
+  "devDependencies": {
+    "turbo": "^2.7.3"
+  }
+}

@@ -1,0 +1,260 @@
+// ==========================================
+// NOVO ENUM PARA TIPOS DE ITEM
+// ==========================================
+
+enum ItemType {
+  PRODUCT      // Produto Padrão/Revenda
+  SERVICE      // Arte/Mão de Obra/Design
+  PRINT_SHEET  // Impressão em Papel (A4, A3, etc)
+  PRINT_ROLL   // Impressão em Rolo (Banner, Adesivo)
+  LASER_CUT    // Corte a Laser/Gravação
+}
+
+// ==========================================
+// TABELAS DE ENGENHARIA DE PRODUTO
+// ==========================================
+
+model StandardSize {
+  id           String   @id @default(uuid())
+  organizationId String
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  name         String   // Ex: "A4", "A3", "Cartão de Visita"
+  width        Float    // mm
+  height       Float    // mm
+  type         ItemType // Para qual tipo de item este tamanho se aplica
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@map("standard_sizes")
+}
+
+model ProductionMaterial {
+  id           String   @id @default(uuid())
+  organizationId String
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  name         String   // Ex: "MDF 3mm", "Lona 440g", "Couché 150g"
+  type         ItemType // Para qual tipo de item este material se aplica
+  costPrice    Decimal  @db.Decimal(10,4) // Custo por unidade
+  salesPrice   Decimal  @db.Decimal(10,4) // Preço de venda por unidade
+  unit         String   // m², ml, kg, folha, etc
+  
+  // Propriedades específicas do material (JSON)
+  properties   Json?    // { "thickness": 3, "weight": 440, "color": "white" }
+  
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@map("production_materials")
+}
+
+// ==========================================
+// ATUALIZAÇÃO DA TABELA FINISH
+// ==========================================
+
+model Finish {
+  id           String     @id @default(uuid())
+  organizationId String
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  name         String     // Ex: "Laminação", "Ilhós", "Corte e Vinco"
+  description  String?
+  costPrice    Decimal    @db.Decimal(10,4)
+  salesPrice   Decimal    @db.Decimal(10,4)
+  
+  // NOVO CAMPO: Tipos permitidos
+  allowedTypes ItemType[] // Ex: [PRINT_ROLL] para Ilhós, [PRINT_SHEET, PRINT_ROLL] para Laminação
+  
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  
+  @@map("finishes")
+}
+
+// ==========================================
+// ATUALIZAÇÃO DAS TABELAS ORDER E QUOTE
+// ==========================================
+
+model OrderItem {
+  id              String  @id @default(uuid())
+  orderId         String
+  order           Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId       String?
+  product         Product? @relation(fields: [productId], references: [id])
+  
+  // NOVO CAMPO: Tipo do item
+  itemType        ItemType @default(PRODUCT)
+  
+  // Especificações básicas
+  quantity        Int
+  
+  // NOVOS CAMPOS: Dimensões (opcionais)
+  width           Decimal? @db.Decimal(10,2) // mm
+  height          Decimal? @db.Decimal(10,2) // mm
+  totalArea       Decimal? @db.Decimal(10,4) // m² (cache calculado)
+  
+  // NOVO CAMPO CRUCIAL: Atributos variáveis (JSON)
+  attributes      Json?    // { "machineTime": 30, "material": "MDF", "paper": "Couché" }
+  
+  // Campos existentes mantidos
+  area            Float?  // m² calculada
+  paperSize       String? // A3, A4, A5, etc.
+  paperType       String? // Sulfite, Couché, etc.
+  printColors     String? // 4x0, 4x1, 4x4, etc.
+  finishing       String? // Laminação, Verniz, etc.
+  machineTime     Float?  // minutos
+  setupTime       Float?  // minutos de setup
+  complexity      String? // Simples, Médio, Complexo
+  customSizeName  String? // Nome do tamanho personalizado
+  isCustomSize    Boolean @default(false)
+  
+  // Preços (a tríade vital)
+  costPrice       Decimal @db.Decimal(10,2) // Custo interno
+  calculatedPrice Decimal @db.Decimal(10,2) // Preço sugerido
+  unitPrice       Decimal @db.Decimal(10,2) // Preço praticado
+  totalPrice      Decimal @db.Decimal(10,2) // unitPrice * quantity
+  
+  notes           String?
+  
+  // Relacionamentos existentes mantidos
+  configurations  OrderItemConfiguration[]
+  
+  @@map("order_items")
+}
+
+// Modelo similar para QuoteItem (se existir)
+model QuoteItem {
+  id              String  @id @default(uuid())
+  quoteId         String
+  // quote           Quote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  productId       String?
+  product         Product? @relation(fields: [productId], references: [id])
+  
+  // NOVO CAMPO: Tipo do item
+  itemType        ItemType @default(PRODUCT)
+  
+  // Especificações básicas
+  quantity        Int
+  
+  // NOVOS CAMPOS: Dimensões (opcionais)
+  width           Decimal? @db.Decimal(10,2) // mm
+  height          Decimal? @db.Decimal(10,2) // mm
+  totalArea       Decimal? @db.Decimal(10,4) // m² (cache calculado)
+  
+  // NOVO CAMPO CRUCIAL: Atributos variáveis (JSON)
+  attributes      Json?    // { "machineTime": 30, "material": "MDF", "paper": "Couché" }
+  
+  // Preços
+  costPrice       Decimal @db.Decimal(10,2)
+  calculatedPrice Decimal @db.Decimal(10,2)
+  unitPrice       Decimal @db.Decimal(10,2)
+  totalPrice      Decimal @db.Decimal(10,2)
+  
+  notes           String?
+  
+  @@map("quote_items")
+}
+
+// ==========================================
+// ATUALIZAÇÃO DO MODELO ORGANIZATION
+// ==========================================
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  cnpj      String?  @unique
+  slug      String   @unique
+  plan      String   @default("basic")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relacionamentos existentes mantidos
+  users              User[]
+  settings           OrganizationSettings?
+  profiles           Profile[]
+  materials          Material[]
+  products           Product[]
+  orders             Order[]
+  auditLogs          AuditLog[]
+  configurationTemplates ConfigurationTemplate[]
+  inventoryMovements InventoryMovement[]
+  inventoryAlerts    InventoryAlert[]
+  productionQueue    ProductionQueue[]
+  machines           Machine[]
+  accounts           Account[]
+  transactions       Transaction[]
+  categories         Category[]
+  pendingChanges     PendingChanges[]
+  notifications      Notifications[]
+  
+  // NOVOS RELACIONAMENTOS
+  standardSizes      StandardSize[]
+  productionMaterials ProductionMaterial[]
+  finishes           Finish[]
+
+  @@map("organizations")
+}
+
+// ==========================================
+// EXEMPLO DE COMO OS DADOS FICARÃO
+// ==========================================
+
+/*
+Cenário 1: Venda de Arte (Serviço)
+OrderItem {
+  itemType: SERVICE
+  width: null
+  height: null
+  attributes: { 
+    "description": "Criação de Logotipo", 
+    "briefing": "Cores azuis",
+    "deliveryFormat": "AI, PDF, PNG"
+  }
+}
+
+Cenário 2: Venda de Corte a Laser
+OrderItem {
+  itemType: LASER_CUT
+  width: 50.00 (cm convertido para mm = 500)
+  height: 30.00 (cm convertido para mm = 300)
+  attributes: { 
+    "material": "MDF 3mm Cru", 
+    "machineTimeMinutes": 15, 
+    "vectorFile": "caixa.dxf",
+    "cutType": "cut", // ou "engrave"
+    "power": 80,
+    "speed": 100
+  }
+}
+
+Cenário 3: Banner (Impressão Rolo)
+OrderItem {
+  itemType: PRINT_ROLL
+  width: 100.00 (cm convertido para mm = 1000)
+  height: 200.00 (cm convertido para mm = 2000)
+  attributes: { 
+    "material": "Lona 440g", 
+    "finish": ["Bainha", "Ilhós"],
+    "resolution": "720dpi",
+    "colorProfile": "CMYK"
+  }
+}
+
+Cenário 4: Impressão A4
+OrderItem {
+  itemType: PRINT_SHEET
+  width: 210.00 (A4)
+  height: 297.00 (A4)
+  attributes: {
+    "paperType": "Couché 150g",
+    "printColors": "4x0",
+    "finishing": "Laminação Fosca",
+    "standardSize": "A4"
+  }
+}
+*/

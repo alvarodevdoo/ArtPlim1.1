@@ -1,0 +1,42 @@
+{
+  "name": "artplim-erp",
+  "version": "1.0.0",
+  "description": "Sistema ERP para Gráficas - Multi-tenant",
+  "packageManager": "pnpm@10.27.0",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm cls && pnpm run --parallel dev",
+    "dev:backend": "pnpm cls && cd backend && pnpm run dev",
+    "dev:frontend": "pnpm cls && cd frontend && pnpm run dev",
+    "build": "pnpm run --parallel build",
+    "build:backend": "cd backend && pnpm run build",
+    "build:frontend": "cd frontend && pnpm run build",
+    "setup": "pnpm run setup:backend && pnpm run setup:frontend",
+    "setup:backend": "cd backend && pnpm install",
+    "setup:frontend": "cd frontend && pnpm install",
+    "db:push": "cd backend && pnpm exec prisma db push",
+    "db:generate": "cd backend && pnpm exec prisma generate",
+    "db:studio": "cd backend && pnpm exec prisma studio",
+    "db:migrate": "cd backend && pnpm exec prisma migrate dev",
+    "db:reset": "cd backend && pnpm exec prisma migrate reset",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "docker:build": "docker-compose build",
+    "docker:restart": "docker-compose restart",
+    "test:performance": "cd backend && npx ts-node scripts/test-system-performance.ts",
+    "test:performance:full": "echo '🧪 Executando teste completo de performance...' && pnpm run test:performance",
+    "test:phase5": "cd backend && npx ts-node scripts/test-phase5-performance.ts",
+    "test:analytics": "cd backend && npx ts-node scripts/test-analytics-endpoints.ts",
+    "test:database": "cd backend && npx ts-node scripts/check-database.ts",
+    "test:endpoints": "cd backend && npx ts-node scripts/test-optimized-endpoints.ts",
+    "test:full": "pnpm test:performance && pnpm test:phase5 && pnpm test:analytics && pnpm test:endpoints && pnpm test:database",
+    "optimize:database": "cd backend && npx ts-node scripts/optimize-database.ts"
+  },
+  "dependencies": {
+    "axios": "^1.13.2"
+  }
+}
