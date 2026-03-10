@@ -1,19 +1,27 @@
 import React from 'react';
-import { Card, CardContent } from '../ui/card';
+import { Card, CardContent } from '../ui/Card';
 import { Badge } from '../ui/badge';
-import { Button } from '../ui/button';
 import { Clock, User, Package, AlertTriangle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-interface PendingChange {
+export interface PendingChange {
   id: string;
   orderId: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  priority: 'LOW' | 'MEDIUM' | 'HIGH';
+  organizationId: string;
+  requestedBy: string;
   requestedAt: string;
+  changes: any;
+  originalData: any;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  reviewedBy?: string;
   reviewedAt?: string;
+  reviewComments?: string;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH';
+  createdAt: string;
+  updatedAt: string;
   order: {
+    id: string;
     orderNumber: string;
     status: string;
     customer: {
@@ -21,10 +29,14 @@ interface PendingChange {
     };
   };
   requestedByUser: {
+    id: string;
     name: string;
+    email: string;
   };
   reviewedByUser?: {
+    id: string;
     name: string;
+    email: string;
   };
 }
 
@@ -85,10 +97,9 @@ export const PendingChangeCard: React.FC<PendingChangeCardProps> = ({
   };
 
   return (
-    <Card 
-      className={`cursor-pointer transition-all hover:shadow-md ${
-        selected ? 'ring-2 ring-primary shadow-md' : ''
-      } ${change.priority === 'HIGH' ? 'border-l-4 border-l-red-500' : ''}`}
+    <Card
+      className={`cursor-pointer transition-all hover:shadow-md ${selected ? 'ring-2 ring-primary shadow-md' : ''
+        } ${change.priority === 'HIGH' ? 'border-l-4 border-l-red-500' : ''}`}
       onClick={() => onSelect(change)}
     >
       <CardContent className="p-4">
@@ -104,7 +115,7 @@ export const PendingChangeCard: React.FC<PendingChangeCardProps> = ({
                 {getStatusLabel(change.status)}
               </Badge>
             </div>
-            
+
             <div className="text-xs text-muted-foreground">
               {formatDistanceToNow(new Date(change.requestedAt), {
                 addSuffix: true,
@@ -119,7 +130,7 @@ export const PendingChangeCard: React.FC<PendingChangeCardProps> = ({
               <Package className="h-4 w-4 text-muted-foreground" />
               <span className="font-medium">Pedido #{change.order.orderNumber}</span>
             </div>
-            
+
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <User className="h-4 w-4" />
               <span>{change.order.customer.name}</span>
@@ -134,7 +145,7 @@ export const PendingChangeCard: React.FC<PendingChangeCardProps> = ({
                 {change.requestedByUser.name}
               </span>
             </div>
-            
+
             {change.reviewedByUser && (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <span>Revisado por:</span>

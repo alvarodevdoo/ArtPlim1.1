@@ -18,6 +18,7 @@ import { productionRoutes } from './modules/production/production.routes';
 import { financeRoutes } from './modules/finance/finance.routes';
 import { adminRoutes } from './modules/admin/admin.routes';
 import { analyticsRoutes } from './modules/analytics/analytics.routes';
+import { paymentMethodRoutes } from './modules/finance/payment-method.routes.express';
 
 const fastify = Fastify({
   logger: process.env.NODE_ENV === 'production' ? false : {
@@ -54,8 +55,8 @@ async function registerPlugins() {
 async function registerRoutes() {
   // Rota de health check
   fastify.get('/health', async () => {
-    return { 
-      status: 'ok', 
+    return {
+      status: 'ok',
       timestamp: new Date().toISOString(),
       version: '1.0.0'
     };
@@ -76,6 +77,7 @@ async function registerRoutes() {
     await fastify.register(financeRoutes, { prefix: '/finance' });
     await fastify.register(adminRoutes, { prefix: '/admin' });
     await fastify.register(analyticsRoutes, { prefix: '/analytics' });
+    await fastify.register(paymentMethodRoutes, { prefix: '/payment-methods' });
   }, { prefix: '/api' });
 }
 
@@ -123,8 +125,8 @@ function setupErrorHandler() {
     return reply.status(500).send({
       success: false,
       error: {
-        message: process.env.NODE_ENV === 'production' 
-          ? 'Erro interno do servidor' 
+        message: process.env.NODE_ENV === 'production'
+          ? 'Erro interno do servidor'
           : error.message,
         statusCode: 500
       }
@@ -137,7 +139,7 @@ export async function buildApp() {
   await registerPlugins();
   await registerRoutes();
   setupErrorHandler();
-  
+
   return fastify;
 }
 

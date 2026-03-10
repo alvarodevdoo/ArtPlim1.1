@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Plus, Search, Edit, Trash2, Phone, Mail, Users, UserCheck, UserX } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Phone, Mail, Users, UserCheck, UserX, Eye, EyeOff } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 
@@ -38,17 +38,20 @@ const Funcionarios: React.FC = () => {
     city: '',
     state: '',
     zipCode: '',
-    type: 'INDIVIDUAL' as const,
+    type: 'INDIVIDUAL' as 'INDIVIDUAL' | 'COMPANY',
     isCustomer: false,
     isSupplier: false,
     isEmployee: true,
-    // Campos específicos para funcionários
     position: '',
     department: '',
     salary: '',
     hireDate: '',
-    active: true
+    active: true,
+    password: '',
+    role: 'USER' as 'ADMIN' | 'MANAGER' | 'OPERATOR' | 'USER'
   });
+
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     loadFuncionarios();
@@ -67,7 +70,7 @@ const Funcionarios: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     try {
       if (editingFuncionario) {
         await api.put(`/api/profiles/${editingFuncionario.id}`, formData);
@@ -76,7 +79,7 @@ const Funcionarios: React.FC = () => {
         await api.post('/api/profiles', formData);
         toast.success('Funcionário criado com sucesso!');
       }
-      
+
       setShowForm(false);
       setEditingFuncionario(null);
       resetForm();
@@ -105,7 +108,9 @@ const Funcionarios: React.FC = () => {
       department: '',
       salary: '',
       hireDate: '',
-      active: funcionario.active
+      active: funcionario.active,
+      password: '',
+      role: (funcionario as any).user?.role || 'USER'
     });
     setShowForm(true);
   };
@@ -122,7 +127,7 @@ const Funcionarios: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Tem certeza que deseja remover este funcionário?')) return;
-    
+
     try {
       await api.delete(`/api/profiles/${id}`);
       toast.success('Funcionário removido com sucesso!');
@@ -150,7 +155,9 @@ const Funcionarios: React.FC = () => {
       department: '',
       salary: '',
       hireDate: '',
-      active: true
+      active: true,
+      password: '',
+      role: 'USER'
     });
   };
 
@@ -197,7 +204,7 @@ const Funcionarios: React.FC = () => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
@@ -209,7 +216,7 @@ const Funcionarios: React.FC = () => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
@@ -358,6 +365,54 @@ const Funcionarios: React.FC = () => {
                   />
                 </div>
 
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    Senha de Acesso {editingFuncionario ? '(deixe em branco para manter a atual)' : '*'}
+                  </label>
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      value={formData.password}
+                      onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                      placeholder={editingFuncionario ? 'Digite para alterar' : 'Mínimo 6 caracteres'}
+                      required={!editingFuncionario}
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Esta senha será usada para login no sistema
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Cargo de Acesso (Permissões)</label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    value={formData.role}
+                    onChange={(e) => setFormData(prev => ({ ...prev, role: e.target.value as any }))}
+                  >
+                    <option value="USER">Usuário (Padrão)</option>
+                    <option value="OPERATOR">Operador (Produção)</option>
+                    <option value="MANAGER">Gerente</option>
+                    <option value="ADMIN">Administrador</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Define o nível de permissão e quais módulos o funcionário poderá acessar
+                  </p>
+                </div>
+
                 <div className="flex items-center space-x-2">
                   <input
                     type="checkbox"
@@ -372,9 +427,9 @@ const Funcionarios: React.FC = () => {
                 </div>
 
                 <div className="flex justify-end space-x-2 pt-4">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
+                  <Button
+                    type="button"
+                    variant="outline"
                     onClick={() => {
                       setShowForm(false);
                       setEditingFuncionario(null);
@@ -448,21 +503,21 @@ const Funcionarios: React.FC = () => {
                     CPF: {funcionario.document}
                   </p>
                 )}
-                
+
                 {funcionario.email && (
                   <div className="flex items-center space-x-2 text-sm">
                     <Mail className="w-4 h-4 text-muted-foreground" />
                     <span>{funcionario.email}</span>
                   </div>
                 )}
-                
+
                 {funcionario.phone && (
                   <div className="flex items-center space-x-2 text-sm">
                     <Phone className="w-4 h-4 text-muted-foreground" />
                     <span>{funcionario.phone}</span>
                   </div>
                 )}
-                
+
                 {(funcionario.city || funcionario.state) && (
                   <p className="text-sm text-muted-foreground">
                     {funcionario.city}{funcionario.city && funcionario.state && ', '}{funcionario.state}

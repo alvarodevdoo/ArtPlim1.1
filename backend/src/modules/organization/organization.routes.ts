@@ -18,7 +18,8 @@ const updateSettingsSchema = z.object({
   enableFinance: z.boolean().optional(),
   defaultMarkup: z.number().positive().optional(),
   taxRate: z.number().min(0).max(1).optional(),
-  validadeOrcamento: z.number().int().min(1).max(365).optional()
+  validadeOrcamento: z.number().int().min(1).max(365).optional(),
+  allowDuplicatePhones: z.boolean().optional()
 });
 
 const createUserSchema = z.object({
@@ -29,17 +30,17 @@ const createUserSchema = z.object({
 });
 
 export async function organizationRoutes(fastify: FastifyInstance) {
-  
+
   // ========== ORGANIZAÇÃO ==========
-  
+
   // Buscar dados da organização
   fastify.get('/', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const organizationService = new OrganizationService(prisma);
-    
+
     const organization = await organizationService.findById(request.user!.organizationId);
-    
+
     return reply.send({
       success: true,
       data: organization
@@ -52,9 +53,9 @@ export async function organizationRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const body = updateOrganizationSchema.parse(request.body);
     const organizationService = new OrganizationService(prisma);
-    
+
     const organization = await organizationService.update(request.user!.organizationId, body);
-    
+
     return reply.send({
       success: true,
       data: organization
@@ -62,15 +63,15 @@ export async function organizationRoutes(fastify: FastifyInstance) {
   });
 
   // ========== CONFIGURAÇÕES ==========
-  
+
   // Buscar configurações
   fastify.get('/settings', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const organizationService = new OrganizationService(prisma);
-    
+
     const settings = await organizationService.getSettings(request.user!.organizationId);
-    
+
     return reply.send({
       success: true,
       data: settings
@@ -83,9 +84,9 @@ export async function organizationRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const body = updateSettingsSchema.parse(request.body);
     const organizationService = new OrganizationService(prisma);
-    
+
     const settings = await organizationService.updateSettings(request.user!.organizationId, body);
-    
+
     return reply.send({
       success: true,
       data: settings
@@ -93,15 +94,15 @@ export async function organizationRoutes(fastify: FastifyInstance) {
   });
 
   // ========== USUÁRIOS ==========
-  
+
   // Listar usuários da organização
   fastify.get('/users', {
     preHandler: [fastify.authenticate, requireRole(['OWNER', 'ADMIN'])]
   }, async (request, reply) => {
     const userService = new UserService(prisma);
-    
+
     const users = await userService.listByOrganization(request.user!.organizationId);
-    
+
     return reply.send({
       success: true,
       data: users
@@ -114,12 +115,12 @@ export async function organizationRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const body = createUserSchema.parse(request.body);
     const userService = new UserService(prisma);
-    
+
     const user = await userService.create({
       ...body,
       organizationId: request.user!.organizationId
     });
-    
+
     return reply.code(201).send({
       success: true,
       data: user
@@ -133,9 +134,9 @@ export async function organizationRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = createUserSchema.partial().parse(request.body);
     const userService = new UserService(prisma);
-    
+
     const user = await userService.update(id, request.user!.organizationId, body);
-    
+
     return reply.send({
       success: true,
       data: user
@@ -148,9 +149,9 @@ export async function organizationRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const userService = new UserService(prisma);
-    
+
     await userService.deactivate(id, request.user!.organizationId);
-    
+
     return reply.send({
       success: true,
       message: 'Usuário desativado com sucesso'

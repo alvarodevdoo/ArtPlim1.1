@@ -3,7 +3,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
-import ModuleProtectedRoute from '@/components/auth/ModuleProtectedRoute';
 import Layout from '@/components/layout/Layout';
 
 // Pages
@@ -17,11 +16,15 @@ import Materiais from '@/pages/Materiais';
 import Orcamentos from '@/pages/Orcamentos';
 import Pedidos from '@/pages/Pedidos';
 import CriarPedido from '@/pages/CriarPedido';
+import CriarOrcamento from '@/pages/CriarOrcamento';
 import Relatorios from '@/pages/Relatorios';
 import Configuracoes from '@/pages/Configuracoes';
 import Estoque from '@/pages/Estoque';
 import Producao from '@/pages/Producao';
 import Financeiro from '@/pages/Financeiro';
+import PricingEngine from '@/pages/PricingEngine';
+import ProductRegistryUnified from '@/pages/PricingEngine/ProductRegistryUnified';
+
 
 // Criar QueryClient
 const queryClient = new QueryClient({
@@ -43,7 +46,7 @@ function App() {
               {/* Rotas públicas */}
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
-              
+
               {/* Rotas protegidas */}
               <Route path="/" element={
                 <ProtectedRoute>
@@ -52,7 +55,7 @@ function App() {
                   </Layout>
                 </ProtectedRoute>
               } />
-              
+
               <Route path="/clientes" element={
                 <ProtectedRoute>
                   <Layout>
@@ -60,15 +63,15 @@ function App() {
                   </Layout>
                 </ProtectedRoute>
               } />
-              
+
               <Route path="/funcionarios" element={
-                <ProtectedRoute>
+                <ProtectedRoute permission="admin.users">
                   <Layout>
                     <Funcionarios />
                   </Layout>
                 </ProtectedRoute>
               } />
-              
+
               <Route path="/produtos" element={
                 <ProtectedRoute>
                   <Layout>
@@ -76,15 +79,15 @@ function App() {
                   </Layout>
                 </ProtectedRoute>
               } />
-              
+
               <Route path="/materiais" element={
-                <ProtectedRoute>
+                <ProtectedRoute permission="inventory.view">
                   <Layout>
                     <Materiais />
                   </Layout>
                 </ProtectedRoute>
               } />
-              
+
               <Route path="/orcamentos" element={
                 <ProtectedRoute>
                   <Layout>
@@ -92,7 +95,15 @@ function App() {
                   </Layout>
                 </ProtectedRoute>
               } />
-              
+
+              <Route path="/orcamentos/criar" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <CriarOrcamento />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+
               <Route path="/pedidos" element={
                 <ProtectedRoute>
                   <Layout>
@@ -100,7 +111,7 @@ function App() {
                   </Layout>
                 </ProtectedRoute>
               } />
-              
+
               <Route path="/pedidos/criar" element={
                 <ProtectedRoute>
                   <Layout>
@@ -108,57 +119,69 @@ function App() {
                   </Layout>
                 </ProtectedRoute>
               } />
-              
+
               <Route path="/relatorios" element={
-                <ProtectedRoute>
+                <ProtectedRoute permission="finance.reports">
                   <Layout>
                     <Relatorios />
                   </Layout>
                 </ProtectedRoute>
               } />
-              
+
               <Route path="/configuracoes" element={
-                <ProtectedRoute>
+                <ProtectedRoute permission="admin.settings">
                   <Layout>
                     <Configuracoes />
                   </Layout>
                 </ProtectedRoute>
               } />
-              
+
               <Route path="/estoque" element={
-                <ProtectedRoute>
+                <ProtectedRoute permission="inventory.view">
                   <Layout>
-                    <ModuleProtectedRoute requiredSetting="enableWMS">
-                      <Estoque />
-                    </ModuleProtectedRoute>
+                    <Estoque />
                   </Layout>
                 </ProtectedRoute>
               } />
-              
+
               <Route path="/producao" element={
-                <ProtectedRoute>
+                <ProtectedRoute permission="production.view">
                   <Layout>
-                    <ModuleProtectedRoute requiredSetting="enableProduction">
-                      <Producao />
-                    </ModuleProtectedRoute>
+                    <Producao />
                   </Layout>
                 </ProtectedRoute>
               } />
-              
+
+              {/* ... (existing routes) ... */}
+
               <Route path="/financeiro" element={
-                <ProtectedRoute>
+                <ProtectedRoute permission="finance.view">
                   <Layout>
-                    <ModuleProtectedRoute requiredSetting="enableFinance">
-                      <Financeiro />
-                    </ModuleProtectedRoute>
+                    <Financeiro />
                   </Layout>
                 </ProtectedRoute>
               } />
-              
+
+              <Route path="/pricing-engine" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <PricingEngine />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/pricing-engine/unified" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <ProductRegistryUnified />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+
               {/* Redirect para dashboard se logado */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
-            
+
             <Toaster position="top-right" />
           </div>
         </Router>

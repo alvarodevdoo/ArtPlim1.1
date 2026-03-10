@@ -117,3 +117,7 @@ prisma/migrations/
 # Uploads
 uploads/
 public/uploads/
+#
+Legacy
+Reference
+frontend/src/legacy_reference/

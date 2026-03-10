@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '@/lib/api';
+import { ROLE_PERMISSIONS, PermissionType, MODULE_SETTINGS_MAP } from '@/lib/permissions';
 
 interface User {
   id: string;
@@ -16,6 +17,7 @@ interface OrganizationSettings {
   enableWMS: boolean;
   enableProduction: boolean;
   enableFinance: boolean;
+  enableFinanceReports: boolean;
   enableAutomation: boolean;
   defaultMarkup: number;
   taxRate: number;
@@ -30,6 +32,7 @@ interface AuthContextType {
   logout: () => void;
   loading: boolean;
   refreshSettings: () => Promise<void>;
+  hasPermission: (permission: PermissionType) => boolean;
 }
 
 interface RegisterData {
@@ -61,6 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         enableWMS: false,
         enableProduction: false,
         enableFinance: true,
+        enableFinanceReports: true,
         enableAutomation: true,
         defaultMarkup: 2.0,
         taxRate: 0.0,
@@ -98,6 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               enableWMS: false,
               enableProduction: false,
               enableFinance: true,
+              enableFinanceReports: true,
               enableAutomation: true,
               defaultMarkup: 2.0,
               taxRate: 0.0,
@@ -143,6 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           enableWMS: false,
           enableProduction: false,
           enableFinance: true,
+          enableFinanceReports: true,
           enableAutomation: true,
           defaultMarkup: 2.0,
           taxRate: 0.0,
@@ -169,8 +175,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSettings(null);
   };
 
+  const hasPermission = (permission: PermissionType): boolean => {
+    if (!user) return false;
+
+    // 1. Verificar se o cargo do usuário possui a permissão no RBAC
+    const userPermissions = ROLE_PERMISSIONS[user.role as keyof typeof ROLE_PERMISSIONS] || [];
+    const hasRolePermission = userPermissions.includes(permission);
+
+    if (!hasRolePermission) return false;
+
+    // 2. Verificar se o módulo está habilitado nas configurações globais
+    const requiredSetting = MODULE_SETTINGS_MAP[permission];
+    if (requiredSetting && settings) {
+      return settings[requiredSetting as keyof typeof settings] === true;
+    }
+
+    return true;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, settings, login, register, logout, loading, refreshSettings }}>
+    <AuthContext.Provider value={{ user, settings, login, register, logout, loading, refreshSettings, hasPermission }}>
       {children}
     </AuthContext.Provider>
   );

@@ -19,6 +19,16 @@ export interface OrderProps {
   notes?: string;
   createdAt?: Date;
   updatedAt?: Date;
+  approvedAt?: Date;
+  inProductionAt?: Date;
+  finishedAt?: Date;
+  deliveredAt?: Date;
+  cancelledAt?: Date;
+  cancelledById?: string;
+  cancellationReason?: string;
+  cancellationPaymentAction?: string;
+  cancellationRefundAmount?: number;
+  processStatusId?: string;
 }
 
 export class Order {
@@ -37,6 +47,16 @@ export class Order {
   private _notes?: string;
   private _createdAt?: Date;
   private _updatedAt?: Date;
+  private _approvedAt?: Date;
+  private _inProductionAt?: Date;
+  private _finishedAt?: Date;
+  private _deliveredAt?: Date;
+  private _cancelledAt?: Date;
+  private _cancelledById?: string;
+  private _cancellationReason?: string;
+  private _cancellationPaymentAction?: string;
+  private _cancellationRefundAmount?: Money;
+  private _processStatusId?: string;
 
   constructor(props: OrderProps) {
     this._id = props.id;
@@ -54,6 +74,16 @@ export class Order {
     this._notes = props.notes;
     this._createdAt = props.createdAt;
     this._updatedAt = props.updatedAt;
+    this._approvedAt = props.approvedAt;
+    this._inProductionAt = props.inProductionAt;
+    this._finishedAt = props.finishedAt;
+    this._deliveredAt = props.deliveredAt;
+    this._cancelledAt = props.cancelledAt;
+    this._cancelledById = props.cancelledById;
+    this._cancellationReason = props.cancellationReason;
+    this._cancellationPaymentAction = props.cancellationPaymentAction;
+    this._cancellationRefundAmount = props.cancellationRefundAmount ? new Money(Number(props.cancellationRefundAmount)) : undefined;
+    this._processStatusId = props.processStatusId;
 
     this.validate();
   }
@@ -138,6 +168,46 @@ export class Order {
     return this._updatedAt;
   }
 
+  get approvedAt(): Date | undefined {
+    return this._approvedAt;
+  }
+
+  get inProductionAt(): Date | undefined {
+    return this._inProductionAt;
+  }
+
+  get finishedAt(): Date | undefined {
+    return this._finishedAt;
+  }
+
+  get deliveredAt(): Date | undefined {
+    return this._deliveredAt;
+  }
+
+  get cancelledAt(): Date | undefined {
+    return this._cancelledAt;
+  }
+
+  get cancelledById(): string | undefined {
+    return this._cancelledById;
+  }
+
+  get cancellationReason(): string | undefined {
+    return this._cancellationReason;
+  }
+
+  get cancellationPaymentAction(): string | undefined {
+    return this._cancellationPaymentAction;
+  }
+
+  get cancellationRefundAmount(): Money | undefined {
+    return this._cancellationRefundAmount;
+  }
+
+  get processStatusId(): string | undefined {
+    return this._processStatusId;
+  }
+
   // Métodos de negócio
   addItem(item: OrderItem): void {
     this._items.push(item);
@@ -164,6 +234,13 @@ export class Order {
     }
     this._status = newStatus;
     this._updatedAt = new Date();
+
+    // Set status timestamps
+    if (newStatus.isApproved() && !this._approvedAt) this._approvedAt = new Date();
+    if (newStatus.isInProduction() && !this._inProductionAt) this._inProductionAt = new Date();
+    if (newStatus.isFinished() && !this._finishedAt) this._finishedAt = new Date();
+    if (newStatus.isDelivered() && !this._deliveredAt) this._deliveredAt = new Date();
+    if (newStatus.isCancelled() && !this._cancelledAt) this._cancelledAt = new Date();
   }
 
   approve(): void {
@@ -182,12 +259,27 @@ export class Order {
     this.changeStatus(OrderStatus.delivered());
   }
 
-  cancel(): void {
+  cancel(details?: { userId?: string, reason?: string, paymentAction?: string, refundAmount?: number }): void {
+    console.log(`[Order Domain] Executando cancel() para o pedido ${this._id}`, details);
     this.changeStatus(OrderStatus.cancelled());
+    if (details) {
+      this._cancelledById = details.userId;
+      this._cancellationReason = details.reason;
+      this._cancellationPaymentAction = details.paymentAction;
+      this._cancellationRefundAmount = details.refundAmount ? new Money(details.refundAmount) : undefined;
+      console.log(`[Order Domain] Campos setados: Reason=${this._cancellationReason}, Action=${this._cancellationPaymentAction}, Amount=${this._cancellationRefundAmount?.value}`);
+    }
+    this._cancelledAt = new Date();
+    console.log(`[Order Domain] CancelledAt setado para: ${this._cancelledAt}`);
   }
 
   updateDeliveryDate(date: Date): void {
     this._deliveryDate = date;
+    this._updatedAt = new Date();
+  }
+
+  updateProcessStatusId(id: string): void {
+    this._processStatusId = id;
     this._updatedAt = new Date();
   }
 
@@ -212,27 +304,27 @@ export class Order {
     if (details.customerId !== undefined) {
       this._customerId = details.customerId;
     }
-    
+
     if (details.items !== undefined) {
       this._items = details.items;
     }
-    
+
     if (details.subtotal !== undefined) {
       this._subtotal = details.subtotal;
     }
-    
+
     if (details.total !== undefined) {
       this._total = details.total;
     }
-    
+
     if (details.deliveryDate !== undefined) {
       this._deliveryDate = details.deliveryDate;
     }
-    
+
     if (details.validUntil !== undefined) {
       this._validUntil = details.validUntil;
     }
-    
+
     if (details.notes !== undefined) {
       this._notes = details.notes;
     }
@@ -256,11 +348,11 @@ export class Order {
       (sum, item) => sum.add(item.totalPrice),
       Money.zero()
     );
-    
+
     this._total = this._subtotal
       .subtract(this._discount)
       .add(this._tax);
-    
+
     this._updatedAt = new Date();
   }
 
@@ -298,7 +390,17 @@ export class Order {
       validUntil: this._validUntil,
       notes: this._notes,
       createdAt: this._createdAt,
-      updatedAt: this._updatedAt
+      updatedAt: this._updatedAt,
+      approvedAt: this._approvedAt,
+      inProductionAt: this._inProductionAt,
+      finishedAt: this._finishedAt,
+      deliveredAt: this._deliveredAt,
+      cancelledAt: this._cancelledAt,
+      cancelledById: this._cancelledById,
+      cancellationReason: this._cancellationReason,
+      cancellationPaymentAction: this._cancellationPaymentAction,
+      cancellationRefundAmount: this._cancellationRefundAmount?.value,
+      processStatusId: this._processStatusId
     };
   }
 

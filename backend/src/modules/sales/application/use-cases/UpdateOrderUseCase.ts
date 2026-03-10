@@ -28,14 +28,15 @@ export interface UpdateOrderResult {
 }
 
 export class UpdateOrderUseCase {
-  constructor(  
+  constructor(
     private orderRepository: OrderRepository,
     private customerService: CustomerService,
     private productService: ProductService,
     private organizationService: OrganizationService,
     private pricingEngine: PricingEngine,
-    private pendingChangesService?: PendingChangesService
-  ) {}
+    private pendingChangesService?: PendingChangesService,
+    private prisma?: any // Injetar prisma para buscar status
+  ) { }
 
   async execute(orderId: string, data: CreateOrderDTO, userId: string): Promise<UpdateOrderResult> {
     // Buscar pedido existente
@@ -45,8 +46,20 @@ export class UpdateOrderUseCase {
     }
 
     // Verificar se o pedido pode ser editado (todos os status exceto DELIVERED)
+    // Verificar se o pedido pode ser editado (todos os status exceto DELIVERED)
     if (existingOrder.status.value === 'DELIVERED') {
       throw new ValidationError('Pedidos entregues não podem ser editados');
+    }
+
+    // Validação de Trava de Edição (Custom Status)
+    if (existingOrder.processStatusId && this.prisma) {
+      const currentProcessStatus = await this.prisma.processStatus.findUnique({
+        where: { id: existingOrder.processStatusId }
+      });
+
+      if (currentProcessStatus && currentProcessStatus.allowEdition === false) {
+        throw new ValidationError(`O pedido não pode ser editado no status atual: ${currentProcessStatus.name}`);
+      }
     }
 
     // Se o pedido está em produção e temos o serviço de alterações pendentes, criar solicitação
@@ -56,16 +69,15 @@ export class UpdateOrderUseCase {
 
     // Para outros status, aplicar alterações normalmente
     return await this.applyChangesDirectly(existingOrder, data);
-  }
 
   private async handleProductionOrderChange(
-    existingOrder: Order,
-    data: CreateOrderDTO,
-    userId: string
-  ): Promise<UpdateOrderResult> {
+      existingOrder: Order,
+      data: CreateOrderDTO,
+      userId: string
+    ): Promise<UpdateOrderResult> {
     // Calcular as alterações necessárias
     const changes = await this.calculateChanges(existingOrder, data);
-    
+
     if (Object.keys(changes).length === 0) {
       // Nenhuma alteração detectada
       return { order: existingOrder };
@@ -73,7 +85,7 @@ export class UpdateOrderUseCase {
 
     // Criar solicitação de alteração pendente
     const pendingChange = await this.pendingChangesService!.createPendingChange({
-      orderId: existingOrder.id.value,
+      orderId: existingOrder.id!,
       changes,
       requestedBy: userId,
       organizationId: existingOrder.organizationId,
@@ -104,7 +116,7 @@ export class UpdateOrderUseCase {
 
     // Processar itens
     const orderItems: OrderItem[] = [];
-    
+
     for (const itemData of data.items) {
       // Buscar produto
       const product = await this.productService.findById(itemData.productId);
@@ -142,7 +154,7 @@ export class UpdateOrderUseCase {
         calculatedPrice: new Money(pricing.calculatedPrice),
         unitPrice: new Money(unitPrice),
         notes: itemData.notes,
-        
+
         // Campos específicos por tipo
         area: itemData.area,
         paperSize: itemData.paperSize,
@@ -152,7 +164,7 @@ export class UpdateOrderUseCase {
         machineTime: itemData.machineTime,
         setupTime: itemData.setupTime,
         complexity: itemData.complexity,
-        
+
         // Tamanho personalizado
         customSizeName: itemData.customSizeName,
         isCustomSize: itemData.isCustomSize
@@ -180,7 +192,7 @@ export class UpdateOrderUseCase {
 
     // Salvar no repositório
     const updatedOrder = await this.orderRepository.save(existingOrder);
-    
+
     return { order: updatedOrder };
   }
 
@@ -195,7 +207,7 @@ export class UpdateOrderUseCase {
     if (newData.deliveryDate) {
       const newDeliveryDate = new Date(newData.deliveryDate);
       const existingDeliveryDate = existingOrder.deliveryDate;
-      
+
       if (!existingDeliveryDate || newDeliveryDate.getTime() !== existingDeliveryDate.getTime()) {
         changes.deliveryDate = newDeliveryDate;
       }
@@ -219,23 +231,23 @@ export class UpdateOrderUseCase {
       const newItem = newData.items[i];
 
       if (existingItem.quantity !== newItem.quantity) {
-        changes[`item_${existingItem.id?.value || i}_quantity`] = newItem.quantity;
+        changes[`item_${existingItem.id || i}_quantity`] = newItem.quantity;
       }
 
       if (existingItem.dimensions.width !== newItem.width) {
-        changes[`item_${existingItem.id?.value || i}_width`] = newItem.width;
+        changes[`item_${existingItem.id || i}_width`] = newItem.width;
       }
 
       if (existingItem.dimensions.height !== newItem.height) {
-        changes[`item_${existingItem.id?.value || i}_height`] = newItem.height;
+        changes[`item_${existingItem.id || i}_height`] = newItem.height;
       }
 
       if (newItem.unitPrice && existingItem.unitPrice.value !== newItem.unitPrice) {
-        changes[`item_${existingItem.id?.value || i}_unitPrice`] = newItem.unitPrice;
+        changes[`item_${existingItem.id || i}_unitPrice`] = newItem.unitPrice;
       }
 
       if (existingItem.notes !== newItem.notes) {
-        changes[`item_${existingItem.id?.value || i}_notes`] = newItem.notes;
+        changes[`item_${existingItem.id || i}_notes`] = newItem.notes;
       }
     }
 

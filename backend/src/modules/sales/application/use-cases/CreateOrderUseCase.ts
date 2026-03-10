@@ -14,6 +14,11 @@ export interface CustomerService {
   findById(id: string): Promise<{ id: string; organizationId: string } | null>;
 }
 
+export interface ProcessStatusService {
+  ensureDefaultStatuses(organizationId: string): Promise<void>;
+  list(organizationId: string): Promise<any[]>;
+}
+
 export interface ProductService {
   findById(id: string): Promise<any | null>;
 }
@@ -23,13 +28,14 @@ export interface OrganizationService {
 }
 
 export class CreateOrderUseCase {
-  constructor(  
+  constructor(
     private orderRepository: OrderRepository,
     private customerService: CustomerService,
     private productService: ProductService,
     private organizationService: OrganizationService,
+    private processStatusService: ProcessStatusService, // Injetar serviço
     private pricingEngine: PricingEngine
-  ) {}
+  ) { }
 
   async execute(data: CreateOrderDTO): Promise<Order> {
     // Verificar se o cliente existe
@@ -42,6 +48,12 @@ export class CreateOrderUseCase {
     const settings = await this.organizationService.getSettings(customer.organizationId);
     const validadeOrcamento = settings?.validadeOrcamento || 7; // padrão 7 dias
 
+    // Garantir e buscar status padrão
+    await this.processStatusService.ensureDefaultStatuses(customer.organizationId);
+    const statuses = await this.processStatusService.list(customer.organizationId);
+    // Encontrar o status que mapeia para DRAFT (Rascunho)
+    const initialStatus = statuses.find((s: any) => s.mappedBehavior === 'DRAFT') || statuses[0];
+
     // Gerar número do pedido
     const sequence = await this.orderRepository.getNextSequence();
     const orderNumber = OrderNumber.generate(sequence);
@@ -52,7 +64,7 @@ export class CreateOrderUseCase {
 
     // Processar itens
     const orderItems: OrderItem[] = [];
-    
+
     for (const itemData of data.items) {
       // Buscar produto
       const product = await this.productService.findById(itemData.productId);
@@ -83,7 +95,7 @@ export class CreateOrderUseCase {
             costPerMinute: Number(op.costPerMinute),
             setupTime: op.setupTime
           }))
-        },
+        } as any,
         width: itemData.width,
         height: itemData.height,
         quantity: itemData.quantity,
@@ -104,7 +116,7 @@ export class CreateOrderUseCase {
         calculatedPrice: new Money(pricing.calculatedPrice),
         unitPrice: new Money(unitPrice),
         notes: itemData.notes,
-        
+
         // Campos específicos por tipo
         area: itemData.area,
         paperSize: itemData.paperSize,
@@ -114,7 +126,7 @@ export class CreateOrderUseCase {
         machineTime: itemData.machineTime,
         setupTime: itemData.setupTime,
         complexity: itemData.complexity,
-        
+
         // Tamanho personalizado
         customSizeName: itemData.customSizeName,
         isCustomSize: itemData.isCustomSize
@@ -135,6 +147,7 @@ export class CreateOrderUseCase {
       customerId: data.customerId,
       organizationId: customer.organizationId,
       status: OrderStatus.draft(),
+      processStatusId: initialStatus?.id, // Adicionar status customizado inicial
       items: orderItems,
       subtotal,
       discount: Money.zero(),

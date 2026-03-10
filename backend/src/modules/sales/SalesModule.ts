@@ -9,6 +9,7 @@ import { GetOrderStatsUseCase } from './application/use-cases/GetOrderStatsUseCa
 import { OrderController } from './presentation/http/OrderController';
 import { orderRoutes } from './presentation/http/routes';
 import { PricingEngine } from '../../shared/application/pricing/PricingEngine';
+import { ProcessStatusService } from '../organization/services/ProcessStatusService';
 
 // Interfaces para serviços externos (implementados em outros módulos)
 export interface CustomerService {
@@ -33,6 +34,7 @@ export class SalesModule {
   private getOrderStatsUseCase!: GetOrderStatsUseCase;
   private orderController!: OrderController;
   private pricingEngine!: PricingEngine;
+  private processStatusService!: ProcessStatusService;
 
   constructor(
     private prisma: any,
@@ -47,6 +49,7 @@ export class SalesModule {
     // Infrastructure
     this.orderRepository = new PrismaOrderRepository(this.prisma);
     this.pricingEngine = new PricingEngine();
+    this.processStatusService = new ProcessStatusService();
 
     // Use Cases
     this.createOrderUseCase = new CreateOrderUseCase(
@@ -54,20 +57,27 @@ export class SalesModule {
       this.customerService,
       this.productService,
       this.organizationService,
+      this.processStatusService,
       this.pricingEngine
     );
-    
+
     this.updateOrderUseCase = new UpdateOrderUseCase(
       this.orderRepository,
       this.customerService,
       this.productService,
       this.organizationService,
-      this.pricingEngine
+      this.pricingEngine,
+      undefined, // PendingChangesService (not available here yet)
+      this.prisma
     );
-    
+
     this.getOrderUseCase = new GetOrderUseCase(this.orderRepository);
     this.listOrdersUseCase = new ListOrdersUseCase(this.orderRepository);
-    this.updateOrderStatusUseCase = new UpdateOrderStatusUseCase(this.orderRepository);
+    this.updateOrderStatusUseCase = new UpdateOrderStatusUseCase(
+      this.orderRepository,
+      this.prisma,
+      this.processStatusService
+    );
     this.getOrderStatsUseCase = new GetOrderStatsUseCase(this.orderRepository);
 
     // Controllers

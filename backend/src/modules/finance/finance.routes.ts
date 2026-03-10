@@ -7,9 +7,9 @@ const listQuerySchema = z.object({
 });
 
 export async function financeRoutes(fastify: FastifyInstance) {
-  
+
   // ========== CONTAS ==========
-  
+
   // Listar contas
   fastify.get('/accounts', {
     preHandler: [fastify.authenticate]
@@ -31,7 +31,7 @@ export async function financeRoutes(fastify: FastifyInstance) {
         currency: 'BRL'
       }
     ];
-    
+
     return reply.send({
       success: true,
       data: accounts
@@ -39,13 +39,13 @@ export async function financeRoutes(fastify: FastifyInstance) {
   });
 
   // ========== TRANSAÇÕES ==========
-  
+
   // Listar transações
   fastify.get('/transactions', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const query = listQuerySchema.parse(request.query);
-    
+
     // Implementação temporária - retorna dados mock
     const transactions = [
       {
@@ -65,7 +65,7 @@ export async function financeRoutes(fastify: FastifyInstance) {
         category: 'Materiais'
       }
     ].slice(0, query.limit || 50);
-    
+
     return reply.send({
       success: true,
       data: transactions
@@ -73,7 +73,7 @@ export async function financeRoutes(fastify: FastifyInstance) {
   });
 
   // ========== CATEGORIAS ==========
-  
+
   // Listar categorias
   fastify.get('/categories', {
     preHandler: [fastify.authenticate]
@@ -85,7 +85,7 @@ export async function financeRoutes(fastify: FastifyInstance) {
       { id: '3', name: 'Salários', type: 'EXPENSE', color: '#F59E0B' },
       { id: '4', name: 'Aluguel', type: 'EXPENSE', color: '#8B5CF6' }
     ];
-    
+
     return reply.send({
       success: true,
       data: categories
@@ -93,37 +93,50 @@ export async function financeRoutes(fastify: FastifyInstance) {
   });
 
   // ========== DASHBOARD ==========
-  
+
   // Dashboard financeiro
   fastify.get('/dashboard', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const query = listQuerySchema.parse(request.query);
-    
-    // Implementação temporária - retorna dados mock
+
+    // Estrutura atualizada para coincidir com o frontend (Financeiro.tsx)
     const dashboard = {
-      totalIncome: 15000.00,
-      totalExpenses: 8500.00,
-      netProfit: 6500.00,
-      profitMargin: 43.33,
-      monthlyGrowth: 12.5,
-      topCategories: [
-        { name: 'Vendas', amount: 15000.00, percentage: 63.8 },
-        { name: 'Materiais', amount: 5000.00, percentage: 21.3 },
-        { name: 'Salários', amount: 2500.00, percentage: 10.6 },
-        { name: 'Outros', amount: 1000.00, percentage: 4.3 }
-      ],
-      recentTransactions: [
-        {
-          id: '1',
-          description: 'Venda - Pedido #001',
-          amount: 500.00,
-          type: 'INCOME',
-          date: new Date().toISOString()
+      summary: {
+        totalIncome: 15000.00,
+        totalExpense: 8500.00,
+        profit: 6500.00,
+        profitMargin: 43.33
+      },
+      pending: {
+        receivables: 12450.00,
+        payables: 3200.00
+      },
+      accounts: {
+        totalBalance: 40000.00,
+        balanceByType: {
+          'CHECKING': 15000.00,
+          'SAVINGS': 25000.00
         }
-      ]
+      },
+      cashFlow: [
+        { date: new Date(Date.now() - 86400000 * 2).toISOString(), income: 2000, expense: 500, balance: 1500 },
+        { date: new Date(Date.now() - 86400000).toISOString(), income: 1500, expense: 800, balance: 2200 },
+        { date: new Date().toISOString(), income: 3000, expense: 1200, balance: 4000 }
+      ],
+      categoryStats: [
+        { name: 'Vendas', value: 15000.00, color: '#10B981', type: 'INCOME' },
+        { name: 'Materiais', value: 5000.00, color: '#EF4444', type: 'EXPENSE' },
+        { name: 'Salários', value: 2500.00, color: '#F59E0B', type: 'EXPENSE' },
+        { name: 'Aluguel', value: 1000.00, color: '#8B5CF6', type: 'EXPENSE' }
+      ],
+      monthlyComparison: {
+        currentMonth: { income: 15000, expense: 8500, profit: 6500 },
+        previousMonth: { income: 12000, expense: 7000, profit: 5000 },
+        growth: { income: 25, expense: 21.4, profit: 30 }
+      }
     };
-    
+
     return reply.send({
       success: true,
       data: dashboard

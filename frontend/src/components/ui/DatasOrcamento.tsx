@@ -14,6 +14,17 @@ export function DatasOrcamento({ criadoEm, validadeEm, className = '' }: DatasOr
     return format(new Date(data), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
   };
 
+  const formatarValidade = (data: string | Date) => {
+    const d = new Date(data);
+    // Para datas de validade (que vêm como T00:00:00Z do banco), 
+    // usamos os métodos UTC para evitar que o fuso horário mude o dia.
+    // Ou adicionamos o offset.
+    const dia = String(d.getUTCDate()).padStart(2, '0');
+    const mes = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const ano = d.getUTCFullYear();
+    return `${dia}/${mes}/${ano}`;
+  };
+
   const isVencido = validadeEm ? new Date(validadeEm) < new Date() : false;
 
   return (
@@ -25,13 +36,13 @@ export function DatasOrcamento({ criadoEm, validadeEm, className = '' }: DatasOr
           {formatarData(criadoEm)}
         </span>
       </div>
-      
+
       {validadeEm && (
         <div className="flex items-center space-x-2">
           <Clock className="w-4 h-4 text-muted-foreground" />
           <span className="font-medium">Validade:</span>
           <span className={`${isVencido ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>
-            {formatarData(validadeEm)}
+            {formatarValidade(validadeEm)}
             {isVencido && (
               <span className="ml-2 px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs">
                 Vencido

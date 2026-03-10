@@ -1,12 +1,15 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { PermissionType } from '@/lib/permissions';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
+  allowedRoles?: string[];
+  permission?: PermissionType;
 }
 
-export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { user, loading } = useAuth();
+export function ProtectedRoute({ children, allowedRoles, permission }: ProtectedRouteProps) {
+  const { user, loading, hasPermission } = useAuth();
 
   if (loading) {
     return (
@@ -18,6 +21,18 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  // 1. Verificar permissão específica (RBAC + Settings)
+  if (permission && !hasPermission(permission)) {
+    console.warn(`Acesso negado para permissão: ${permission}`);
+    return <Navigate to="/" replace />;
+  }
+
+  // 2. Verificar permissão genérica por cargo (RBAC legado)
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    console.warn(`Acesso negado para o cargo: ${user.role}. Cargos permitidos: ${allowedRoles.join(', ')}`);
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;

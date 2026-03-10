@@ -1,130 +1,48 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import {
-  Search,
   Save,
   ArrowLeft,
-  User,
-  DollarSign,
-  Calendar,
   FileText,
-  AlertTriangle,
-  CheckCircle,
-  Trash2,
-  Edit,
-  Plus,
-  UserX,
-  Receipt
+  AlertCircle
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import AddItemModalFlow from '@/components/pedidos/AddItemModalFlow';
-import { ItemType, ITEM_TYPE_CONFIGS } from '@/types/item-types';
-
-// Helper function to render simplified item display
-const renderItemDisplay = (item: ItemPedido) => {
-  // Only show additional info for products with special attributes
-  const attributes = item.attributes || {};
-
-  if (item.product?.pricingMode === 'DYNAMIC_ENGINEER' && (attributes.complexity || attributes.machineTime || attributes.setupTime)) {
-    return (
-      <div className="mt-2 p-2 bg-gray-50 border border-gray-200 rounded text-sm">
-        <p className="font-medium text-gray-800 mb-1">📦 Especificações do Produto:</p>
-        <div className="grid grid-cols-2 gap-2">
-          {attributes.complexity && (
-            <p><span className="font-medium">Complexidade:</span> {attributes.complexity}</p>
-          )}
-          {attributes.machineTime && (
-            <p><span className="font-medium">Tempo Máquina:</span> {attributes.machineTime} min</p>
-          )}
-          {attributes.setupTime && (
-            <p><span className="font-medium">Setup:</span> {attributes.setupTime} min</p>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  return null;
-};
-
-
-interface Cliente {
-  id: string;
-  name: string;
-  email?: string;
-  phone?: string;
-  document?: string;
-}
-
-interface Produto {
-  id: string;
-  name: string;
-  description?: string;
-  productType?: ItemType; // Adicionado campo productType
-  pricingMode: 'SIMPLE_AREA' | 'SIMPLE_UNIT' | 'DYNAMIC_ENGINEER';
-  salePrice?: number;
-  minPrice?: number;
-  standardSizes?: Array<{
-    id: string;
-    name: string;
-    width: number;
-    height: number;
-    isDefault: boolean;
-  }>;
-}
-
-interface ItemPedido {
-  id: string;
-  productId: string;
-  product?: Produto;
-  itemType: ItemType;
-  width?: number;
-  height?: number;
-  quantity: number;
-  unitPrice: number;
-  totalPrice: number;
-  notes?: string;
-  attributes?: Record<string, any>;
-
-  // Legacy fields for backward compatibility
-  area?: number;
-  paperSize?: string;
-  paperType?: string;
-  printColors?: string;
-  finishing?: string;
-  machineTime?: number;
-  setupTime?: number;
-  complexity?: string;
-  customSizeName?: string;
-  isCustomSize?: boolean;
-}
+import { ItemType } from '@/types/item-types';
+import { Cliente, Produto, ItemPedido } from '@/types/sales';
+import { CustomerSelection } from '@/components/sales/CustomerSelection';
+import { OrderItemsList } from '@/components/sales/OrderItemsList';
+import { OrderFinancialStatus } from '@/components/sales/OrderFinancialStatus';
+import { PaymentSelection } from '@/components/sales/PaymentSelection';
+import { OrderHistoryModal } from '@/components/sales/OrderHistoryModal';
 
 const CriarPedido: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('edit');
+  const fromBudgetId = searchParams.get('fromBudget');
   const isEditing = !!editId;
   const [loading, setLoading] = useState(false);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
 
-  // Refs para controlar dropdowns
-  const clienteDropdownRef = useRef<HTMLDivElement>(null);
 
   // Dados do pedido
   const [clienteSelecionado, setClienteSelecionado] = useState<Cliente | null>(null);
-  const [searchCliente, setSearchCliente] = useState('');
-  const [showClienteDropdown, setShowClienteDropdown] = useState(false);
   const [loadingClientes, setLoadingClientes] = useState(false);
 
   const [itens, setItens] = useState<ItemPedido[]>([]);
   const [deliveryDate, setDeliveryDate] = useState('');
   const [notes, setNotes] = useState('');
+
+  // Pagamentos (Mock)
+  const [payments, setPayments] = useState<any[]>([]);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [selectedOriginOrder, setSelectedOriginOrder] = useState<string>('');
 
   // Edição de item
   const [editingItem, setEditingItem] = useState<ItemPedido | null>(null);
@@ -138,38 +56,10 @@ const CriarPedido: React.FC = () => {
     // Se estiver editando, carregar dados do pedido
     if (isEditing && editId) {
       loadPedidoParaEdicao(editId);
+    } else if (fromBudgetId) {
+      loadBudgetData(fromBudgetId);
     }
-  }, [isEditing, editId]);
-
-  // Effect para fechar dropdowns ao clicar fora
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      // Fechar dropdown de cliente apenas se estiver aberto
-      if (showClienteDropdown && clienteDropdownRef.current && !clienteDropdownRef.current.contains(event.target as Node)) {
-        setShowClienteDropdown(false);
-      }
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Fechar dropdowns ao pressionar Escape
-      if (event.key === 'Escape') {
-        setShowClienteDropdown(false);
-      }
-    };
-
-    // Só adicionar listeners se o dropdown estiver aberto
-    if (showClienteDropdown) {
-      // Use mousedown instead of click to ensure it fires before onClick on dropdown items
-      document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('keydown', handleKeyDown);
-    }
-
-    // Cleanup
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [showClienteDropdown]); // Dependência do estado do dropdown
+  }, [isEditing, editId, fromBudgetId]);
 
   const loadClientes = async () => {
     setLoadingClientes(true);
@@ -208,6 +98,7 @@ const CriarPedido: React.FC = () => {
         return;
       }
 
+      /*
       // Verificar se há materiais cadastrados (necessário para produtos)
       try {
         const materialsResponse = await api.get('/api/catalog/materials');
@@ -225,6 +116,7 @@ const CriarPedido: React.FC = () => {
       } catch (error) {
         // Error checking materials
       }
+      */
     } catch (error) {
       toast.error('Erro ao carregar produtos');
     }
@@ -245,7 +137,6 @@ const CriarPedido: React.FC = () => {
 
       // Carregar dados do cliente
       setClienteSelecionado(pedido.customer);
-      setSearchCliente(pedido.customer.name);
 
       // Carregar itens do pedido
       const itensCarregados = pedido.items.map((item: any) => ({
@@ -273,16 +164,33 @@ const CriarPedido: React.FC = () => {
 
         // Tamanho personalizado
         customSizeName: item.customSizeName,
-        isCustomSize: item.isCustomSize || false
+        isCustomSize: item.isCustomSize || false,
+
+        // Status do item
+        processStatusId: item.processStatusId,
+        processStatus: item.processStatus
       }));
 
       setItens(itensCarregados);
-
-      // Carregar dados adicionais
-      if (pedido.deliveryDate) {
-        setDeliveryDate(new Date(pedido.deliveryDate).toISOString().split('T')[0]);
-      }
+      setDeliveryDate(pedido.deliveryDate ? new Date(pedido.deliveryDate).toISOString().split('T')[0] : '');
       setNotes(pedido.notes || '');
+
+      // Carregar pagamentos (transações)
+      if (pedido.transactions && pedido.transactions.length > 0) {
+        const pagamentosCarregados = pedido.transactions
+          .filter((t: any) => t.status !== 'CANCELLED' && t.type === 'INCOME')
+          .map((t: any) => ({
+            methodId: t.paymentMethodId,
+            methodName: t.paymentMethod?.name || 'Método Desconhecido',
+            amount: Number(t.amount),
+            installments: 1,
+            date: t.paidAt,
+            justification: t.auditNotes || undefined,
+            fee: 0,
+            netAmount: Number(t.amount)
+          }));
+        setPayments(pagamentosCarregados);
+      }
 
       toast.success('Pedido carregado para edição!');
     } catch (error: any) {
@@ -293,10 +201,53 @@ const CriarPedido: React.FC = () => {
     }
   };
 
-  const clientesFiltrados = clientes.filter(cliente =>
-    cliente.name.toLowerCase().includes(searchCliente.toLowerCase()) ||
-    (cliente.document && cliente.document.includes(searchCliente))
-  );
+
+
+  // Handle item status change (for workflow status, not production status)
+  const handleItemStatusChange = (itemId: string, newStatus: string) => {
+    setItens(prev => prev.map(item =>
+      item.id === itemId ? { ...item, status: newStatus } as any : item
+    ));
+    toast.success('Status do item atualizado');
+  };
+
+  const loadBudgetData = async (budgetId: string) => {
+    try {
+      setLoading(true);
+      const response = await api.get(`/api/sales/budgets/${budgetId}`);
+      const budget = response.data.data;
+
+      // Carregar dados do cliente do orçamento
+      setClienteSelecionado(budget.customer);
+
+      // Carregar itens do orçamento e mapear para itens de pedido
+      const itensCarregados = budget.items.map((item: any) => ({
+        id: `temp-${Math.random().toString(36).substr(2, 9)}`, // Novo ID temporário para o pedido
+        productId: item.productId,
+        product: item.product,
+        itemType: item.product?.productType || item.itemType || ItemType.PRODUCT,
+        width: item.width,
+        height: item.height,
+        quantity: item.quantity,
+        unitPrice: Number(item.unitPrice),
+        totalPrice: Number(item.totalPrice),
+        notes: item.notes,
+        attributes: item.attributes || {},
+        customSizeName: item.customSizeName,
+        isCustomSize: item.isCustomSize || false
+      }));
+
+      setItens(itensCarregados);
+      setNotes(budget.notes ? `Gerado a partir do orçamento ${budget.budgetNumber}. ${budget.notes}` : `Gerado a partir do orçamento ${budget.budgetNumber}.`);
+
+      toast.success(`Dados carregados do orçamento ${budget.budgetNumber}`);
+    } catch (error: any) {
+      console.error('Erro ao carregar orçamento:', error);
+      toast.error('Erro ao carregar dados do orçamento para gerar o pedido');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleAddItem = (item: ItemPedido) => {
     // Ensure product data is available
@@ -337,21 +288,6 @@ const CriarPedido: React.FC = () => {
     setShowAddModal(true);
   };
 
-  const formatarUnidadePreco = (produto?: Produto) => {
-    if (!produto) return '/un';
-
-    switch (produto.pricingMode) {
-      case 'SIMPLE_AREA':
-        return '/m²';
-      case 'SIMPLE_UNIT':
-        return '/un';
-      case 'DYNAMIC_ENGINEER':
-        return '/un';
-      default:
-        return '/un';
-    }
-  };
-
   const removerItem = (itemId: string) => {
     setItens(prev => prev.filter(item => item.id !== itemId));
     toast.success('Item removido do pedido');
@@ -367,8 +303,52 @@ const CriarPedido: React.FC = () => {
     setShowEditModal(true);
   };
 
-  const calcularTotal = () => {
-    return itens.reduce((total, item) => total + item.totalPrice, 0);
+  // Edição de pagamento
+  const [editingPayment, setEditingPayment] = useState<any>(null);
+  const [editingPaymentIndex, setEditingPaymentIndex] = useState<number>(-1);
+
+  const handleEditPayment = (index: number, payment: any) => {
+    setEditingPayment(payment);
+    setEditingPaymentIndex(index);
+    setShowPaymentModal(true);
+  };
+
+  const handleUpdatePayment = (updatedPayment: any) => {
+    if (editingPaymentIndex >= 0) {
+      setPayments(prev => {
+        const newPayments = [...prev];
+        newPayments[editingPaymentIndex] = updatedPayment;
+        return newPayments;
+      });
+      setShowPaymentModal(false);
+      setEditingPayment(null);
+      setEditingPaymentIndex(-1);
+    }
+  };
+
+  // Remoção de pagamento
+  const [paymentToRemoveIndex, setPaymentToRemoveIndex] = useState<number | null>(null);
+  const [removalJustification, setRemovalJustification] = useState('');
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
+
+  const handleRemovePayment = (index: number) => {
+    setPaymentToRemoveIndex(index);
+    setRemovalJustification('');
+    setShowRemoveConfirm(true);
+  };
+
+  const confirmRemovePayment = () => {
+    if (!removalJustification.trim()) {
+      toast.error('Justificativa é obrigatória para cancelamento de pagamento');
+      return;
+    }
+
+    if (paymentToRemoveIndex !== null) {
+      setPayments(prev => prev.filter((_, i) => i !== paymentToRemoveIndex));
+      toast.success('Pagamento removido e justificado');
+      setShowRemoveConfirm(false);
+      setPaymentToRemoveIndex(null);
+    }
   };
 
   const salvarPedido = async () => {
@@ -401,8 +381,8 @@ const CriarPedido: React.FC = () => {
 
       if (!item.productId || item.productId.trim() === '') problems.push('productId vazio');
       if (!item.quantity || item.quantity <= 0 || isNaN(item.quantity)) problems.push('quantity inválida');
-      if (!item.unitPrice || item.unitPrice <= 0 || isNaN(item.unitPrice)) problems.push('unitPrice inválido');
-      if (!item.totalPrice || item.totalPrice <= 0 || isNaN(item.totalPrice)) problems.push('totalPrice inválido');
+      if (!item.unitPrice && item.unitPrice !== 0 || item.unitPrice < 0 || isNaN(item.unitPrice)) problems.push('unitPrice inválido');
+      if (!item.totalPrice && item.totalPrice !== 0 || item.totalPrice < 0 || isNaN(item.totalPrice)) problems.push('totalPrice inválido');
 
       // Validar se o produto ainda existe na lista de produtos carregados (apenas para produtos, não serviços)
       if (!isService) {
@@ -483,10 +463,24 @@ const CriarPedido: React.FC = () => {
 
           // Tamanho personalizado
           customSizeName: item.customSizeName,
-          isCustomSize: item.isCustomSize
+          isCustomSize: item.isCustomSize,
+
+          // Status de processo do item
+          processStatusId: item.processStatusId || undefined
         })),
         deliveryDate: deliveryDate || undefined,
-        notes: notes || undefined
+        notes: notes || undefined,
+        payments: payments.map(p => ({
+          methodId: p.methodId,
+          methodName: p.methodName,
+          amount: p.amount,
+          fee: p.fee,
+          netAmount: p.netAmount,
+          installments: p.installments,
+          // Verifica se p.date é objeto Date ou string
+          date: (typeof p.date === 'string' ? p.date : p.date.toISOString()),
+          justification: p.justification || undefined
+        }))
       };
 
       if (isEditing && editId) {
@@ -515,6 +509,8 @@ const CriarPedido: React.FC = () => {
       } else if (errorCode === 'INVALID_PRODUCTS') {
         toast.error(errorMessage);
       } else if (errorCode === 'NO_MATERIALS_AVAILABLE') {
+        // Removido conforme solicitação
+        /*
         toast.error('Não é possível criar pedidos sem materiais cadastrados.', {
           duration: 5000,
           action: {
@@ -522,6 +518,7 @@ const CriarPedido: React.FC = () => {
             onClick: () => navigate('/materiais')
           }
         });
+        */
       } else {
         toast.error(errorMessage);
       }
@@ -541,7 +538,9 @@ const CriarPedido: React.FC = () => {
           </Button>
           <div>
             <h1 className="text-3xl font-bold text-foreground flex items-center space-x-2">
-              <span>{isEditing ? 'Editar Pedido' : 'Criar Novo Pedido'}</span>
+              <span>
+                {isEditing ? 'Editar Pedido' : fromBudgetId ? 'Gerar Pedido de Orçamento' : 'Criar Novo Pedido'}
+              </span>
               {isEditing && (
                 <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
                   Editando
@@ -559,7 +558,7 @@ const CriarPedido: React.FC = () => {
         <div className="flex space-x-2">
           <Button variant="outline" disabled={loading}>
             <FileText className="w-4 h-4 mr-2" />
-            Salvar Rascunho
+            Salvar Pedido Criado
           </Button>
           <Button onClick={salvarPedido} disabled={loading || !clienteSelecionado || itens.length === 0}>
             <Save className="w-4 h-4 mr-2" />
@@ -572,410 +571,188 @@ const CriarPedido: React.FC = () => {
         {/* Formulário Principal */}
         <div className="lg:col-span-2 space-y-6">
           {/* Seleção de Cliente */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <User className="w-5 h-5" />
-                <span>Cliente</span>
-              </CardTitle>
-              <CardDescription>
-                {clienteSelecionado ? 'Cliente selecionado para este pedido' : 'Selecione o cliente para este pedido'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {/* Campo de busca - só mostra se não tiver cliente selecionado */}
-                {!clienteSelecionado && (
-                  <div className="relative" ref={clienteDropdownRef}>
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                    <Input
-                      placeholder={loadingClientes ? "Carregando clientes..." : "Buscar cliente por nome ou documento..."}
-                      value={searchCliente}
-                      disabled={loadingClientes}
-                      onChange={(e) => {
-                        setSearchCliente(e.target.value);
-                        if (!showClienteDropdown) {
-                          setShowClienteDropdown(true);
-                        }
-                      }}
-                      onFocus={() => {
-                        setShowClienteDropdown(true);
-                      }}
-                      className="pl-10"
-                    />
-
-                    {showClienteDropdown && (
-                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                        {clientesFiltrados.length > 0 ? (
-                          clientesFiltrados.map(cliente => (
-                            <div
-                              key={cliente.id}
-                              className="p-3 hover:bg-gray-100 cursor-pointer border-b border-gray-200 last:border-b-0"
-                              onMouseDown={(e) => {
-                                // Prevent the input from losing focus before the click is processed
-                                e.preventDefault();
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setClienteSelecionado(cliente);
-                                setSearchCliente(cliente.name);
-                                setShowClienteDropdown(false);
-                              }}
-                            >
-                              <div className="font-medium">{cliente.name}</div>
-                              {cliente.document && (
-                                <div className="text-sm text-gray-500">{cliente.document}</div>
-                              )}
-                              {cliente.phone && (
-                                <div className="text-sm text-gray-500">{cliente.phone}</div>
-                              )}
-                            </div>
-                          ))
-                        ) : (
-                          <div className="p-3 text-gray-500 text-center">
-                            {loadingClientes ? (
-                              <div className="flex items-center justify-center space-x-2">
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                                <span>Carregando clientes...</span>
-                              </div>
-                            ) : clientes.length === 0 ? (
-                              'Nenhum cliente cadastrado'
-                            ) : (
-                              'Nenhum cliente encontrado'
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Tarja verde com cliente selecionado */}
-                {clienteSelecionado && (
-                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <CheckCircle className="w-5 h-5 text-green-600" />
-                        <div>
-                          <p className="font-medium text-green-800">{clienteSelecionado.name}</p>
-                          <p className="text-sm text-green-600">
-                            {clienteSelecionado.email} • {clienteSelecionado.phone}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setClienteSelecionado(null);
-                            setSearchCliente('');
-                          }}
-                          className="bg-white hover:bg-green-100 border-green-300 text-green-700 hover:text-green-800"
-                          title="Trocar Cliente"
-                        >
-                          <UserX className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="bg-white hover:bg-green-100 border-green-300 text-green-700 hover:text-green-800"
-                          title="Dados para Faturamento"
-                        >
-                          <Receipt className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <CustomerSelection
+            selectedCustomer={clienteSelecionado}
+            onSelect={setClienteSelecionado}
+            onClear={() => setClienteSelecionado(null)}
+            customers={clientes}
+            loading={loadingClientes}
+          />
 
           {/* Lista de Itens */}
-          {itens.length > 0 ? (
-            <Card>
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle>Itens do Pedido ({itens.length})</CardTitle>
-                  <Button
-                    onClick={abrirModalAdicionar}
-                    size="sm"
-                    className="flex items-center space-x-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Adicionar Item</span>
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {itens.map((item, index) => {
-                    // Ensure product data is available - fetch from produtos list if missing
-                    const itemProduct = item.product || produtos.find(p => p.id === item.productId);
+          <OrderItemsList
+            items={itens}
+            onAdd={abrirModalAdicionar}
+            onEdit={editarItem}
+            onRemove={removerItem}
+            editingItemId={editingItem?.id}
+            produtos={produtos}
+            onItemStatusChange={handleItemStatusChange}
+          />
 
-                    return (
-                      <div
-                        key={item.id}
-                        className={`border rounded-lg p-4 ${editingItem?.id === item.id ? 'border-blue-300 bg-blue-50' : 'border-border'
-                          }`}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-2 mb-2">
-                              <span className="bg-muted text-muted-foreground px-2 py-1 rounded text-sm">
-                                #{index + 1}
-                              </span>
-                              <h5 className="font-medium">
-                                {itemProduct?.name || item.attributes?.serviceName || `Produto (ID: ${item.productId})`}
-                              </h5>
-                              {(() => {
-                                const typeConfig = ITEM_TYPE_CONFIGS[item.itemType];
-                                const colorClasses = {
-                                  blue: 'bg-blue-100 text-blue-800 border-blue-200',
-                                  green: 'bg-green-100 text-green-800 border-green-200',
-                                  purple: 'bg-purple-100 text-purple-800 border-purple-200',
-                                  red: 'bg-red-100 text-red-800 border-red-200',
-                                  gray: 'bg-gray-100 text-gray-800 border-gray-200'
-                                };
-                                const colorClass = colorClasses[typeConfig.color as keyof typeof colorClasses] || colorClasses.gray;
-
-                                return (
-                                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${colorClass}`}>
-                                    <span className="mr-1">{typeConfig.icon}</span>
-                                    {typeConfig.label}
-                                  </span>
-                                );
-                              })()}
-                              {editingItem?.id === item.id && (
-                                <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium">
-                                  Editando
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Basic item information */}
-                            <div className="mt-2 grid grid-cols-2 gap-4 text-sm">
-                              <p><span className="font-medium">Qtd:</span> {item.quantity} un</p>
-
-                              {/* Show dimensions only for area-based products */}
-                              {itemProduct?.pricingMode === 'SIMPLE_AREA' && item.width && item.height && (
-                                <>
-                                  <p><span className="font-medium">Dimensões:</span> {item.width} × {item.height} mm</p>
-                                  <p><span className="font-medium">Área:</span> {((item.width * item.height) / 1000000).toFixed(4)} m²</p>
-                                  <p><span className="font-medium">Área Total:</span> {((item.width * item.height * item.quantity) / 1000000).toFixed(4)} m²</p>
-                                </>
-                              )}
-                            </div>
-
-                            {/* Simplified item display */}
-                            {renderItemDisplay(item)}
-
-                            {/* Notes */}
-                            {item.notes && (
-                              <div className="mt-2 p-2 bg-muted rounded text-sm">
-                                <span className="font-medium">Observações:</span> {item.notes}
-                              </div>
-                            )}
-                          </div>
-                          <div className="text-right ml-4">
-                            <p className="font-medium">{formatCurrency(item.unitPrice)}{formatarUnidadePreco(itemProduct)}</p>
-                            <p className="text-lg font-bold">{formatCurrency(item.totalPrice)}</p>
-                            <div className="flex space-x-2 mt-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => editarItem(item)}
-                              >
-                                <Edit className="w-3 h-3 mr-1" />
-                                Editar
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-red-600 border-red-200 hover:bg-red-50"
-                                onClick={() => removerItem(item.id)}
-                              >
-                                <Trash2 className="w-3 h-3 mr-1" />
-                                Remover
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            /* Mensagem quando não há itens */
-            <Card>
-              <CardContent className="py-8">
-                <div className="text-center">
-                  <div className="mb-4">
-                    <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Plus className="w-8 h-8 text-muted-foreground" />
-                    </div>
-                    <h3 className="text-lg font-medium text-foreground mb-2">Nenhum item adicionado</h3>
-                    <p className="text-muted-foreground mb-6">
-                      Adicione itens ao pedido usando o formulário acima ou clique no botão abaixo
-                    </p>
-                  </div>
-                  <Button
-                    onClick={abrirModalAdicionar}
-                    className="flex items-center space-x-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Adicionar Primeiro Item</span>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          {/* Observações e Envio */}
+          <div className="bg-white p-6 rounded-lg border shadow-sm space-y-4">
+            <h3 className="text-lg font-medium">Informações Adicionais</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Data de Entrega Prevista
+                </label>
+                <input
+                  type="date"
+                  className="w-full border rounded-md px-3 py-2"
+                  value={deliveryDate}
+                  onChange={(e) => setDeliveryDate(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Observações Gerais
+                </label>
+                <textarea
+                  className="w-full border rounded-md px-3 py-2"
+                  rows={3}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Informações importantes sobre o pedido..."
+                />
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Sidebar - Resumo */}
+        {/* Resumo Lateral */}
         <div className="space-y-6">
-          {/* Resumo do Pedido */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <DollarSign className="w-5 h-5" />
-                <span>Resumo do Pedido</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span>Itens:</span>
-                  <span className="font-medium">{itens.length}</span>
-                </div>
+          <div className="bg-white p-6 rounded-lg border shadow-sm sticky top-6">
+            <h3 className="text-lg font-medium mb-4">Resumo do Pedido</h3>
 
-                {/* Mostrar área total apenas se houver produtos por m² */}
-                {itens.some(item => item.product?.pricingMode === 'SIMPLE_AREA') && (
-                  <div className="flex justify-between items-center">
-                    <span>Área Total:</span>
-                    <span className="font-medium">
-                      {itens
-                        .filter(item => item.product?.pricingMode === 'SIMPLE_AREA' && item.width && item.height)
-                        .reduce((total, item) =>
-                          total + (((item.width || 0) * (item.height || 0) * item.quantity) / 1000000), 0
-                        ).toFixed(4)} m²
-                    </span>
-                  </div>
-                )}
-
-                <div className="border-t pt-4 pb-0">
-                  <div className="flex justify-between items-center">
-                    <span className="text-lg font-medium">Total:</span>
-                    <span className="text-2xl font-bold text-green-600">
-                      {formatCurrency(calcularTotal())}
-                    </span>
-                  </div>
-                </div>
-
-                {calcularTotal() > 0 && (
-                  <div className="text-sm text-muted-foreground space-y-1">
-                    {itens.some(item => item.product?.pricingMode === 'SIMPLE_AREA') && (
-                      <p>Preço médio por m²: {formatCurrency(calcularTotal() / Math.max(0.0001, itens
-                        .filter(item => item.product?.pricingMode === 'SIMPLE_AREA' && item.width && item.height)
-                        .reduce((total, item) =>
-                          total + (((item.width || 0) * (item.height || 0) * item.quantity) / 1000000), 0
-                        )))}</p>
-                    )}
-                  </div>
-                )}
+            <div className="space-y-3 mb-6">
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Itens ({itens.length})</span>
+                <span>{itens.reduce((sum, item) => sum + item.quantity, 0)} un</span>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Informações Adicionais */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Calendar className="w-5 h-5" />
-                <span>Informações Adicionais</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium">Data de Entrega (Opcional)</label>
-                  <Input
-                    type="date"
-                    value={deliveryDate}
-                    onChange={(e) => setDeliveryDate(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium">Observações Gerais</label>
-                  <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Observações gerais do pedido..."
-                    className="w-full h-24 p-3 border border-input rounded-md resize-none mt-1"
-                  />
-                </div>
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Subtotal</span>
+                <span>{formatCurrency(itens.reduce((total, item) => total + item.totalPrice, 0))}</span>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Status */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Status do Pedido</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center space-x-2">
-                  {clienteSelecionado ? (
-                    <CheckCircle className="w-4 h-4 text-green-500" />
-                  ) : (
-                    <AlertTriangle className="w-4 h-4 text-yellow-500" />
-                  )}
-                  <span className="text-sm">Cliente selecionado</span>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  {itens.length > 0 ? (
-                    <CheckCircle className="w-4 h-4 text-green-500" />
-                  ) : (
-                    <AlertTriangle className="w-4 h-4 text-yellow-500" />
-                  )}
-                  <span className="text-sm">Itens adicionados</span>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  {calcularTotal() > 0 ? (
-                    <CheckCircle className="w-4 h-4 text-green-500" />
-                  ) : (
-                    <AlertTriangle className="w-4 h-4 text-yellow-500" />
-                  )}
-                  <span className="text-sm">Valores definidos</span>
-                </div>
+              <div className="border-t pt-3 flex justify-between font-bold text-lg">
+                <span>Total</span>
+                <span>{formatCurrency(itens.reduce((total, item) => total + item.totalPrice, 0))}</span>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+
+            <Button
+              className="w-full"
+              size="lg"
+              onClick={salvarPedido}
+              disabled={loading || !clienteSelecionado || itens.length === 0}
+            >
+              {loading ? 'Processando...' : (isEditing ? 'Atualizar Pedido' : 'Finalizar Pedido')}
+            </Button>
+          </div>
+
+          {/* Situação Financeira (Novo) */}
+          {itens.length > 0 && (
+            <OrderFinancialStatus
+              totalOrder={itens.reduce((total, item) => total + item.totalPrice, 0)}
+              paidAmount={payments.reduce((total, p) => total + p.amount, 0)}
+              payments={payments}
+              clientBalance={50.00}
+              balanceSourceOrder="PED-0042" // Mock de origem do saldo
+              onViewOrigin={(orderId) => {
+                setSelectedOriginOrder(orderId);
+                setShowHistoryModal(true);
+              }}
+              onAddPayment={() => {
+                setEditingPayment(null);
+                setEditingPaymentIndex(-1);
+                setShowPaymentModal(true);
+              }}
+              onRemovePayment={handleRemovePayment}
+              onEditPayment={handleEditPayment}
+            />
+          )}
         </div>
       </div>
 
-      {/* Modal Flow para Adicionar/Editar Item */}
-      <AddItemModalFlow
-        produtos={produtos}
-        onAddItem={handleAddItem}
-        onUpdateItem={handleUpdateItem}
-        editingItem={editingItem} // Sempre passar o editingItem, mesmo que seja null
-        isOpen={showAddModal || showEditModal}
+      {/* Modais de Fluxo de Itens */}
+      <PaymentSelection
+        isOpen={showPaymentModal}
         onClose={() => {
-          setShowAddModal(false);
-          setShowEditModal(false);
-          setEditingItem(null);
+          setShowPaymentModal(false);
+          setEditingPayment(null);
+          setEditingPaymentIndex(-1);
         }}
+        remainingAmount={itens.reduce((total, item) => total + item.totalPrice, 0) - payments.reduce((total, p) => total + p.amount, 0) + (editingPayment?.amount || 0)}
+        initialPayment={editingPayment}
+        onAddPayment={(newPayment) => setPayments([...payments, newPayment])}
+        onUpdatePayment={handleUpdatePayment}
       />
+
+      <OrderHistoryModal
+        isOpen={showHistoryModal}
+        onClose={() => setShowHistoryModal(false)}
+        orderId={selectedOriginOrder}
+      />
+      <AddItemModalFlow
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onAddItem={handleAddItem}
+        produtos={produtos}
+      />
+
+      {editingItem && (
+        <AddItemModalFlow
+          isOpen={showEditModal}
+          onClose={() => {
+            setShowEditModal(false);
+            setEditingItem(null);
+          }}
+          onAddItem={() => { }} // Não usado em edição, mas obrigatório na interface se não for opcional (verificar interface, parece que onAddItem é obrigatório)
+          onUpdateItem={handleUpdateItem}
+          produtos={produtos}
+          editingItem={editingItem}
+        />
+      )}
+      {/* Modal de Confirmação de Remoção */}
+      {showRemoveConfirm && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowRemoveConfirm(false)} />
+          <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6 animate-in fade-in zoom-in-95">
+            <h3 className="text-lg font-bold text-red-600 mb-2 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5" /> Cancelar Pagamento
+            </h3>
+            <p className="text-sm text-slate-600 mb-4">
+              Para auditoria e segurança, é obrigatório informar o motivo do cancelamento deste pagamento.
+            </p>
+
+            <div className="space-y-2 mb-6">
+              <label className="text-sm font-medium text-slate-700">Motivo do Cancelamento</label>
+              <textarea
+                className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none"
+                rows={3}
+                placeholder="Ex: Lançamento duplicado, erro de digitação, estorno..."
+                value={removalJustification}
+                onChange={(e) => setRemovalJustification(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <Button variant="ghost" onClick={() => setShowRemoveConfirm(false)}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={confirmRemovePayment}
+                className="bg-red-600 hover:bg-red-700 text-white"
+                disabled={!removalJustification.trim()}
+              >
+                Confirmar Exclusão
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

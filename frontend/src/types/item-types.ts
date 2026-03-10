@@ -7,7 +7,10 @@ export enum ItemType {
     SERVICE = 'SERVICE',      // Arte/Mão de Obra/Design
     PRINT_SHEET = 'PRINT_SHEET', // Impressão em Papel (A4, A3, etc)
     PRINT_ROLL = 'PRINT_ROLL',   // Impressão em Rolo (Banner, Adesivo)
-    LASER_CUT = 'LASER_CUT'      // Corte a Laser/Gravação
+    LASER_CUT = 'LASER_CUT',      // Corte a Laser/Gravação
+    UNIT = 'UNIT',            // Unidade (Uni)
+    SQUARE_METER = 'SQUARE_METER', // Metro Quadrado (m²)
+    TIME_AREA = 'TIME_AREA'   // Tempo + Área
 }
 
 export interface ItemTypeConfig {
@@ -22,6 +25,36 @@ export interface ItemTypeConfig {
 }
 
 export const ITEM_TYPE_CONFIGS: Record<ItemType, ItemTypeConfig> = {
+    [ItemType.UNIT]: {
+        value: ItemType.UNIT,
+        label: 'Unidade',
+        description: 'Venda por unidade simples',
+        icon: '🔢',
+        color: 'gray',
+        requiresDimensions: false,
+        showMaterialSelector: false,
+        showFinishingSelector: false
+    },
+    [ItemType.SQUARE_METER]: {
+        value: ItemType.SQUARE_METER,
+        label: 'Metro Quadrado',
+        description: 'Venda por área (m²)',
+        icon: '📐',
+        color: 'indigo',
+        requiresDimensions: true,
+        showMaterialSelector: false,
+        showFinishingSelector: false
+    },
+    [ItemType.TIME_AREA]: {
+        value: ItemType.TIME_AREA,
+        label: 'Tempo + Área',
+        description: 'Corte CNC / Laser com material',
+        icon: '⏱️',
+        color: 'orange',
+        requiresDimensions: true, // Para calcular material
+        showMaterialSelector: false,
+        showFinishingSelector: false
+    },
     [ItemType.SERVICE]: {
         value: ItemType.SERVICE,
         label: 'Serviço/Arte',
@@ -101,7 +134,10 @@ export const MATERIALS_BY_TYPE: Record<ItemType, Array<{ value: string, label: s
         { value: 'ACRILICO_5MM', label: 'Acrílico 5mm', properties: { thickness: 5, type: 'acrylic' } },
         { value: 'COMPENSADO_3MM', label: 'Compensado 3mm', properties: { thickness: 3, type: 'plywood' } }
     ],
-    [ItemType.PRODUCT]: []
+    [ItemType.PRODUCT]: [],
+    [ItemType.UNIT]: [],
+    [ItemType.SQUARE_METER]: [],
+    [ItemType.TIME_AREA]: []
 };
 
 // Acabamentos por tipo
@@ -123,7 +159,10 @@ export const FINISHINGS_BY_TYPE: Record<ItemType, Array<{ value: string, label: 
         { value: 'BASTAO', label: 'Bastão' }
     ],
     [ItemType.LASER_CUT]: [],
-    [ItemType.PRODUCT]: []
+    [ItemType.PRODUCT]: [],
+    [ItemType.UNIT]: [],
+    [ItemType.SQUARE_METER]: [],
+    [ItemType.TIME_AREA]: []
 };
 
 // Tamanhos padrão por tipo
@@ -149,7 +188,10 @@ export const STANDARD_SIZES_BY_TYPE: Record<ItemType, Array<{ value: string, lab
         { value: 'RETANGULO_20X10', label: 'Retângulo 20x10cm', width: 200, height: 100 },
         { value: 'PLACA_30X20', label: 'Placa 30x20cm', width: 300, height: 200 }
     ],
-    [ItemType.PRODUCT]: []
+    [ItemType.PRODUCT]: [],
+    [ItemType.UNIT]: [],
+    [ItemType.SQUARE_METER]: [],
+    [ItemType.TIME_AREA]: []
 };
 
 export interface ItemFormData {

@@ -5,6 +5,7 @@ interface CreateProductInput {
   name: string;
   description?: string;
   pricingMode: PricingMode;
+  pricingRuleId?: string; // Substitui o antigo Product Type
   salePrice?: number;
   minPrice?: number;
   costPrice?: number; // Novo campo para custo
@@ -42,6 +43,7 @@ export class ProductService {
         name: data.name,
         description: data.description,
         pricingMode: data.pricingMode,
+        pricingRuleId: data.pricingRuleId, // Salvar regra de precificação
         salePrice: data.salePrice,
         minPrice: data.minPrice,
         costPrice: data.costPrice, // Incluir costPrice

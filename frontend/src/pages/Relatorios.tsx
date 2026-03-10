@@ -2,21 +2,21 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
-import { 
-  BarChart3, 
-  TrendingUp, 
-  DollarSign, 
-  Users, 
-  Package, 
+import {
+  BarChart3,
+  TrendingUp,
+  DollarSign,
+  Users,
+  Package,
   FileText,
   Download,
-  Calendar,
-  Filter,
   Eye
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 
 const Relatorios: React.FC = () => {
+  const { hasPermission } = useAuth();
   const [dateRange, setDateRange] = useState({
     startDate: '',
     endDate: ''
@@ -53,7 +53,8 @@ const Relatorios: React.FC = () => {
       title: 'Relatório de Vendas',
       description: 'Análise completa das vendas por período',
       icon: DollarSign,
-      color: 'text-green-500'
+      color: 'text-green-500',
+      setting: 'enableFinanceReports'
     },
     {
       id: 'clientes',
@@ -74,30 +75,38 @@ const Relatorios: React.FC = () => {
       title: 'Relatório Financeiro',
       description: 'Fluxo de caixa e análise financeira',
       icon: TrendingUp,
-      color: 'text-orange-500'
+      color: 'text-orange-500',
+      setting: 'enableFinanceReports'
     },
     {
       id: 'producao',
       title: 'Relatório de Produção',
       description: 'Eficiência e capacidade produtiva',
       icon: BarChart3,
-      color: 'text-indigo-500'
+      color: 'text-indigo-500',
+      setting: 'enableProduction'
     },
     {
       id: 'estoque',
       title: 'Relatório de Estoque',
       description: 'Movimentação e níveis de estoque',
       icon: Package,
-      color: 'text-red-500'
+      color: 'text-red-500',
+      setting: 'enableWMS'
     }
-  ];
+  ].filter(report => {
+    if (report.setting === 'enableFinanceReports') return hasPermission('finance.reports');
+    if (report.setting === 'enableProduction') return hasPermission('production.view');
+    if (report.setting === 'enableWMS') return hasPermission('inventory.view');
+    return true;
+  });
 
   const handleGenerateReport = () => {
     if (!selectedReport) {
       alert('Selecione um tipo de relatório');
       return;
     }
-    
+
     // Aqui seria implementada a geração do relatório
     alert(`Gerando relatório: ${reportTypes.find(r => r.id === selectedReport)?.title}`);
   };
@@ -114,33 +123,37 @@ const Relatorios: React.FC = () => {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-2">
-              <DollarSign className="w-8 h-8 text-green-500" />
-              <div>
-                <p className="text-2xl font-bold">{formatCurrency(reportData.vendas.total)}</p>
-                <p className="text-sm text-muted-foreground">Vendas do Mês</p>
-                <p className="text-xs text-green-600">+{reportData.vendas.crescimento}%</p>
+        {hasPermission('finance.reports') && (
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center space-x-2">
+                <DollarSign className="w-8 h-8 text-green-500" />
+                <div>
+                  <p className="text-2xl font-bold">{formatCurrency(reportData.vendas.total)}</p>
+                  <p className="text-sm text-muted-foreground">Vendas do Mês</p>
+                  <p className="text-xs text-green-600">+{reportData.vendas.crescimento}%</p>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-2">
-              <FileText className="w-8 h-8 text-blue-500" />
-              <div>
-                <p className="text-2xl font-bold">{reportData.vendas.pedidos}</p>
-                <p className="text-sm text-muted-foreground">Pedidos</p>
-                <p className="text-xs text-muted-foreground">
-                  Ticket: {formatCurrency(reportData.vendas.ticketMedio)}
-                </p>
+        {hasPermission('finance.reports') && (
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center space-x-2">
+                <FileText className="w-8 h-8 text-blue-500" />
+                <div>
+                  <p className="text-2xl font-bold">{reportData.vendas.pedidos}</p>
+                  <p className="text-sm text-muted-foreground">Pedidos</p>
+                  <p className="text-xs text-muted-foreground">
+                    Ticket: {formatCurrency(reportData.vendas.ticketMedio)}
+                  </p>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardContent className="p-6">
@@ -221,11 +234,10 @@ const Relatorios: React.FC = () => {
                     return (
                       <div
                         key={report.id}
-                        className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                          selectedReport === report.id
-                            ? 'border-primary bg-primary/5'
-                            : 'border-border hover:border-primary/50'
-                        }`}
+                        className={`p-4 border rounded-lg cursor-pointer transition-colors ${selectedReport === report.id
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:border-primary/50'
+                          }`}
                         onClick={() => setSelectedReport(report.id)}
                       >
                         <div className="flex items-start space-x-3">

@@ -7,13 +7,15 @@ interface CreateProfileInput {
   document?: string;
   email?: string;
   phone?: string;
-  address?: string;
-  city?: string;
-  state?: string;
-  zipCode?: string;
   isCustomer: boolean;
   isSupplier: boolean;
   isEmployee: boolean;
+  address?: string;
+  addressNumber?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  organizationId?: string;
   creditLimit?: number;
   paymentTerms?: number;
 }
@@ -27,7 +29,7 @@ interface ListFilters {
 }
 
 export class ProfileService {
-  constructor(private prisma: any) {}
+  constructor(private prisma: any) { }
 
   async create(data: CreateProfileInput) {
     // Normalizar campos opcionais (converter strings vazias para null)
@@ -39,19 +41,45 @@ export class ProfileService {
       address: data.address?.trim() || null,
       city: data.city?.trim() || null,
       state: data.state?.trim() || null,
-      zipCode: data.zipCode?.trim() || null
+      zipCode: data.zipCode?.trim() || null,
+      addressNumber: data.addressNumber?.trim() || null
     };
 
-    // Validar documento se fornecido
+    // Buscar configurações se organizationId estiver presente
+    let allowDuplicatePhones = true;
+    if (normalizedData.organizationId) {
+      const settings = await this.prisma.organizationSettings.findUnique({
+        where: { organizationId: normalizedData.organizationId }
+      });
+      allowDuplicatePhones = settings?.allowDuplicatePhones ?? true;
+    }
+
+    // Validar documento (CPF/CNPJ NÃO PODE REPETIR)
     if (normalizedData.document) {
       const existingProfile = await this.prisma.profile.findFirst({
         where: {
+          organizationId: normalizedData.organizationId,
           document: normalizedData.document
         }
       });
 
       if (existingProfile) {
-        throw new ValidationError('Documento já cadastrado');
+        throw new ValidationError('Já existe um cliente cadastrado com este CPF/CNPJ.');
+      }
+    }
+
+    // Validar telefone se não permitido duplicidade
+    if (normalizedData.phone && !allowDuplicatePhones) {
+      const cleanPhone = normalizedData.phone.replace(/\D/g, '');
+      const existingPhone = await this.prisma.profile.findFirst({
+        where: {
+          organizationId: normalizedData.organizationId,
+          phone: { contains: cleanPhone }
+        }
+      });
+
+      if (existingPhone) {
+        throw new ValidationError(`O telefone ${normalizedData.phone} já pertence ao cliente ${existingPhone.name}. Verifique as configurações para permitir duplicidade se necessário.`);
       }
     }
 
@@ -82,6 +110,8 @@ export class ProfileService {
         isCustomer: normalizedData.isCustomer,
         isSupplier: normalizedData.isSupplier,
         isEmployee: normalizedData.isEmployee,
+        organizationId: normalizedData.organizationId,
+        addressNumber: normalizedData.addressNumber,
         creditLimit: normalizedData.creditLimit,
         paymentTerms: normalizedData.paymentTerms
       }
@@ -179,22 +209,49 @@ export class ProfileService {
       email: data.email?.trim() || null,
       phone: data.phone?.trim() || null,
       address: data.address?.trim() || null,
+      addressNumber: data.addressNumber?.trim() || null,
       city: data.city?.trim() || null,
       state: data.state?.trim() || null,
       zipCode: data.zipCode?.trim() || null
     };
 
-    // Validar documento se alterado
+    // Buscar configurações se organizationId estiver presente
+    let allowDuplicatePhones = true;
+    if (data.organizationId) {
+      const settings = await this.prisma.organizationSettings.findUnique({
+        where: { organizationId: data.organizationId }
+      });
+      allowDuplicatePhones = settings?.allowDuplicatePhones ?? true;
+    }
+
+    // Validar documento (CPF/CNPJ NÃO PODE REPETIR)
     if (normalizedData.document) {
       const existingProfile = await this.prisma.profile.findFirst({
         where: {
+          organizationId: data.organizationId,
           document: normalizedData.document,
           id: { not: id }
         }
       });
 
       if (existingProfile) {
-        throw new ValidationError('Documento já cadastrado');
+        throw new ValidationError('Já existe outro cliente cadastrado com este CPF/CNPJ.');
+      }
+    }
+
+    // Validar telefone se não permitido duplicidade e alterado
+    if (normalizedData.phone && !allowDuplicatePhones) {
+      const cleanPhone = normalizedData.phone.replace(/\D/g, '');
+      const existingPhone = await this.prisma.profile.findFirst({
+        where: {
+          organizationId: data.organizationId,
+          phone: { contains: cleanPhone },
+          id: { not: id }
+        }
+      });
+
+      if (existingPhone) {
+        throw new ValidationError(`O telefone ${normalizedData.phone} já pertence ao cliente ${existingPhone.name}.`);
       }
     }
 

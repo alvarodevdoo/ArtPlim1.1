@@ -11,7 +11,7 @@ export class QueryOptimizer {
         id: true,
         name: true,
         description: true,
-        productType: true,
+        pricingRuleId: true,
         pricingMode: true,
         salePrice: true,
         minPrice: true,
@@ -46,9 +46,19 @@ export class QueryOptimizer {
   }
 
   // Otimizar consulta de pedidos com itens
-  async getOptimizedOrders(organizationId: string, limit: number = 20, offset: number = 0) {
+  async getOptimizedOrders(organizationId: string, limit: number = 20, offset: number = 0, search?: string) {
+    const where: any = { organizationId };
+
+    if (search) {
+      where.OR = [
+        { orderNumber: { contains: search, mode: 'insensitive' } },
+        { customer: { name: { contains: search, mode: 'insensitive' } } },
+        { customer: { phone: { contains: search, mode: 'insensitive' } } }
+      ];
+    }
+
     return await this.prisma.order.findMany({
-      where: { organizationId },
+      where,
       select: {
         id: true,
         orderNumber: true,
@@ -56,12 +66,48 @@ export class QueryOptimizer {
         total: true,
         createdAt: true,
         deliveryDate: true,
+        updatedAt: true,
+        processStatusId: true,
+        processStatus: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
+            mappedBehavior: true
+          }
+        },
+        approvedAt: true,
+        inProductionAt: true,
+        finishedAt: true,
+        deliveredAt: true,
+        cancelledAt: true,
+        cancelledById: true,
+        cancellationReason: true,
+        cancellationPaymentAction: true,
+        cancellationRefundAmount: true,
         customer: {
           select: {
             id: true,
             name: true,
             email: true,
             phone: true
+          }
+        },
+        productionQueue: {
+          select: {
+            actualStart: true,
+            actualEnd: true,
+            createdAt: true
+          },
+          take: 1,
+          orderBy: { createdAt: 'desc' }
+        },
+        transactions: {
+          select: {
+            amount: true,
+            type: true,
+            status: true
           }
         },
         items: {
@@ -77,6 +123,16 @@ export class QueryOptimizer {
                 id: true,
                 name: true,
                 pricingMode: true
+              }
+            },
+            status: true,
+            processStatusId: true,
+            processStatus: {
+              select: {
+                id: true,
+                name: true,
+                color: true,
+                mappedBehavior: true
               }
             }
           }
@@ -131,7 +187,7 @@ export class QueryOptimizer {
       select: {
         id: true,
         name: true,
-        productType: true,
+        pricingRuleId: true,
         pricingMode: true,
         salePrice: true,
         minPrice: true,
@@ -176,6 +232,11 @@ export class QueryOptimizer {
         document: true,
         type: true,
         isCustomer: true,
+        address: true,
+        addressNumber: true,
+        city: true,
+        state: true,
+        zipCode: true,
         createdAt: true
       },
       orderBy: { name: 'asc' },
@@ -198,7 +259,23 @@ export class QueryOptimizer {
         document: true,
         type: true,
         isEmployee: true,
-        createdAt: true
+        active: true,
+        address: true,
+        addressNumber: true,
+        city: true,
+        state: true,
+        zipCode: true,
+        createdAt: true,
+        _count: {
+          select: {
+            orders: true
+          }
+        },
+        user: {
+          select: {
+            role: true
+          }
+        }
       },
       orderBy: { name: 'asc' },
       take: limit

@@ -14,10 +14,11 @@ interface UpdateSettingsInput {
   defaultMarkup?: number;
   taxRate?: number;
   validadeOrcamento?: number;
+  allowDuplicatePhones?: boolean;
 }
 
 export class OrganizationService {
-  constructor(private prisma: any) {}
+  constructor(private prisma: any) { }
 
   async findById(id: string) {
     const organization = await this.prisma.organization.findUnique({
@@ -74,7 +75,8 @@ export class OrganizationService {
           enableFinance: true,
           defaultMarkup: 2.0,
           taxRate: 0.0,
-          validadeOrcamento: 7
+          validadeOrcamento: 7,
+          allowDuplicatePhones: true
         }
       });
     }
@@ -106,6 +108,7 @@ export class OrganizationService {
           defaultMarkup: 2.0,
           taxRate: 0.0,
           validadeOrcamento: 7,
+          allowDuplicatePhones: true,
           ...data
         }
       });

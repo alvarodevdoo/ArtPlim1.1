@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { PermissionType } from '@/lib/permissions';
 import {
   LayoutDashboard,
   Users,
@@ -21,100 +22,99 @@ interface SidebarProps {
   isOpen: boolean;
 }
 
+interface MenuItem {
+  title: string;
+  href: string;
+  icon: any;
+  alwaysVisible?: boolean;
+  permission?: PermissionType;
+}
+
 // Definir todos os itens de menu possíveis
-const allMenuItems = [
+const allMenuItems: MenuItem[] = [
   {
     title: 'Dashboard',
     href: '/',
     icon: LayoutDashboard,
-    alwaysVisible: true // Sempre visível
+    alwaysVisible: true
   },
   {
     title: 'Clientes',
     href: '/clientes',
     icon: Users,
-    alwaysVisible: true // Sempre visível
+    alwaysVisible: true
   },
   {
     title: 'Funcionários',
     href: '/funcionarios',
     icon: UserCheck,
-    alwaysVisible: true // Sempre visível
+    permission: 'admin.users'
   },
   {
     title: 'Produtos',
     href: '/produtos',
     icon: Package,
-    alwaysVisible: true // Sempre visível
+    alwaysVisible: true
   },
   {
     title: 'Materiais',
     href: '/materiais',
     icon: Layers,
-    requiresSetting: 'enableEngineering' // Condicional - só aparece se engenharia estiver habilitada
+    permission: 'inventory.view'
   },
   {
     title: 'Orçamentos',
     href: '/orcamentos',
     icon: FileText,
-    alwaysVisible: true // Sempre visível
+    alwaysVisible: true
   },
   {
     title: 'Pedidos',
     href: '/pedidos',
     icon: ShoppingCart,
-    alwaysVisible: true // Sempre visível
+    alwaysVisible: true
   },
   {
     title: 'Estoque',
     href: '/estoque',
     icon: Warehouse,
-    requiresSetting: 'enableWMS' // Condicional
+    permission: 'inventory.view'
   },
   {
     title: 'Produção',
     href: '/producao',
     icon: Factory,
-    requiresSetting: 'enableProduction' // Condicional
+    permission: 'production.view'
   },
   {
     title: 'Financeiro',
     href: '/financeiro',
     icon: DollarSign,
-    requiresSetting: 'enableFinance' // Condicional
+    permission: 'finance.view'
   },
   {
     title: 'Relatórios',
     href: '/relatorios',
     icon: BarChart3,
-    alwaysVisible: true // Sempre visível
+    permission: 'finance.reports'
   },
   {
     title: 'Configurações',
     href: '/configuracoes',
     icon: Settings,
-    alwaysVisible: true // Sempre visível
+    permission: 'admin.settings'
   }
 ];
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
   const location = useLocation();
-  const { settings } = useAuth();
+  const { hasPermission } = useAuth();
 
-  // Filtrar itens do menu baseado nas configurações
+  // Filtrar itens do menu baseado nas permissões
   const getVisibleMenuItems = () => {
     return allMenuItems.filter(item => {
-      // Se o item é sempre visível, mostrar
-      if (item.alwaysVisible) {
-        return true;
-      }
-
-      // Se o item requer uma configuração específica
-      if (item.requiresSetting && settings) {
-        return settings[item.requiresSetting as keyof typeof settings] === true;
-      }
-
-      // Se não há configurações carregadas ainda, não mostrar itens condicionais
+      if (item.alwaysVisible) return true;
+      if (item.permission) return hasPermission(item.permission);
       return false;
     });
   };

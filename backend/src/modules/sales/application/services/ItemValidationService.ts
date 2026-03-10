@@ -88,6 +88,15 @@ export class ItemValidationService {
             case ItemType.PRODUCT:
                 this.validateProductType(data, errors);
                 break;
+            case ItemType.UNIT:
+                this.validateUnitType(data, errors);
+                break;
+            case ItemType.SQUARE_METER:
+                this.validateSquareMeterType(data, errors);
+                break;
+            case ItemType.TIME_AREA:
+                this.validateTimeAreaType(data, errors);
+                break;
             default:
                 errors.push({
                     field: 'itemType',
@@ -189,6 +198,58 @@ export class ItemValidationService {
         // PRODUCT pode ter dimensões opcionais
         if (data.width !== undefined || data.height !== undefined) {
             this.validateDimensionalFields(data, errors);
+        }
+    }
+
+    /**
+     * Validações específicas para UNIT (similar a PRODUCT)
+     */
+    private validateUnitType(data: ItemValidationData, errors: ValidationError[]): void {
+        // UNIT tipicamente não requer dimensões
+        if (data.width !== undefined || data.height !== undefined) {
+            this.validateDimensionalFields(data, errors);
+        }
+    }
+
+    /**
+     * Validações específicas para SQUARE_METER (requer dimensões)
+     */
+    private validateSquareMeterType(data: ItemValidationData, errors: ValidationError[]): void {
+        this.validateDimensionalFields(data, errors);
+    }
+
+    /**
+     * Validações específicas para TIME_AREA (requer dimensões e atributos de tempo)
+     */
+    private validateTimeAreaType(data: ItemValidationData, errors: ValidationError[]): void {
+        // Requer width e height para calcular área do material
+        this.validateDimensionalFields(data, errors);
+
+        if (data.attributes !== undefined && data.attributes !== null) {
+            this.validateTimeAreaAttributes(data.attributes, errors);
+        }
+    }
+
+    /**
+     * Valida atributos específicos do tipo TIME_AREA
+     */
+    private validateTimeAreaAttributes(attributes: any, errors: ValidationError[]): void {
+        if (typeof attributes !== 'object' || attributes === null) {
+            errors.push({
+                field: 'attributes',
+                message: 'TIME_AREA attributes must be a valid object',
+                code: 'INVALID_ATTRIBUTES_STRUCTURE'
+            });
+            return;
+        }
+
+        // machineTimeMinutes opcional, mas se vier deve ser numero positivo
+        if (attributes.machineTimeMinutes !== undefined && (typeof attributes.machineTimeMinutes !== 'number' || attributes.machineTimeMinutes <= 0)) {
+            errors.push({
+                field: 'attributes.machineTimeMinutes',
+                message: 'Machine time must be a positive number',
+                code: 'INVALID_NUMBER_VALUE'
+            });
         }
     }
 
@@ -425,6 +486,24 @@ export class ItemValidationService {
                     required: [],
                     optional: [],
                     dimensionsRequired: false
+                };
+            case ItemType.UNIT:
+                return {
+                    required: [],
+                    optional: [],
+                    dimensionsRequired: false
+                };
+            case ItemType.SQUARE_METER:
+                return {
+                    required: [],
+                    optional: [],
+                    dimensionsRequired: true
+                };
+            case ItemType.TIME_AREA:
+                return {
+                    required: [],
+                    optional: ['machineTimeMinutes'],
+                    dimensionsRequired: true
                 };
             default:
                 return null;

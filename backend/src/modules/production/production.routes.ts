@@ -37,8 +37,8 @@ export function createProductionRoutes(
   const operatorAuthMiddleware = (req: any, res: any, next: any) => {
     const { role } = req.user;
     if (!['OPERATOR', 'ADMIN', 'OWNER'].includes(role)) {
-      return res.status(403).json({ 
-        error: 'Acesso negado. Apenas operadores podem executar esta ação.' 
+      return res.status(403).json({
+        error: 'Acesso negado. Apenas operadores podem executar esta ação.'
       });
     }
     next();
@@ -55,12 +55,12 @@ export function createProductionRoutes(
   router.get('/pending-changes', async (req: any, res) => {
     try {
       const { organizationId } = req.user;
-      const { 
-        status, 
-        priority, 
-        orderId, 
-        requestedBy, 
-        page = 1, 
+      const {
+        status,
+        priority,
+        orderId,
+        requestedBy,
+        page = 1,
         limit = 50,
         dateFrom,
         dateTo
@@ -101,7 +101,7 @@ export function createProductionRoutes(
       const { organizationId } = req.user;
 
       const pendingChange = await pendingChangesRepository.findById(id);
-      
+
       if (!pendingChange) {
         return res.status(404).json({ error: 'Alteração pendente não encontrada' });
       }
@@ -156,11 +156,11 @@ export function createProductionRoutes(
       });
     } catch (error) {
       console.error('Error approving change:', error);
-      
+
       if (error instanceof ValidationError) {
         return res.status(400).json({ error: error.message });
       }
-      
+
       res.status(500).json({ error: 'Erro interno do servidor' });
     }
   });
@@ -176,8 +176,8 @@ export function createProductionRoutes(
       const { userId, organizationId } = req.user;
 
       if (!comments || comments.trim().length === 0) {
-        return res.status(400).json({ 
-          error: 'Comentário é obrigatório para rejeição de alterações' 
+        return res.status(400).json({
+          error: 'Comentário é obrigatório para rejeição de alterações'
         });
       }
 
@@ -204,11 +204,11 @@ export function createProductionRoutes(
       });
     } catch (error) {
       console.error('Error rejecting change:', error);
-      
+
       if (error instanceof ValidationError) {
         return res.status(400).json({ error: error.message });
       }
-      
+
       res.status(500).json({ error: 'Erro interno do servidor' });
     }
   });
@@ -288,10 +288,10 @@ export function createProductionRoutes(
   router.get('/notifications', async (req: any, res) => {
     try {
       const { organizationId, userId } = req.user;
-      const { 
-        type, 
-        unreadOnly = 'false', 
-        page = 1, 
+      const {
+        type,
+        unreadOnly = 'false',
+        page = 1,
         limit = 50,
         dateFrom,
         dateTo
@@ -359,10 +359,10 @@ export function createProductionRoutes(
 
       const count = await notificationService.markAllAsRead(organizationId, userId);
 
-      res.json({ 
-        success: true, 
+      res.json({
+        success: true,
         message: `${count} notificações marcadas como lidas`,
-        count 
+        count
       });
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
@@ -399,14 +399,37 @@ export function createProductionRoutes(
     try {
       const { organizationId } = req.user;
 
-      const [pendingChangesStats, notificationStats] = await Promise.all([
+      const [pendingChangesStats, notificationStats, activeItemsStats, delayedItemsStats] = await Promise.all([
         pendingChangesService.getStats(organizationId),
-        notificationService.getOrganizationStats(organizationId)
+        notificationService.getOrganizationStats(organizationId),
+        prisma.orderItem.aggregate({
+          where: {
+            order: {
+              organizationId,
+              status: { notIn: ['CANCELLED', 'DELIVERED', 'DRAFT'] }
+            }
+          },
+          _count: true
+        }),
+        prisma.orderItem.aggregate({
+          where: {
+            order: {
+              organizationId,
+              status: { notIn: ['CANCELLED', 'DELIVERED', 'DRAFT'] },
+              deliveryDate: { lt: new Date() }
+            }
+          },
+          _count: true
+        })
       ]);
 
       res.json({
         pendingChanges: pendingChangesStats,
-        notifications: notificationStats
+        notifications: notificationStats,
+        production: {
+          activeItems: { total: activeItemsStats._count || 0 },
+          delayedItems: { total: delayedItemsStats._count || 0 }
+        }
       });
     } catch (error) {
       console.error('Error fetching production stats:', error);
@@ -446,7 +469,7 @@ export function createProductionRoutes(
   router.post('/cleanup', async (req: any, res) => {
     try {
       const { organizationId, role } = req.user;
-      
+
       if (!['ADMIN', 'OWNER'].includes(role)) {
         return res.status(403).json({ error: 'Acesso negado' });
       }
@@ -468,6 +491,138 @@ export function createProductionRoutes(
       });
     } catch (error) {
       console.error('Error during cleanup:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  // ==========================================
+  // ROTA KANBAN DE PRODUÇÃO
+  // ==========================================
+
+  /**
+   * GET /production/kanban/items
+   * Lista itens de produção para o Kanban
+   */
+  router.get('/kanban/items', async (req: any, res) => {
+    try {
+      const { organizationId } = req.user;
+      const { statusId, orderId } = req.query; // Filtros opcionais
+
+      const where: any = {
+        order: {
+          organizationId,
+          status: { notIn: ['CANCELLED', 'DELIVERED', 'DRAFT'] } // Apenas itens em progresso por padrão?
+          // Ajuste: Talvez mostrar tudo exceto rascunho.
+        }
+      };
+
+      if (statusId) where.processStatusId = statusId;
+      if (orderId) where.orderId = orderId;
+
+      const items = await prisma.orderItem.findMany({
+        where,
+        include: {
+          order: {
+            select: {
+              orderNumber: true,
+              customer: { select: { name: true } },
+              deliveryDate: true,
+              status: true // Status legado
+            }
+          },
+          product: { select: { name: true } },
+          processStatus: true
+        },
+        orderBy: { order: { deliveryDate: 'asc' } }
+      });
+
+      res.json({ success: true, data: items });
+    } catch (error) {
+      console.error('Error fetching kanban items:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  /**
+   * PATCH /production/items/:id/status
+   * Atualiza o status de processo de um item
+   */
+  router.patch('/items/:id/status', async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { processStatusId } = req.body;
+      const { organizationId } = req.user;
+
+      // Verify item belongs to org
+      const item = await prisma.orderItem.findFirst({
+        where: { id, order: { organizationId } }
+      });
+
+      if (!item) {
+        return res.status(404).json({ message: 'Item not found' });
+      }
+
+      let newWorkflowStatus = item.status;
+
+      if (processStatusId) {
+        const processStatus = await prisma.processStatus.findUnique({
+          where: { id: processStatusId }
+        });
+        if (processStatus) {
+          newWorkflowStatus = processStatus.mappedBehavior;
+        }
+      } else {
+        // Se removeu o status de processo (voltou para "Aguardando"), volta para APPROVED?
+        // Ou mantém o que está. Vamos manter APPROVED como padrão para itens em produção sem status.
+        newWorkflowStatus = 'APPROVED';
+      }
+
+      const updated = await prisma.orderItem.update({
+        where: { id },
+        data: {
+          processStatusId: processStatusId || null,
+          status: newWorkflowStatus
+        },
+        include: {
+          order: true,
+          product: true,
+          processStatus: true
+        }
+      });
+
+      // Nota: Idealmente aqui chamaríamos a sincronização do Pai também.
+      // Como a função está em outro arquivo de rotas, vamos disparar uma atualização manual no status do pedido 
+      // para garantir a consistência se todos estiverem FINISHED.
+
+      const allItemsOfOrder = await prisma.orderItem.findMany({
+        where: { orderId: item.orderId }
+      });
+
+      // Cálculo simplificado de status agregado (replicando a lógica de sales.routes)
+      const activeStatuses = allItemsOfOrder.filter(i => i.status !== 'CANCELLED').map(i => i.status);
+      if (activeStatuses.length > 0) {
+        let parentStatus = 'DRAFT';
+        if (activeStatuses.every(s => s === 'FINISHED')) {
+          parentStatus = 'FINISHED';
+        } else if (activeStatuses.some(s => s === 'DRAFT')) {
+          parentStatus = 'DRAFT';
+        } else if (activeStatuses.some(s => s === 'IN_PRODUCTION')) {
+          parentStatus = 'IN_PRODUCTION';
+        } else if (activeStatuses.some(s => s === 'APPROVED')) {
+          parentStatus = 'APPROVED';
+        } else {
+          parentStatus = activeStatuses[0];
+        }
+
+        await prisma.order.update({
+          where: { id: item.orderId },
+          data: { status: parentStatus }
+        });
+      }
+
+      res.json({ success: true, data: updated });
+    } catch (error) {
+      console.error('Error updating item process status:', error);
       res.status(500).json({ error: 'Erro interno do servidor' });
     }
   });

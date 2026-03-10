@@ -15,13 +15,13 @@ export class OrderController {
     private listOrdersUseCase: ListOrdersUseCase,
     private updateOrderStatusUseCase: UpdateOrderStatusUseCase,
     private getOrderStatsUseCase: GetOrderStatsUseCase
-  ) {}
+  ) { }
 
   async create(request: FastifyRequest, reply: FastifyReply) {
     try {
       const data = request.body as CreateOrderDTO;
       const order = await this.createOrderUseCase.execute(data);
-      
+
       return reply.status(201).send({
         success: true,
         data: order.toJSON()
@@ -35,11 +35,14 @@ export class OrderController {
     try {
       const { id } = request.params as { id: string };
       const data = request.body as CreateOrderDTO;
-      const order = await this.updateOrderUseCase.execute(id, data);
-      
+      const userId = (request as any).user?.id || 'system';
+      const result = await this.updateOrderUseCase.execute(id, data, userId);
+
       return reply.send({
         success: true,
-        data: order.toJSON()
+        data: result.order.toJSON(),
+        hasPendingChanges: result.hasPendingChanges,
+        pendingChangeId: result.pendingChangeId
       });
     } catch (error: any) {
       throw error;
@@ -50,12 +53,12 @@ export class OrderController {
     try {
       const { id } = request.params as { id: string };
       const order = await this.getOrderUseCase.execute(id);
-      
+
       const orderData = order.toJSON();
-      
+
       // Buscar dados do customer
       const customer = await this.getCustomerData(order.customerId);
-      
+
       // Buscar dados dos produtos para cada item
       const itemsWithProduct = await Promise.all(
         orderData.items.map(async (item: any) => {
@@ -70,13 +73,13 @@ export class OrderController {
           };
         })
       );
-      
+
       return reply.send({
         success: true,
         data: {
           ...orderData,
-          customer: customer || { 
-            id: order.customerId, 
+          customer: customer || {
+            id: order.customerId,
             name: 'Cliente não encontrado',
             email: null,
             phone: null,
@@ -96,7 +99,7 @@ export class OrderController {
   async list(request: FastifyRequest, reply: FastifyReply) {
     try {
       const query = request.query as any;
-      
+
       const filters = {
         organizationId: request.user?.organizationId,
         status: query.status,
@@ -107,15 +110,15 @@ export class OrderController {
       };
 
       const orders = await this.listOrdersUseCase.execute(filters);
-      
+
       // Para cada pedido, buscar dados do customer e produtos
       const ordersWithDetails = await Promise.all(
         orders.map(async (order) => {
           const orderData = order.toJSON();
-          
+
           // Buscar dados do customer
           const customer = await this.getCustomerData(order.customerId);
-          
+
           // Buscar dados dos produtos para cada item
           const itemsWithProduct = await Promise.all(
             orderData.items.map(async (item: any) => {
@@ -130,20 +133,20 @@ export class OrderController {
               };
             })
           );
-          
+
           return {
             ...orderData,
-            customer: customer || { 
-              id: order.customerId, 
+            customer: customer || {
+              id: order.customerId,
               name: 'Cliente não encontrado',
               email: null,
-              phone: null 
+              phone: null
             },
             items: itemsWithProduct
           };
         })
       );
-      
+
       return reply.send({
         success: true,
         data: ordersWithDetails
@@ -156,7 +159,7 @@ export class OrderController {
   private async getCustomerData(customerId: string) {
     // TODO: Substituir por injeção de dependência do CustomerService
     const { prisma } = require('../../../../shared/infrastructure/database/prisma');
-    
+
     try {
       return await prisma.profile.findUnique({
         where: { id: customerId },
@@ -175,7 +178,7 @@ export class OrderController {
   private async getProductData(productId: string) {
     // TODO: Substituir por injeção de dependência do ProductService
     const { prisma } = require('../../../../shared/infrastructure/database/prisma');
-    
+
     try {
       return await prisma.product.findUnique({
         where: { id: productId },
@@ -196,10 +199,22 @@ export class OrderController {
   async updateStatus(request: FastifyRequest, reply: FastifyReply) {
     try {
       const { id } = request.params as { id: string };
-      const { status } = request.body as { status: string };
-      
-      const order = await this.updateOrderStatusUseCase.execute(id, status);
-      
+      const { status, reason, paymentAction, refundAmount } = request.body as {
+        status: string;
+        reason?: string;
+        paymentAction?: string;
+        refundAmount?: number;
+      };
+
+      const userId = (request as any).user?.id;
+
+      const order = await this.updateOrderStatusUseCase.execute(id, status, {
+        userId,
+        reason,
+        paymentAction,
+        refundAmount
+      });
+
       return reply.send({
         success: true,
         data: order.toJSON()
@@ -212,7 +227,7 @@ export class OrderController {
   async getStats(request: FastifyRequest, reply: FastifyReply) {
     try {
       const organizationId = request.user?.organizationId;
-      
+
       if (!organizationId) {
         return reply.status(401).send({
           success: false,
@@ -224,7 +239,7 @@ export class OrderController {
       }
 
       const stats = await this.getOrderStatsUseCase.execute(organizationId);
-      
+
       return reply.send({
         success: true,
         data: stats
@@ -245,7 +260,7 @@ export class OrderController {
 
       // Buscar dados do produto
       const product = await this.getProductData(productId);
-      
+
       if (!product) {
         return reply.status(404).send({
           success: false,
@@ -266,13 +281,13 @@ export class OrderController {
             unitPrice = product.salePrice * area;
           }
           break;
-        
+
         case 'SIMPLE_UNIT':
           if (product.salePrice) {
             unitPrice = product.salePrice;
           }
           break;
-        
+
         case 'DYNAMIC_ENGINEER':
           // Para produtos dinâmicos, usar preço mínimo como base
           if (product.minPrice) {

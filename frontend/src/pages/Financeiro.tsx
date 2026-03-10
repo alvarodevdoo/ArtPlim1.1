@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
-import { 
-  Plus, 
-  DollarSign, 
-  TrendingUp, 
+import {
+  Plus,
+  DollarSign,
+  TrendingUp,
   TrendingDown,
   CreditCard,
   Wallet,
@@ -23,15 +23,15 @@ import {
   Activity,
   RefreshCw
 } from 'lucide-react';
-import { 
-  LineChart, 
-  Line, 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import {
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
   PieChart as RechartsPieChart,
   Pie,
@@ -202,7 +202,7 @@ const Financeiro: React.FC = () => {
 
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     try {
       await api.post('/api/finance/accounts', {
         name: accountForm.name,
@@ -212,7 +212,7 @@ const Financeiro: React.FC = () => {
         agency: accountForm.agency,
         accountNumber: accountForm.accountNumber
       });
-      
+
       toast.success('Conta criada com sucesso!');
       setShowAddAccount(false);
       resetAccountForm();
@@ -224,7 +224,7 @@ const Financeiro: React.FC = () => {
 
   const handleCreateTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     try {
       await api.post('/api/finance/transactions', {
         accountId: transactionForm.accountId,
@@ -234,7 +234,7 @@ const Financeiro: React.FC = () => {
         categoryId: transactionForm.categoryId || undefined,
         dueDate: transactionForm.dueDate || undefined
       });
-      
+
       toast.success('Transação criada com sucesso!');
       setShowAddTransaction(false);
       resetTransactionForm();
@@ -339,7 +339,7 @@ const Financeiro: React.FC = () => {
       </div>
 
       {/* Dashboard Cards */}
-      {dashboard && (
+      {dashboard && dashboard.summary && (
         <>
           {/* Métricas Principais */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -500,11 +500,10 @@ const Financeiro: React.FC = () => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === tab.id
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === tab.id
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
+                }`}
             >
               {tab.label}
             </button>
@@ -533,36 +532,36 @@ const Financeiro: React.FC = () => {
                   <ResponsiveContainer width="100%" height={300}>
                     <AreaChart data={dashboard.cashFlow}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis 
-                        dataKey="date" 
+                      <XAxis
+                        dataKey="date"
                         tick={{ fontSize: 12 }}
                         tickFormatter={(value) => new Date(value).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                       />
-                      <YAxis 
+                      <YAxis
                         tick={{ fontSize: 12 }}
                         tickFormatter={(value) => `R$ ${(value / 1000).toFixed(0)}k`}
                       />
-                      <Tooltip 
+                      <Tooltip
                         formatter={(value: number, name: string) => [
                           formatCurrency(value),
                           name === 'income' ? 'Receitas' : name === 'expense' ? 'Despesas' : 'Saldo'
                         ]}
                         labelFormatter={(value) => new Date(value).toLocaleDateString('pt-BR')}
                       />
-                      <Area 
-                        type="monotone" 
-                        dataKey="income" 
-                        stackId="1" 
-                        stroke="#10B981" 
-                        fill="#10B981" 
+                      <Area
+                        type="monotone"
+                        dataKey="income"
+                        stackId="1"
+                        stroke="#10B981"
+                        fill="#10B981"
                         fillOpacity={0.6}
                       />
-                      <Area 
-                        type="monotone" 
-                        dataKey="expense" 
-                        stackId="2" 
-                        stroke="#EF4444" 
-                        fill="#EF4444" 
+                      <Area
+                        type="monotone"
+                        dataKey="expense"
+                        stackId="2"
+                        stroke="#EF4444"
+                        fill="#EF4444"
                         fillOpacity={0.6}
                       />
                     </AreaChart>
@@ -609,13 +608,13 @@ const Financeiro: React.FC = () => {
                         <Tooltip formatter={(value: number) => formatCurrency(value)} />
                       </RechartsPieChart>
                     </ResponsiveContainer>
-                    
+
                     <div className="space-y-2">
                       {dashboard.categoryStats.filter(cat => cat.type === 'EXPENSE').map((category, index) => (
                         <div key={category.name} className="flex items-center justify-between">
                           <div className="flex items-center space-x-2">
-                            <div 
-                              className="w-3 h-3 rounded-full" 
+                            <div
+                              className="w-3 h-3 rounded-full"
                               style={{ backgroundColor: COLORS[index % COLORS.length] }}
                             />
                             <span className="text-sm">{category.name}</span>
@@ -735,7 +734,7 @@ const Financeiro: React.FC = () => {
                   }))}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="type" tick={{ fontSize: 12 }} />
-                    <YAxis 
+                    <YAxis
                       tick={{ fontSize: 12 }}
                       tickFormatter={(value) => `R$ ${(value / 1000).toFixed(0)}k`}
                     />
@@ -765,7 +764,7 @@ const Financeiro: React.FC = () => {
           {accounts.map((account) => {
             const typeConfig = accountTypeConfig[account.type];
             const Icon = typeConfig.icon;
-            
+
             return (
               <Card key={account.id}>
                 <CardHeader>
@@ -790,13 +789,13 @@ const Financeiro: React.FC = () => {
                       </p>
                       <p className="text-sm text-muted-foreground">Saldo atual</p>
                     </div>
-                    
+
                     {account.bank && (
                       <p className="text-sm">
                         <span className="font-medium">Banco:</span> {account.bank}
                       </p>
                     )}
-                    
+
                     <div className="pt-2 border-t">
                       <p className="text-sm text-muted-foreground">
                         {account._count.transactions} transação(ões)
@@ -816,22 +815,21 @@ const Financeiro: React.FC = () => {
           {transactions.map((transaction) => {
             const statusInfo = transactionStatusConfig[transaction.status];
             const StatusIcon = statusInfo.icon;
-            
+
             return (
               <Card key={transaction.id}>
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-4">
-                      <div className={`p-2 rounded-full ${
-                        transaction.type === 'INCOME' ? 'bg-green-100' : 'bg-red-100'
-                      }`}>
+                      <div className={`p-2 rounded-full ${transaction.type === 'INCOME' ? 'bg-green-100' : 'bg-red-100'
+                        }`}>
                         {transaction.type === 'INCOME' ? (
                           <TrendingUp className="w-5 h-5 text-green-600" />
                         ) : (
                           <TrendingDown className="w-5 h-5 text-red-600" />
                         )}
                       </div>
-                      
+
                       <div>
                         <h4 className="font-medium">{transaction.description}</h4>
                         <div className="flex items-center space-x-2 text-sm text-muted-foreground">
@@ -850,9 +848,8 @@ const Financeiro: React.FC = () => {
 
                     <div className="flex items-center space-x-4">
                       <div className="text-right">
-                        <p className={`font-semibold ${
-                          transaction.type === 'INCOME' ? 'text-green-600' : 'text-red-600'
-                        }`}>
+                        <p className={`font-semibold ${transaction.type === 'INCOME' ? 'text-green-600' : 'text-red-600'
+                          }`}>
                           {transaction.type === 'INCOME' ? '+' : '-'}{formatCurrency(transaction.amount)}
                         </p>
                         <div className="flex items-center space-x-2">
@@ -936,9 +933,9 @@ const Financeiro: React.FC = () => {
                 </div>
 
                 <div className="flex justify-end space-x-2 pt-4">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
+                  <Button
+                    type="button"
+                    variant="outline"
                     onClick={() => {
                       setShowAddAccount(false);
                       resetAccountForm();
@@ -1043,9 +1040,9 @@ const Financeiro: React.FC = () => {
                 </div>
 
                 <div className="flex justify-end space-x-2 pt-4">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
+                  <Button
+                    type="button"
+                    variant="outline"
                     onClick={() => {
                       setShowAddTransaction(false);
                       resetTransactionForm();

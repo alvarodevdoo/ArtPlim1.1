@@ -13,10 +13,12 @@ const updateSettingsSchema = z.object({
   enableWMS: z.boolean().optional(),
   enableProduction: z.boolean().optional(),
   enableFinance: z.boolean().optional(),
+  enableFinanceReports: z.boolean().optional(),
   enableAutomation: z.boolean().optional(),
   defaultMarkup: z.number().positive().optional(),
   taxRate: z.number().min(0).max(1).optional(),
-  validadeOrcamento: z.number().int().min(1).max(365).optional()
+  validadeOrcamento: z.number().int().min(1).max(365).optional(),
+  allowDuplicatePhones: z.boolean().optional()
 });
 
 const createUserSchema = z.object({
@@ -34,23 +36,17 @@ export function createOrganizationRoutes(prisma: PrismaClient) {
   // Buscar dados da organização
   router.get('/', async (req: any, res) => {
     try {
-      // Implementação temporária - retorna dados mock
-      const organization = {
-        id: req.user.organizationId,
-        name: 'ArtPlim Gráfica',
-        cnpj: '12.345.678/0001-90',
-        plan: 'pro',
-        createdAt: new Date().toISOString(),
-        settings: {
-          enableEngineering: true,
-          enableWMS: true,
-          enableProduction: true,
-          enableFinance: true,
-          defaultMarkup: 1.5,
-          taxRate: 0.18,
-          validadeOrcamento: 30
-        }
-      };
+      const organization = await prisma.organization.findUnique({
+        where: { id: req.user.organizationId },
+        include: { settings: true }
+      });
+
+      if (!organization) {
+        return res.status(404).json({
+          success: false,
+          message: 'Organização não encontrada'
+        });
+      }
 
       res.json({
         success: true,
@@ -134,10 +130,12 @@ export function createOrganizationRoutes(prisma: PrismaClient) {
           enableWMS: settings.enableWMS,
           enableProduction: settings.enableProduction,
           enableFinance: settings.enableFinance,
+          enableFinanceReports: settings.enableFinanceReports,
           enableAutomation: settings.enableAutomation,
           defaultMarkup: settings.defaultMarkup,
           taxRate: settings.taxRate,
-          validadeOrcamento: settings.validadeOrcamento
+          validadeOrcamento: settings.validadeOrcamento,
+          allowDuplicatePhones: settings.allowDuplicatePhones
         }
       });
     } catch (error) {
@@ -165,10 +163,12 @@ export function createOrganizationRoutes(prisma: PrismaClient) {
           enableWMS: body.enableWMS,
           enableProduction: body.enableProduction,
           enableFinance: body.enableFinance,
+          enableFinanceReports: body.enableFinanceReports,
           enableAutomation: body.enableAutomation,
           defaultMarkup: body.defaultMarkup,
           taxRate: body.taxRate,
-          validadeOrcamento: body.validadeOrcamento
+          validadeOrcamento: body.validadeOrcamento,
+          allowDuplicatePhones: body.allowDuplicatePhones
         },
         create: {
           organizationId: req.user.organizationId,
@@ -176,10 +176,12 @@ export function createOrganizationRoutes(prisma: PrismaClient) {
           enableWMS: body.enableWMS ?? false,
           enableProduction: body.enableProduction ?? false,
           enableFinance: body.enableFinance ?? true,
+          enableFinanceReports: body.enableFinanceReports ?? true,
           enableAutomation: body.enableAutomation ?? true,
           defaultMarkup: body.defaultMarkup ?? 2.0,
           taxRate: body.taxRate ?? 0.0,
-          validadeOrcamento: body.validadeOrcamento ?? 7
+          validadeOrcamento: body.validadeOrcamento ?? 7,
+          allowDuplicatePhones: body.allowDuplicatePhones ?? true
         }
       });
 
@@ -193,10 +195,12 @@ export function createOrganizationRoutes(prisma: PrismaClient) {
           enableWMS: settings.enableWMS,
           enableProduction: settings.enableProduction,
           enableFinance: settings.enableFinance,
+          enableFinanceReports: settings.enableFinanceReports,
           enableAutomation: settings.enableAutomation,
           defaultMarkup: settings.defaultMarkup,
           taxRate: settings.taxRate,
           validadeOrcamento: settings.validadeOrcamento,
+          allowDuplicatePhones: settings.allowDuplicatePhones,
           updatedAt: new Date().toISOString()
         }
       });

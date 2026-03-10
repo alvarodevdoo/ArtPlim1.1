@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
-import { 
-  Shield, 
-  Users, 
-  Settings, 
-  DollarSign, 
-  Package, 
+import {
+  Shield,
+  Users,
+  Settings,
+  DollarSign,
+  Package,
   Database,
   Eye,
   Edit,
@@ -16,6 +16,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { ROLE_PERMISSIONS, PermissionType } from '@/lib/permissions';
 
 interface Permission {
   id: string;
@@ -26,74 +27,48 @@ interface Permission {
 }
 
 interface RolePermission {
-  role: 'OWNER' | 'ADMIN' | 'MANAGER' | 'USER';
+  role: string;
   permissions: string[];
 }
 
-const permissions: Permission[] = [
+const permissions: { id: PermissionType; name: string; description: string; module: string; icon: any }[] = [
   // Módulo de Vendas
   { id: 'sales.view', name: 'Visualizar Pedidos', description: 'Ver lista de pedidos e orçamentos', module: 'Vendas', icon: Eye },
   { id: 'sales.create', name: 'Criar Pedidos', description: 'Criar novos pedidos e orçamentos', module: 'Vendas', icon: Plus },
   { id: 'sales.edit', name: 'Editar Pedidos', description: 'Modificar pedidos existentes', module: 'Vendas', icon: Edit },
   { id: 'sales.delete', name: 'Excluir Pedidos', description: 'Remover pedidos do sistema', module: 'Vendas', icon: Trash2 },
   { id: 'sales.approve', name: 'Aprovar Orçamentos', description: 'Aprovar orçamentos para produção', module: 'Vendas', icon: CheckCircle },
-  
+
   // Módulo Financeiro
   { id: 'finance.view', name: 'Visualizar Financeiro', description: 'Ver informações financeiras e custos', module: 'Financeiro', icon: DollarSign },
   { id: 'finance.costs', name: 'Ver Custos', description: 'Visualizar custos de materiais e produção', module: 'Financeiro', icon: DollarSign },
   { id: 'finance.margins', name: 'Ver Margens', description: 'Visualizar margens de lucro', module: 'Financeiro', icon: DollarSign },
   { id: 'finance.reports', name: 'Relatórios Financeiros', description: 'Gerar relatórios financeiros', module: 'Financeiro', icon: DollarSign },
-  
+
   // Módulo de Produção
   { id: 'production.view', name: 'Visualizar Produção', description: 'Ver fila de produção', module: 'Produção', icon: Package },
   { id: 'production.manage', name: 'Gerenciar Produção', description: 'Controlar fila e status de produção', module: 'Produção', icon: Package },
-  
+
   // Módulo de Estoque (WMS)
   { id: 'inventory.view', name: 'Visualizar Estoque', description: 'Ver níveis de estoque', module: 'Estoque', icon: Database },
   { id: 'inventory.manage', name: 'Gerenciar Estoque', description: 'Controlar movimentações de estoque', module: 'Estoque', icon: Database },
-  
+
   // Administração
   { id: 'admin.users', name: 'Gerenciar Usuários', description: 'Criar, editar e remover usuários', module: 'Administração', icon: Users },
   { id: 'admin.settings', name: 'Configurações', description: 'Alterar configurações do sistema', module: 'Administração', icon: Settings },
   { id: 'admin.organization', name: 'Dados da Empresa', description: 'Alterar dados da organização', module: 'Administração', icon: Settings },
 ];
 
-const defaultRolePermissions: RolePermission[] = [
-  {
-    role: 'OWNER',
-    permissions: permissions.map(p => p.id) // Todas as permissões
-  },
-  {
-    role: 'ADMIN',
-    permissions: [
-      'sales.view', 'sales.create', 'sales.edit', 'sales.delete', 'sales.approve',
-      'finance.view', 'finance.costs', 'finance.margins', 'finance.reports',
-      'production.view', 'production.manage',
-      'inventory.view', 'inventory.manage',
-      'admin.users', 'admin.settings'
-    ]
-  },
-  {
-    role: 'MANAGER',
-    permissions: [
-      'sales.view', 'sales.create', 'sales.edit', 'sales.approve',
-      'finance.view', 'finance.costs', 'finance.margins',
-      'production.view', 'production.manage',
-      'inventory.view', 'inventory.manage'
-    ]
-  },
-  {
-    role: 'USER',
-    permissions: [
-      'sales.view', 'sales.create', 'sales.edit'
-    ]
-  }
-];
+const defaultRolePermissions: RolePermission[] = Object.entries(ROLE_PERMISSIONS).map(([role, perms]) => ({
+  role,
+  permissions: perms as string[]
+}));
 
-const roleLabels = {
+const roleLabels: Record<string, string> = {
   OWNER: 'Proprietário',
   ADMIN: 'Administrador',
   MANAGER: 'Gerente',
+  OPERATOR: 'Operador',
   USER: 'Usuário'
 };
 
@@ -101,6 +76,7 @@ const roleColors = {
   OWNER: 'bg-purple-100 text-purple-800 border-purple-200',
   ADMIN: 'bg-red-100 text-red-800 border-red-200',
   MANAGER: 'bg-blue-100 text-blue-800 border-blue-200',
+  OPERATOR: 'bg-orange-100 text-orange-800 border-orange-200',
   USER: 'bg-gray-100 text-gray-800 border-gray-200'
 };
 
@@ -115,24 +91,24 @@ const moduleColors = {
 const RolePermissions: React.FC = () => {
   const { user } = useAuth();
   const [rolePermissions, setRolePermissions] = useState<RolePermission[]>(defaultRolePermissions);
-  const [selectedRole, setSelectedRole] = useState<'OWNER' | 'ADMIN' | 'MANAGER' | 'USER'>('USER');
+  const [selectedRole, setSelectedRole] = useState<string>('USER');
 
   const canEditRole = (role: string) => {
     if (!user) return false;
-    
+
     // OWNER pode editar todos os roles
     if (user.role === 'OWNER') return true;
-    
+
     // ADMIN pode editar MANAGER e USER
     if (user.role === 'ADMIN') {
       return ['MANAGER', 'USER'].includes(role);
     }
-    
+
     // MANAGER pode editar apenas USER
     if (user.role === 'MANAGER') {
       return role === 'USER';
     }
-    
+
     return false;
   };
 
@@ -144,13 +120,13 @@ const RolePermissions: React.FC = () => {
   const togglePermission = (role: string, permissionId: string) => {
     if (!canEditRole(role)) return;
 
-    setRolePermissions(prev => 
+    setRolePermissions(prev =>
       prev.map(rp => {
         if (rp.role === role) {
           const hasPermission = rp.permissions.includes(permissionId);
           return {
             ...rp,
-            permissions: hasPermission 
+            permissions: hasPermission
               ? rp.permissions.filter(p => p !== permissionId)
               : [...rp.permissions, permissionId]
           };
@@ -179,11 +155,10 @@ const RolePermissions: React.FC = () => {
             key={role}
             onClick={() => setSelectedRole(role as any)}
             disabled={!canEditRole(role)}
-            className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
-              selectedRole === role
-                ? roleColors[role as keyof typeof roleColors]
-                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-            } ${!canEditRole(role) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${selectedRole === role
+              ? roleColors[role as keyof typeof roleColors]
+              : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+              } ${!canEditRole(role) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
           >
             {label}
             {!canEditRole(role) && (
@@ -205,7 +180,7 @@ const RolePermissions: React.FC = () => {
             )}
           </CardTitle>
           <CardDescription>
-            {canEditRole(selectedRole) 
+            {canEditRole(selectedRole)
               ? 'Clique nas permissões para ativar ou desativar'
               : 'Você não tem permissão para editar este perfil'
             }
@@ -221,26 +196,25 @@ const RolePermissions: React.FC = () => {
                     ({modulePermissions.filter(p => currentPermissions.includes(p.id)).length}/{modulePermissions.length})
                   </span>
                 </h4>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {modulePermissions.map((permission) => {
                     const Icon = permission.icon;
                     const hasPermission = currentPermissions.includes(permission.id);
-                    
+
                     return (
                       <div
                         key={permission.id}
                         onClick={() => canEditRole(selectedRole) && togglePermission(selectedRole, permission.id)}
-                        className={`flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                          hasPermission
-                            ? 'bg-green-50 border-green-200 shadow-sm'
-                            : 'bg-white border-gray-200 hover:bg-gray-50'
-                        } ${!canEditRole(selectedRole) ? 'cursor-not-allowed opacity-75' : ''}`}
+                        className={`flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-all ${hasPermission
+                          ? 'bg-green-50 border-green-200 shadow-sm'
+                          : 'bg-white border-gray-200 hover:bg-gray-50'
+                          } ${!canEditRole(selectedRole) ? 'cursor-not-allowed opacity-75' : ''}`}
                       >
                         <div className={`p-1.5 rounded ${hasPermission ? 'bg-green-100' : 'bg-gray-100'}`}>
                           <Icon className={`w-3 h-3 ${hasPermission ? 'text-green-600' : 'text-gray-500'}`} />
                         </div>
-                        
+
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center space-x-2">
                             <h5 className="text-sm font-medium">{permission.name}</h5>
@@ -291,7 +265,7 @@ const RolePermissions: React.FC = () => {
               const rolePerms = getCurrentRolePermissions(role);
               const totalPerms = permissions.length;
               const percentage = Math.round((rolePerms.length / totalPerms) * 100);
-              
+
               return (
                 <div key={role} className="flex items-center justify-between p-3 border rounded-lg">
                   <div className="flex items-center space-x-3">
@@ -302,10 +276,10 @@ const RolePermissions: React.FC = () => {
                       {rolePerms.length} de {totalPerms} permissões ({percentage}%)
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center space-x-2">
                     <div className="w-24 bg-gray-200 rounded-full h-2">
-                      <div 
+                      <div
                         className="bg-blue-500 h-2 rounded-full transition-all"
                         style={{ width: `${percentage}%` }}
                       />

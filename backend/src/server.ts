@@ -10,6 +10,7 @@ import { performanceMiddleware, PerformanceMonitor } from './shared/infrastructu
 // Importar outras rotas (convertidas para Express)
 import { createAuthRoutes } from './modules/auth/auth.routes.express';
 import { createOptimizedSalesRoutes } from './modules/sales/sales.routes.express.optimized';
+import { createBudgetRoutes } from './modules/sales/budget.routes.express';
 import { createAutomationRoutes } from './modules/sales/automation.routes';
 import { createOptimizedCatalogRoutes } from './modules/catalog/catalog.routes.express.optimized';
 import { createOptimizedProfilesRoutes } from './modules/profiles/profiles.routes.express.optimized';
@@ -17,6 +18,9 @@ import { createAnalyticsRoutes } from './modules/analytics/analytics.routes.expr
 import { createFinanceRoutes } from './modules/finance/finance.routes.express';
 import { createWmsRoutes } from './modules/wms/wms.routes.express';
 import { createOrganizationRoutes } from './modules/organization/organization.routes.express';
+import { createPaymentMethodRoutes } from './modules/finance/payment-method.routes.express';
+import { createCustomConfigRoutes } from './modules/organization/custom-config.routes.express';
+
 
 const app = express();
 const httpServer = createServer(app);
@@ -57,15 +61,19 @@ app.use('/api/auth', createAuthRoutes(prisma));
 app.use('/api', authMiddleware);
 
 // Rotas da API
+app.use('/api/sales/budgets', createBudgetRoutes(prisma));
 app.use('/api/sales', createOptimizedSalesRoutes(prisma));
 app.use('/api/sales/automation', createAutomationRoutes(prisma));
 app.use('/api/catalog', createOptimizedCatalogRoutes(prisma));
 app.use('/api/profiles', createOptimizedProfilesRoutes(prisma));
 app.use('/api/organization', createOrganizationRoutes(prisma));
+app.use('/api/organization/config', createCustomConfigRoutes(prisma));
+
 app.use('/api/finance', createFinanceRoutes(prisma));
 app.use('/api/wms', createWmsRoutes(prisma));
 app.use('/api/production', createProductionRoutes(prisma, websocketServer));
 app.use('/api/analytics', createAnalyticsRoutes(prisma));
+app.use('/api/payment-methods', createPaymentMethodRoutes(prisma));
 
 // Rota para testar WebSocket
 app.get('/api/websocket/test', authMiddleware, (req: any, res) => {

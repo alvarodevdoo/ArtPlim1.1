@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 
 const LoginPage: React.FC = () => {
@@ -14,6 +15,7 @@ const LoginPage: React.FC = () => {
     password: '',
     organizationSlug: ''
   });
+  const [showPassword, setShowPassword] = useState(false);
 
   // Redirect se já estiver logado
   if (user) {
@@ -90,16 +92,30 @@ const LoginPage: React.FC = () => {
               <label htmlFor="password" className="text-sm font-medium">
                 Senha
               </label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                placeholder="••••••••"
-                value={formData.password}
-                onChange={handleChange}
-                autoComplete="current-password"
-                required
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={formData.password}
+                  onChange={handleChange}
+                  autoComplete="current-password"
+                  required
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
             </div>
 
             <Button
@@ -111,18 +127,32 @@ const LoginPage: React.FC = () => {
             </Button>
 
             {process.env.NODE_ENV === 'development' && (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full mt-2"
-                onClick={() => setFormData({
-                  email: 'admin@artplim.com',
-                  password: '123456',
-                  organizationSlug: 'artplim'
-                })}
-              >
-                🚀 Login Admin (Dev)
-              </Button>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setFormData({
+                    email: 'admin@artplim.com',
+                    password: '123456',
+                    organizationSlug: 'artplim'
+                  })}
+                >
+                  🚀 Login Admin
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setFormData({
+                    email: 'kesia@artplim.com.br',
+                    password: '123456',
+                    organizationSlug: 'artplim'
+                  })}
+                >
+                  👥 Login Func
+                </Button>
+              </div>
             )}
           </form>
 

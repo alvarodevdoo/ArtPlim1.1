@@ -17,7 +17,7 @@ interface RegisterData {
 }
 
 export class AuthService {
-  
+
   async login({ email, password, organizationSlug }: LoginData) {
     // Buscar organização
     const organization = await prisma.organization.findUnique({
@@ -44,6 +44,7 @@ export class AuthService {
 
     // Verificar senha
     const isValidPassword = await bcrypt.compare(password, user.password);
+
     if (!isValidPassword) {
       throw new ValidationError('Credenciais inválidas');
     }
@@ -54,7 +55,7 @@ export class AuthService {
       organizationId: user.organizationId,
       role: user.role
     };
-    
+
     // O token será gerado no controller usando fastify.jwt.sign
 
     return {

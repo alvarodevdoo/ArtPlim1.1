@@ -13,13 +13,17 @@ import {
   Palette,
   Database,
   Download,
-  Upload
+  Upload,
+  Workflow
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import UserManagement from '@/components/admin/UserManagement';
 import RolePermissions from '@/components/admin/RolePermissions';
+import PaymentMethodSettings from '@/components/admin/PaymentMethodSettings';
+import ProcessStatusSettings from '@/components/admin/ProcessStatusSettings';
+import PricingRuleSettings from '@/components/admin/PricingRuleSettings';
 
 interface OrganizationSettings {
   id: string;
@@ -27,14 +31,16 @@ interface OrganizationSettings {
   enableWMS: boolean;
   enableProduction: boolean;
   enableFinance: boolean;
+  enableFinanceReports: boolean;
   enableAutomation: boolean;
   defaultMarkup: number;
   taxRate: number;
   validadeOrcamento: number;
+  allowDuplicatePhones: boolean;
 }
 
 const Configuracoes: React.FC = () => {
-  const { user, refreshSettings } = useAuth();
+  const { refreshSettings } = useAuth();
   const [activeTab, setActiveTab] = useState('empresa');
   const [loading, setLoading] = useState(false);
 
@@ -50,10 +56,12 @@ const Configuracoes: React.FC = () => {
     enableWMS: false,
     enableProduction: false,
     enableFinance: true,
+    enableFinanceReports: true,
     enableAutomation: true,
     defaultMarkup: 2.0,
     taxRate: 0.0,
-    validadeOrcamento: 7
+    validadeOrcamento: 7,
+    allowDuplicatePhones: true
   });
 
   const [userSettings, setUserSettings] = useState({
@@ -140,17 +148,26 @@ const Configuracoes: React.FC = () => {
     }
   };
 
-  const tabs = [
+  const allTabs = [
     { id: 'empresa', label: 'Empresa', icon: Building },
     { id: 'sistema', label: 'Sistema', icon: Settings },
     { id: 'usuarios', label: 'Usuários', icon: Users },
-    { id: 'financeiro', label: 'Financeiro', icon: DollarSign },
-    { id: 'producao', label: 'Produção', icon: Package },
+    { id: 'financeiro', label: 'Financeiro', icon: DollarSign, setting: 'enableFinance' },
+    { id: 'processos', label: 'Processos e Catálogo', icon: Workflow },
+    { id: 'producao', label: 'Produção', icon: Package, setting: 'enableProduction' },
     { id: 'seguranca', label: 'Segurança', icon: Shield },
     { id: 'notificacoes', label: 'Notificações', icon: Bell },
     { id: 'aparencia', label: 'Aparência', icon: Palette },
     { id: 'backup', label: 'Backup', icon: Database }
   ];
+
+  // Filtrar abas baseadas nas configurações ativas
+  const tabs = allTabs.filter(tab => {
+    if (tab.setting && settings) {
+      return settings[tab.setting as keyof OrganizationSettings] === true;
+    }
+    return true;
+  });
 
   return (
     <div className="space-y-6">
@@ -363,6 +380,29 @@ const Configuracoes: React.FC = () => {
                         />
                       </div>
 
+                      <div className={`flex items-center justify-between p-3 border rounded-lg ${settings.enableFinanceReports ? 'border-green-200 bg-green-50' : 'border-border'
+                        }`}>
+                        <div>
+                          <h5 className="font-medium flex items-center space-x-2">
+                            <span>Relatórios Financeiros</span>
+                            {settings.enableFinanceReports && (
+                              <span className="px-2 py-1 bg-green-100 text-green-600 text-xs rounded-full">
+                                ATIVO
+                              </span>
+                            )}
+                          </h5>
+                          <p className="text-sm text-muted-foreground">
+                            Estatísticas de vendas, ticket médio e fluxo de caixa
+                          </p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={settings.enableFinanceReports}
+                          onChange={(e) => setSettings(prev => ({ ...prev, enableFinanceReports: e.target.checked }))}
+                          className="rounded border-input"
+                        />
+                      </div>
+
                       <div className={`flex items-center justify-between p-3 border rounded-lg ${settings.enableAutomation ? 'border-green-200 bg-green-50' : 'border-border'
                         }`}>
                         <div>
@@ -427,6 +467,24 @@ const Configuracoes: React.FC = () => {
                         <p className="text-xs text-muted-foreground">
                           Quantos dias o orçamento permanece válido
                         </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4 pt-4 border-t">
+                      <h4 className="font-medium text-sm">Cadastro de Clientes</h4>
+                      <div className="flex items-center justify-between p-3 border rounded-lg border-border">
+                        <div>
+                          <h5 className="font-medium text-sm">Permitir Telefones Duplicados</h5>
+                          <p className="text-sm text-muted-foreground">
+                            Permite cadastrar mais de um cliente com o mesmo número de telefone
+                          </p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={settings.allowDuplicatePhones}
+                          onChange={(e) => setSettings(prev => ({ ...prev, allowDuplicatePhones: e.target.checked }))}
+                          className="rounded border-input h-4 w-4"
+                        />
                       </div>
                     </div>
                   </div>
@@ -564,8 +622,44 @@ const Configuracoes: React.FC = () => {
             </Card>
           )}
 
+          {/* Financeiro */}
+          {activeTab === 'financeiro' && (
+            <div className="space-y-6">
+              <PaymentMethodSettings />
+            </div>
+          )}
+
+          {/* Processos e Catálogo */}
+          {activeTab === 'processos' && (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Regras de Precificação</CardTitle>
+                  <CardDescription>
+                    Configure como seus produtos e serviços são cobrados
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <PricingRuleSettings />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Fluxo de Status</CardTitle>
+                  <CardDescription>
+                    Configure os status do processo de pedidos e produção
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ProcessStatusSettings />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           {/* Placeholder para outras abas */}
-          {!['empresa', 'sistema', 'usuarios', 'aparencia', 'backup'].includes(activeTab) && (
+          {!['empresa', 'sistema', 'usuarios', 'aparencia', 'backup', 'financeiro'].includes(activeTab) && (
             <Card>
               <CardHeader>
                 <CardTitle>Em Desenvolvimento</CardTitle>

@@ -12,12 +12,12 @@ const listQuerySchema = z.object({
 const createProductSchema = z.object({
   name: z.string().min(2),
   description: z.string().optional(),
-  productType: z.enum(['PRODUCT', 'SERVICE', 'PRINT_SHEET', 'PRINT_ROLL', 'LASER_CUT']).default('PRODUCT'),
-  pricingMode: z.enum(['SIMPLE_AREA', 'COMPLEX_AREA', 'UNIT', 'SIMPLE_UNIT']),
-  salePrice: z.number().positive().optional(),
-  minPrice: z.number().positive().optional(),
-  costPrice: z.number().positive().optional(), // Novo campo para custo
-  markup: z.number().positive().optional(),
+  pricingMode: z.enum(['SIMPLE_AREA', 'SIMPLE_UNIT', 'DYNAMIC_ENGINEER']),
+  pricingRuleId: z.string().uuid().optional(),
+  salePrice: z.number().min(0).optional(),
+  minPrice: z.number().min(0).optional(),
+  costPrice: z.number().min(0).optional(),
+  markup: z.number().positive().default(2.0),
   active: z.boolean().optional()
 });
 
@@ -25,7 +25,7 @@ const updateProductSchema = createProductSchema.partial();
 
 const createMaterialSchema = z.object({
   name: z.string().min(2),
-  format: z.enum(['SHEET', 'ROLL', 'LIQUID', 'POWDER', 'OTHER']),
+  format: z.enum(['ROLL', 'SHEET', 'UNIT']),
   costPerUnit: z.number().positive(),
   unit: z.string().min(1),
   standardWidth: z.number().positive().optional(),
@@ -97,6 +97,8 @@ export function createOptimizedCatalogRoutes(prisma: PrismaClient) {
       const body = createProductSchema.parse(req.body);
 
       // Validar se há materiais cadastrados na organização
+      // Removido conforme solicitação: não é obrigatório ter materiais para cadastrar produtos
+      /*
       const materialCount = await prisma.material.count({
         where: {
           organizationId: req.user.organizationId,
@@ -111,18 +113,26 @@ export function createOptimizedCatalogRoutes(prisma: PrismaClient) {
           code: 'NO_MATERIALS_AVAILABLE'
         });
       }
+      */
 
       const product = await prisma.product.create({
         data: {
-          ...body,
-          organizationId: req.user.organizationId,
-          active: body.active ?? true
+          name: body.name,
+          description: body.description,
+          pricingMode: body.pricingMode,
+          salePrice: body.salePrice,
+          minPrice: body.minPrice,
+          costPrice: body.costPrice,
+          markup: body.markup,
+          active: body.active ?? true,
+          organization: { connect: { id: req.user.organizationId } },
+          pricingRule: body.pricingRuleId ? { connect: { id: body.pricingRuleId } } : undefined
         },
         select: {
           id: true,
           name: true,
           description: true,
-          productType: true,
+          pricingRuleId: true,
           pricingMode: true,
           salePrice: true,
           minPrice: true,
@@ -155,10 +165,38 @@ export function createOptimizedCatalogRoutes(prisma: PrismaClient) {
           id,
           organizationId: req.user.organizationId
         },
-        include: {
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          pricingMode: true,
+          pricingRuleId: true,
+          salePrice: true,
+          minPrice: true,
+          costPrice: true,
+          markup: true,
+          active: true,
+          createdAt: true,
+          updatedAt: true,
           components: {
-            include: {
-              material: true
+            select: {
+              id: true,
+              consumptionMethod: true,
+              wastePercentage: true,
+              isOptional: true,
+              priority: true,
+              notes: true,
+              material: {
+                select: {
+                  id: true,
+                  name: true,
+                  format: true,
+                  costPerUnit: true,
+                  unit: true,
+                  standardWidth: true,
+                  standardLength: true
+                }
+              }
             }
           }
         }
@@ -177,9 +215,14 @@ export function createOptimizedCatalogRoutes(prisma: PrismaClient) {
       });
     } catch (error) {
       console.error('Erro ao buscar produto:', error);
+      if (error instanceof Error) {
+        console.error('Mensagem:', error.message);
+        console.error('Stack:', error.stack);
+      }
       res.status(500).json({
         success: false,
-        message: 'Erro interno do servidor'
+        message: 'Erro interno do servidor',
+        error: error instanceof Error ? error.message : String(error)
       });
     }
   });
@@ -252,12 +295,16 @@ export function createOptimizedCatalogRoutes(prisma: PrismaClient) {
 
       const product = await prisma.product.update({
         where: { id },
-        data: body,
+        data: {
+          ...body,
+          pricingRule: body.pricingRuleId ? { connect: { id: body.pricingRuleId } } : undefined,
+          pricingRuleId: undefined // Let connect handle it
+        },
         select: {
           id: true,
           name: true,
           description: true,
-          productType: true,
+          pricingRuleId: true,
           pricingMode: true,
           salePrice: true,
           minPrice: true,
@@ -340,9 +387,14 @@ export function createOptimizedCatalogRoutes(prisma: PrismaClient) {
 
       const material = await prisma.material.create({
         data: {
-          ...body,
-          organizationId: req.user.organizationId,
-          active: body.active ?? true
+          name: body.name,
+          format: body.format,
+          costPerUnit: body.costPerUnit,
+          unit: body.unit,
+          standardWidth: body.standardWidth,
+          standardLength: body.standardLength,
+          active: body.active ?? true,
+          organization: { connect: { id: req.user.organizationId } }
         },
         select: {
           id: true,
@@ -503,6 +555,128 @@ export function createOptimizedCatalogRoutes(prisma: PrismaClient) {
       });
     } catch (error) {
       console.error('Erro ao excluir material:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno do servidor'
+      });
+    }
+  });
+
+  // ========== PRICING RULES ==========
+
+  // Listar regras
+  router.get('/pricing-rules', async (req: any, res) => {
+    try {
+      const rules = await prisma.pricingRule.findMany({
+        where: {
+          organizationId: req.user.organizationId,
+          active: true
+        },
+        orderBy: {
+          name: 'asc'
+        }
+      });
+
+      res.json({
+        success: true,
+        data: rules
+      });
+    } catch (error) {
+      console.error('Erro ao listar regras de precificação:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno do servidor'
+      });
+    }
+  });
+
+  // Criar regra
+  router.post('/pricing-rules', async (req: any, res) => {
+    try {
+      const schema = z.object({
+        name: z.string().min(2),
+        type: z.enum(['UNIT', 'SQUARE_METER', 'TIME_AREA']),
+        formula: z.any(),
+        config: z.any().optional(),
+        active: z.boolean().optional()
+      });
+
+      const body = schema.parse(req.body);
+
+      const rule = await prisma.pricingRule.create({
+        data: {
+          name: body.name,
+          type: body.type,
+          formula: body.formula,
+          config: body.config,
+          active: body.active ?? true,
+          organization: { connect: { id: req.user.organizationId } }
+        }
+      });
+
+      res.status(201).json({
+        success: true,
+        data: rule
+      });
+    } catch (error) {
+      console.error('Erro ao criar regra de precificação:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno do servidor'
+      });
+    }
+  });
+
+  // Atualizar regra
+  router.put('/pricing-rules/:id', async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const schema = z.object({
+        name: z.string().min(2).optional(),
+        type: z.enum(['UNIT', 'SQUARE_METER', 'TIME_AREA']).optional(),
+        formula: z.any().optional(),
+        config: z.any().optional(),
+        active: z.boolean().optional()
+      });
+
+      const body = schema.parse(req.body);
+
+      const rule = await prisma.pricingRule.update({
+        where: { id },
+        data: {
+          ...body,
+          updatedAt: new Date()
+        }
+      });
+
+      res.json({
+        success: true,
+        data: rule
+      });
+    } catch (error) {
+      console.error('Erro ao atualizar regra de precificação:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno do servidor'
+      });
+    }
+  });
+
+  // Deletar regra
+  router.delete('/pricing-rules/:id', async (req: any, res) => {
+    try {
+      const { id } = req.params;
+
+      await prisma.pricingRule.delete({
+        where: { id }
+      });
+
+      res.json({
+        success: true,
+        message: 'Regra removida com sucesso'
+      });
+    } catch (error) {
+      console.error('Erro ao excluir regra de precificação:', error);
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor'

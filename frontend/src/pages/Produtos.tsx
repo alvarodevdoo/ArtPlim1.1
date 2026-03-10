@@ -10,13 +10,13 @@ import api from '@/lib/api';
 import { toast } from 'sonner';
 import { ProductComponentManager } from '@/components/catalog/ProductComponentManager';
 import { ProductConfigurationManager } from '@/components/catalog/ProductConfigurationManager';
-import { ItemType, ITEM_TYPE_CONFIGS } from '@/types/item-types';
+
 
 interface Produto {
   id: string;
   name: string;
   description?: string;
-  productType?: ItemType; // Novo campo para tipo de produto
+  pricingRuleId?: string; // Substitui o antigo Product Type
   pricingMode: 'SIMPLE_AREA' | 'SIMPLE_UNIT' | 'DYNAMIC_ENGINEER';
   salePrice?: number;
   minPrice?: number;
@@ -48,24 +48,50 @@ const Produtos: React.FC = () => {
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [configuringProduct, setConfiguringProduct] = useState<Produto | null>(null);
   const [activeConfigTab, setActiveConfigTab] = useState<'materials' | 'configurations'>('materials');
-  const [hasMaterials, setHasMaterials] = useState(true); // Estado para controlar se há materiais
+
+  interface PricingRule {
+    id: string;
+    name: string;
+    type: 'UNIT' | 'SQUARE_METER' | 'TIME_AREA';
+    formula: {
+      material: boolean;
+      machineTime: boolean;
+      labor: boolean;
+      fixedCost: boolean;
+      profit: boolean;
+    };
+    active: boolean;
+  }
+  const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
 
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    productType: ItemType.PRODUCT as ItemType, // Novo campo para tipo de produto
-    pricingMode: 'SIMPLE_AREA' as 'SIMPLE_AREA' | 'SIMPLE_UNIT' | 'DYNAMIC_ENGINEER',
+    pricingRuleId: '' as string,
+    pricingMode: 'SIMPLE_AREA' as 'SIMPLE_UNIT' | 'SIMPLE_AREA' | 'DYNAMIC_ENGINEER',
     salePrice: 0,
     minPrice: 0,
     markup: 2.0,
-    costPrice: 0 // Novo campo para custo quando engenharia estiver desabilitada
+    costPrice: 0
   });
 
   useEffect(() => {
     loadProdutos();
-    checkMaterials();
+    loadPricingRules();
   }, []);
 
+  const loadPricingRules = async () => {
+    try {
+      const response = await api.get('/api/catalog/pricing-rules');
+      // Filtrar apenas ativos
+      setPricingRules(response.data.data.filter((t: any) => t.active));
+    } catch (error) {
+      console.error('Error loading pricing rules', error);
+      toast.error('Erro ao carregar regras de precificação');
+    }
+  };
+
+  /*
   const checkMaterials = async () => {
     try {
       const response = await api.get('/api/catalog/materials');
@@ -75,6 +101,7 @@ const Produtos: React.FC = () => {
       setHasMaterials(false);
     }
   };
+  */
 
   // Resetar pricingMode se engenharia for desabilitada
   useEffect(() => {
@@ -84,6 +111,8 @@ const Produtos: React.FC = () => {
   }, [settings?.enableEngineering, formData.pricingMode]);
 
   const handleNewProduct = () => {
+    // Removido conforme solicitação: não é obrigatório ter materiais para cadastrar produtos
+    /*
     if (!hasMaterials) {
       toast.error('Não é possível criar produtos sem materiais cadastrados.', {
         duration: 5000,
@@ -94,6 +123,7 @@ const Produtos: React.FC = () => {
       });
       return;
     }
+    */
     setShowForm(true);
   };
 
@@ -114,7 +144,7 @@ const Produtos: React.FC = () => {
     const payload = {
       name: formData.name,
       description: formData.description || undefined,
-      productType: formData.productType, // Incluir tipo de produto
+      pricingRuleId: formData.pricingRuleId || undefined,
       pricingMode: formData.pricingMode,
       salePrice: formData.salePrice > 0 ? formData.salePrice : undefined,
       minPrice: formData.minPrice > 0 ? formData.minPrice : undefined,
@@ -158,7 +188,7 @@ const Produtos: React.FC = () => {
     setFormData({
       name: produto.name,
       description: produto.description || '',
-      productType: produto.productType || ItemType.PRODUCT, // Carregar tipo de produto
+      pricingRuleId: produto.pricingRuleId || '',
       pricingMode: produto.pricingMode,
       salePrice: produto.salePrice || 0,
       minPrice: produto.minPrice || 0,
@@ -190,7 +220,7 @@ const Produtos: React.FC = () => {
     setFormData({
       name: '',
       description: '',
-      productType: ItemType.PRODUCT, // Reset para tipo padrão
+      pricingRuleId: '',
       pricingMode: 'SIMPLE_AREA',
       salePrice: 0,
       minPrice: 0,
@@ -215,28 +245,6 @@ const Produtos: React.FC = () => {
       case 'DYNAMIC_ENGINEER': return 'bg-purple-100 text-purple-600';
       default: return 'bg-gray-100 text-gray-600';
     }
-  };
-
-  const getProductTypeLabel = (type?: ItemType) => {
-    if (!type) return 'Produto Padrão';
-    const config = ITEM_TYPE_CONFIGS[type];
-    return config ? config.label : 'Produto Padrão';
-  };
-
-  const getProductTypeColor = (type?: ItemType) => {
-    if (!type) return 'bg-gray-100 text-gray-600';
-    const config = ITEM_TYPE_CONFIGS[type];
-    if (!config) return 'bg-gray-100 text-gray-600';
-
-    const colorClasses = {
-      blue: 'bg-blue-100 text-blue-600',
-      green: 'bg-green-100 text-green-600',
-      purple: 'bg-purple-100 text-purple-600',
-      red: 'bg-red-100 text-red-600',
-      gray: 'bg-gray-100 text-gray-600'
-    };
-
-    return colorClasses[config.color as keyof typeof colorClasses] || 'bg-gray-100 text-gray-600';
   };
 
   const filteredProdutos = produtos.filter(produto =>
@@ -295,52 +303,42 @@ const Produtos: React.FC = () => {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Seletor de Tipo de Produto */}
+                {/* Seletor de Regra de Precificação */}
                 <div className="space-y-3">
-                  <label className="text-sm font-medium">Tipo de Produto *</label>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                    {Object.values(ItemType).map((type) => {
-                      const config = ITEM_TYPE_CONFIGS[type];
-                      const isSelected = formData.productType === type;
+                  <label className="text-sm font-medium">Regra de Precificação *</label>
+                  <select
+                    value={formData.pricingRuleId}
+                    onChange={(e) => {
+                      const selectedId = e.target.value;
+                      const rule = pricingRules.find(r => r.id === selectedId);
 
-                      let buttonClasses = 'p-3 rounded-lg border-2 transition-all text-left ';
-                      if (isSelected) {
-                        switch (config.color) {
-                          case 'blue':
-                            buttonClasses += 'border-blue-500 bg-blue-50';
-                            break;
-                          case 'green':
-                            buttonClasses += 'border-green-500 bg-green-50';
-                            break;
-                          case 'purple':
-                            buttonClasses += 'border-purple-500 bg-purple-50';
-                            break;
-                          case 'red':
-                            buttonClasses += 'border-red-500 bg-red-50';
-                            break;
-                          case 'gray':
-                          default:
-                            buttonClasses += 'border-gray-500 bg-gray-50';
-                            break;
-                        }
+                      if (rule) {
+                        setFormData(prev => ({
+                          ...prev,
+                          pricingRuleId: rule.id,
+                          // Mapear o tipo da regra para o pricingMode do sistema
+                          pricingMode: rule.type === 'UNIT' ? 'SIMPLE_UNIT' :
+                            rule.type === 'TIME_AREA' ? 'DYNAMIC_ENGINEER' :
+                              'SIMPLE_AREA'
+                        }));
                       } else {
-                        buttonClasses += 'border-gray-200 hover:border-gray-300';
+                        setFormData(prev => ({
+                          ...prev,
+                          pricingRuleId: '',
+                          pricingMode: 'SIMPLE_UNIT'
+                        }));
                       }
-
-                      return (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => setFormData(prev => ({ ...prev, productType: type }))}
-                          className={buttonClasses}
-                        >
-                          <div className="text-lg mb-1">{config.icon}</div>
-                          <div className="text-sm font-medium">{config.label}</div>
-                          <div className="text-xs text-muted-foreground">{config.description}</div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                    }}
+                    className="w-full h-10 px-3 py-2 border border-input rounded-md bg-background"
+                    required
+                  >
+                    <option value="" disabled>Selecione uma regra...</option>
+                    {pricingRules.map((rule) => (
+                      <option key={rule.id} value={rule.id}>
+                        {rule.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-2">
@@ -361,6 +359,8 @@ const Produtos: React.FC = () => {
                     placeholder="Descrição opcional do produto"
                   />
                 </div>
+
+
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Modo de Precificação *</label>
@@ -479,9 +479,11 @@ const Produtos: React.FC = () => {
                 <div>
                   <CardTitle className="text-lg">{produto.name}</CardTitle>
                   <CardDescription className="flex items-center space-x-2 flex-wrap gap-1">
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${getProductTypeColor(produto.productType)}`}>
-                      {ITEM_TYPE_CONFIGS[produto.productType || ItemType.PRODUCT]?.icon} {getProductTypeLabel(produto.productType)}
-                    </span>
+                    {produto.pricingRuleId && (
+                      <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs font-medium border">
+                        {pricingRules.find(r => r.id === produto.pricingRuleId)?.name || 'Regra Personalizada'}
+                      </span>
+                    )}
                     <span className={`px-2 py-1 rounded text-xs font-medium ${getPricingModeColor(produto.pricingMode)}`}>
                       {getPricingModeLabel(produto.pricingMode)}
                     </span>

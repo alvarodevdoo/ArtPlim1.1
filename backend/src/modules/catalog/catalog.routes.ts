@@ -11,6 +11,7 @@ const createProductSchema = z.object({
   name: z.string().min(2),
   description: z.string().optional(),
   pricingMode: z.enum(['SIMPLE_AREA', 'SIMPLE_UNIT', 'DYNAMIC_ENGINEER']),
+  pricingRuleId: z.string().uuid().optional(),
   salePrice: z.number().min(0).optional(),
   minPrice: z.number().min(0).optional(),
   markup: z.number().positive().default(2.0)
@@ -96,9 +97,9 @@ const reorderOptionsSchema = z.object({
 });
 
 export async function catalogRoutes(fastify: FastifyInstance) {
-  
+
   // ========== PRODUTOS ==========
-  
+
   // Listar produtos
   fastify.get('/products', {
     preHandler: [fastify.authenticate]
@@ -106,10 +107,10 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { include } = request.query as { include?: string };
     const prisma = getTenantClient(request.user!.organizationId);
     const productService = new ProductService(prisma);
-    
+
     const includeStandardSizes = include?.includes('standardSizes');
     const products = await productService.list(includeStandardSizes);
-    
+
     return reply.send({
       success: true,
       data: products
@@ -123,12 +124,12 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const body = createProductSchema.parse(request.body);
     const prisma = getTenantClient(request.user!.organizationId);
     const productService = new ProductService(prisma);
-    
+
     const product = await productService.create({
       ...body,
       organizationId: request.user!.organizationId
     });
-    
+
     return reply.code(201).send({
       success: true,
       data: product
@@ -142,9 +143,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     const prisma = getTenantClient(request.user!.organizationId);
     const productService = new ProductService(prisma);
-    
+
     const product = await productService.findById(id);
-    
+
     return reply.send({
       success: true,
       data: product
@@ -159,12 +160,12 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const body = createProductSchema.partial().parse(request.body);
     const prisma = getTenantClient(request.user!.organizationId);
     const productService = new ProductService(prisma);
-    
+
     const product = await productService.update(id, {
       ...body,
       organizationId: request.user!.organizationId
     });
-    
+
     return reply.send({
       success: true,
       data: product
@@ -172,16 +173,16 @@ export async function catalogRoutes(fastify: FastifyInstance) {
   });
 
   // ========== MATERIAIS ==========
-  
+
   // Listar materiais
   fastify.get('/materials', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const prisma = getTenantClient(request.user!.organizationId);
     const materialService = new MaterialService(prisma);
-    
+
     const materials = await materialService.list();
-    
+
     return reply.send({
       success: true,
       data: materials
@@ -195,9 +196,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const body = createMaterialSchema.parse(request.body);
     const prisma = getTenantClient(request.user!.organizationId);
     const materialService = new MaterialService(prisma);
-    
+
     const material = await materialService.create(body);
-    
+
     return reply.code(201).send({
       success: true,
       data: material
@@ -211,9 +212,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     const prisma = getTenantClient(request.user!.organizationId);
     const materialService = new MaterialService(prisma);
-    
+
     const material = await materialService.findById(id);
-    
+
     return reply.send({
       success: true,
       data: material
@@ -221,7 +222,7 @@ export async function catalogRoutes(fastify: FastifyInstance) {
   });
 
   // ========== COMPONENTES DE PRODUTO ==========
-  
+
   // Listar componentes de um produto
   fastify.get('/products/:id/components', {
     preHandler: [fastify.authenticate]
@@ -229,9 +230,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     const prisma = getTenantClient(request.user!.organizationId);
     const componentService = new ProductComponentService(prisma);
-    
+
     const components = await componentService.listComponents(id);
-    
+
     return reply.send({
       success: true,
       data: components
@@ -246,9 +247,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const body = createComponentSchema.parse(request.body);
     const prisma = getTenantClient(request.user!.organizationId);
     const componentService = new ProductComponentService(prisma);
-    
+
     const component = await componentService.addComponent(id, body);
-    
+
     return reply.code(201).send({
       success: true,
       data: component
@@ -263,9 +264,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const body = createComponentSchema.partial().parse(request.body);
     const prisma = getTenantClient(request.user!.organizationId);
     const componentService = new ProductComponentService(prisma);
-    
+
     const component = await componentService.updateComponent(componentId, body);
-    
+
     return reply.send({
       success: true,
       data: component
@@ -279,9 +280,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { productId, componentId } = request.params as { productId: string; componentId: string };
     const prisma = getTenantClient(request.user!.organizationId);
     const componentService = new ProductComponentService(prisma);
-    
+
     const result = await componentService.removeComponent(productId, componentId);
-    
+
     return reply.send({
       success: true,
       data: result
@@ -295,9 +296,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     const prisma = getTenantClient(request.user!.organizationId);
     const componentService = new ProductComponentService(prisma);
-    
+
     const validation = await componentService.validateProductConfiguration(id);
-    
+
     return reply.send({
       success: true,
       data: validation
@@ -305,7 +306,7 @@ export async function catalogRoutes(fastify: FastifyInstance) {
   });
 
   // ========== CONFIGURAÇÕES DE PRODUTO ==========
-  
+
   // Listar configurações de um produto
   fastify.get('/products/:id/configurations', {
     preHandler: [fastify.authenticate]
@@ -313,9 +314,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     const prisma = getTenantClient(request.user!.organizationId);
     const configService = new ProductConfigurationService(prisma);
-    
+
     const configurations = await configService.listConfigurations(id);
-    
+
     return reply.send({
       success: true,
       data: configurations
@@ -330,9 +331,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const body = createConfigurationSchema.parse(request.body);
     const prisma = getTenantClient(request.user!.organizationId);
     const configService = new ProductConfigurationService(prisma);
-    
+
     const configuration = await configService.createConfiguration(id, body);
-    
+
     return reply.code(201).send({
       success: true,
       data: configuration
@@ -347,9 +348,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const body = createConfigurationSchema.partial().parse(request.body);
     const prisma = getTenantClient(request.user!.organizationId);
     const configService = new ProductConfigurationService(prisma);
-    
+
     const configuration = await configService.updateConfiguration(configId, body);
-    
+
     return reply.send({
       success: true,
       data: configuration
@@ -363,9 +364,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { configId } = request.params as { productId: string; configId: string };
     const prisma = getTenantClient(request.user!.organizationId);
     const configService = new ProductConfigurationService(prisma);
-    
+
     const result = await configService.deleteConfiguration(configId);
-    
+
     return reply.send({
       success: true,
       data: result
@@ -380,9 +381,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const body = createOptionSchema.parse(request.body);
     const prisma = getTenantClient(request.user!.organizationId);
     const configService = new ProductConfigurationService(prisma);
-    
+
     const option = await configService.addOption(configId, body);
-    
+
     return reply.code(201).send({
       success: true,
       data: option
@@ -397,9 +398,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const body = createOptionSchema.partial().parse(request.body);
     const prisma = getTenantClient(request.user!.organizationId);
     const configService = new ProductConfigurationService(prisma);
-    
+
     const option = await configService.updateOption(optionId, body);
-    
+
     return reply.send({
       success: true,
       data: option
@@ -413,9 +414,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { optionId } = request.params as { configId: string; optionId: string };
     const prisma = getTenantClient(request.user!.organizationId);
     const configService = new ProductConfigurationService(prisma);
-    
+
     const result = await configService.deleteOption(optionId);
-    
+
     return reply.send({
       success: true,
       data: result
@@ -429,9 +430,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     const prisma = getTenantClient(request.user!.organizationId);
     const configService = new ProductConfigurationService(prisma);
-    
+
     const productConfigurations = await configService.getProductConfigurations(id);
-    
+
     return reply.send({
       success: true,
       data: productConfigurations
@@ -446,9 +447,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { selectedConfigurations } = request.body as { selectedConfigurations: Record<string, any> };
     const prisma = getTenantClient(request.user!.organizationId);
     const configService = new ProductConfigurationService(prisma);
-    
+
     const validation = await configService.validateSelectedConfigurations(id, selectedConfigurations);
-    
+
     return reply.send({
       success: true,
       data: validation
@@ -464,9 +465,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { configId } = request.params as { configId: string };
     const prisma = getTenantClient(request.user!.organizationId);
     const configService = new ProductConfigurationService(prisma);
-    
+
     const integrity = await configService.validateConfigurationIntegrity(configId);
-    
+
     return reply.send({
       success: true,
       data: integrity
@@ -481,9 +482,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { optionIds } = reorderOptionsSchema.parse(request.body);
     const prisma = getTenantClient(request.user!.organizationId);
     const configService = new ProductConfigurationService(prisma);
-    
+
     await configService.reorderOptions(configId, optionIds);
-    
+
     return reply.send({
       success: true,
       message: 'Opções reordenadas com sucesso'
@@ -498,9 +499,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { targetProductId } = request.body as { targetProductId: string };
     const prisma = getTenantClient(request.user!.organizationId);
     const configService = new ProductConfigurationService(prisma);
-    
+
     const duplicatedConfig = await configService.duplicateConfiguration(configId, targetProductId);
-    
+
     return reply.code(201).send({
       success: true,
       data: duplicatedConfig
@@ -517,9 +518,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { name, description, category } = createTemplateSchema.parse(request.body);
     const prisma = getTenantClient(request.user!.organizationId);
     const configService = new ProductConfigurationService(prisma);
-    
+
     const template = await configService.createTemplate(id, name, request.user!.id);
-    
+
     return reply.code(201).send({
       success: true,
       data: template
@@ -533,9 +534,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { id, templateId } = request.params as { id: string; templateId: string };
     const prisma = getTenantClient(request.user!.organizationId);
     const configService = new ProductConfigurationService(prisma);
-    
+
     const configurations = await configService.applyTemplate(id, templateId);
-    
+
     return reply.send({
       success: true,
       data: configurations
@@ -548,9 +549,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const prisma = getTenantClient(request.user!.organizationId);
     const configService = new ProductConfigurationService(prisma);
-    
+
     const templates = await configService.listTemplates(request.user!.organizationId);
-    
+
     return reply.send({
       success: true,
       data: templates
@@ -566,9 +567,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     const prisma = getTenantClient(request.user!.organizationId);
     const configService = new ProductConfigurationService(prisma);
-    
+
     const exportData = await configService.exportConfigurations(id, request.user!.id);
-    
+
     return reply.send({
       success: true,
       data: exportData
@@ -583,9 +584,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const importData = importConfigurationsSchema.parse(request.body);
     const prisma = getTenantClient(request.user!.organizationId);
     const configService = new ProductConfigurationService(prisma);
-    
+
     const configurations = await configService.importConfigurations(id, importData);
-    
+
     return reply.send({
       success: true,
       data: configurations
@@ -602,9 +603,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { selectedConfigurations } = request.body as { selectedConfigurations: Record<string, any> };
     const prisma = getTenantClient(request.user!.organizationId);
     const validationService = new ConfigurationValidationService(prisma);
-    
+
     const validation = await validationService.validateAllConfigurations(id, selectedConfigurations);
-    
+
     return reply.send({
       success: true,
       data: validation
@@ -619,9 +620,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { selectedConfigurations } = request.body as { selectedConfigurations: Record<string, any> };
     const prisma = getTenantClient(request.user!.organizationId);
     const validationService = new ConfigurationValidationService(prisma);
-    
+
     const conflicts = await validationService.detectConfigurationConflicts(id, selectedConfigurations);
-    
+
     return reply.send({
       success: true,
       data: conflicts
@@ -635,9 +636,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { conflicts } = request.body as { conflicts: any[] };
     const prisma = getTenantClient(request.user!.organizationId);
     const validationService = new ConfigurationValidationService(prisma);
-    
+
     const suggestions = await validationService.suggestResolutions(conflicts);
-    
+
     return reply.send({
       success: true,
       data: suggestions
@@ -652,9 +653,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { selectedConfigurations } = request.body as { selectedConfigurations: Record<string, any> };
     const prisma = getTenantClient(request.user!.organizationId);
     const validationService = new ConfigurationValidationService(prisma);
-    
+
     const validation = await validationService.validateMaterialAvailability(id, selectedConfigurations);
-    
+
     return reply.send({
       success: true,
       data: validation
@@ -669,9 +670,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { selectedConfigurations } = request.body as { selectedConfigurations: Record<string, any> };
     const prisma = getTenantClient(request.user!.organizationId);
     const validationService = new ConfigurationValidationService(prisma);
-    
+
     const validation = await validationService.validatePricingConstraints(id, selectedConfigurations);
-    
+
     return reply.send({
       success: true,
       data: validation
@@ -686,12 +687,74 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { selectedConfigurations } = request.body as { selectedConfigurations: Record<string, any> };
     const prisma = getTenantClient(request.user!.organizationId);
     const validationService = new ConfigurationValidationService(prisma);
-    
+
     const validation = await validationService.validateProductionCapability(id, selectedConfigurations);
-    
+
     return reply.send({
       success: true,
       data: validation
     });
   });
+
+  // ========== PRICING RULES ==========
+
+  // Listar regras
+  fastify.get('/pricing-rules', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new PricingRuleService(prisma);
+    const rules = await service.list();
+    return reply.send({ success: true, data: rules });
+  });
+
+  // Criar regra
+  fastify.post('/pricing-rules', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const body = z.object({
+      name: z.string().min(2),
+      type: z.enum(['UNIT', 'SQUARE_METER', 'TIME_AREA']),
+      formula: z.any(),
+      config: z.any().optional(),
+      active: z.boolean().optional()
+    }).parse(request.body);
+
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new PricingRuleService(prisma);
+    const rule = await service.create({ ...body, type: body.type as any, organizationId: request.user!.organizationId });
+    return reply.code(201).send({ success: true, data: rule });
+  });
+
+  // Atualizar regra
+  fastify.put('/pricing-rules/:id', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = z.object({
+      name: z.string().min(2).optional(),
+      type: z.enum(['UNIT', 'SQUARE_METER', 'TIME_AREA']).optional(),
+      formula: z.any().optional(),
+      config: z.any().optional(),
+      active: z.boolean().optional()
+    }).parse(request.body);
+
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new PricingRuleService(prisma);
+    const updateData: any = { ...body };
+    const rule = await service.update(id, updateData);
+    return reply.send({ success: true, data: rule });
+  });
+
+  // Deletar regra
+  fastify.delete('/pricing-rules/:id', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new PricingRuleService(prisma);
+    await service.delete(id);
+    return reply.send({ success: true, message: 'Regra removida' });
+  });
 }
+import { PricingRuleService } from './services/PricingRuleService';

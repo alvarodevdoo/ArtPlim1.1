@@ -21,78 +21,80 @@ const createProfileSchema = z.object({
   isSupplier: z.boolean().optional(),
   isEmployee: z.boolean().optional(),
   address: z.string().optional(),
+  addressNumber: z.string().optional(),
   city: z.string().optional(),
   state: z.string().optional(),
-  zipCode: z.string().optional()
+  zipCode: z.string().optional(),
+  active: z.boolean().optional(),
+  password: z.string().min(6).or(z.literal('')).optional(),
+  role: z.enum(['ADMIN', 'MANAGER', 'OPERATOR', 'USER']).optional()
 });
 
 const updateProfileSchema = createProfileSchema.partial();
 
 export function createOptimizedProfilesRoutes(prisma: PrismaClient) {
   const router = Router();
-  
+
   // ========== PERFIS OTIMIZADOS ==========
-  
+
   // Listar perfis com QueryOptimizer
   router.get('/', async (req: any, res) => {
     try {
       console.log('🔍 GET /api/profiles - Query:', req.query);
       console.log('🔍 User:', req.user);
-      
+
       const query = listQuerySchema.parse(req.query);
       console.log('🔍 Query validada:', query);
-      
+
       const queryOptimizer = new QueryOptimizer(prisma);
-      
-      // Usar query otimizada baseada no tipo solicitado
-      let profiles;
-      
-      if (query.isCustomer) {
-        console.log('🔍 Buscando clientes otimizados...');
-        profiles = await queryOptimizer.getOptimizedCustomers(
-          req.user.organizationId,
-          query.limit || 50
-        );
-      } else if (query.isEmployee) {
-        console.log('🔍 Buscando funcionários otimizados...');
-        profiles = await queryOptimizer.getOptimizedEmployees(
-          req.user.organizationId,
-          query.limit || 50
-        );
-      } else {
-        console.log('🔍 Buscando todos os perfis...');
-        // Query genérica para todos os perfis
-        profiles = await prisma.profile.findMany({
-          where: {
-            organizationId: req.user.organizationId,
-            ...(query.isSupplier !== undefined && { isSupplier: query.isSupplier }),
-            ...(query.search && {
-              OR: [
-                { name: { contains: query.search, mode: 'insensitive' } },
-                { email: { contains: query.search, mode: 'insensitive' } },
-                { document: { contains: query.search, mode: 'insensitive' } }
-              ]
-            })
-          },
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-            document: true,
-            type: true,
-            isCustomer: true,
-            isSupplier: true,
-            isEmployee: true,
-            createdAt: true
-          },
-          take: query.limit || 50,
-          orderBy: { name: 'asc' }
-        });
+
+      const where: any = {
+        organizationId: req.user.organizationId,
+        ...(query.isCustomer !== undefined && { isCustomer: query.isCustomer }),
+        ...(query.isEmployee !== undefined && { isEmployee: query.isEmployee }),
+        ...(query.isSupplier !== undefined && { isSupplier: query.isSupplier }),
+      };
+
+      if (query.search) {
+        where.OR = [
+          { name: { contains: query.search, mode: 'insensitive' } },
+          { email: { contains: query.search, mode: 'insensitive' } },
+          { document: { contains: query.search, mode: 'insensitive' } },
+          { phone: { contains: query.search, mode: 'insensitive' } }
+        ];
       }
-      
+
+      const profiles = await prisma.profile.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          document: true,
+          type: true,
+          isCustomer: true,
+          isSupplier: true,
+          isEmployee: true,
+          address: true,
+          addressNumber: true,
+          city: true,
+          state: true,
+          zipCode: true,
+          active: true,
+          createdAt: true,
+          user: {
+            select: {
+              role: true
+            }
+          }
+        },
+        take: query.limit || 50,
+        orderBy: { name: 'asc' }
+      });
+
       console.log('✅ Perfis encontrados:', profiles.length);
-      
+
       res.json({
         success: true,
         data: profiles
@@ -110,12 +112,12 @@ export function createOptimizedProfilesRoutes(prisma: PrismaClient) {
   router.get('/customers/list', async (req: any, res) => {
     try {
       const queryOptimizer = new QueryOptimizer(prisma);
-      
+
       const customers = await queryOptimizer.getOptimizedCustomers(
         req.user.organizationId,
         100
       );
-      
+
       res.json({
         success: true,
         data: customers
@@ -133,12 +135,12 @@ export function createOptimizedProfilesRoutes(prisma: PrismaClient) {
   router.get('/employees/list', async (req: any, res) => {
     try {
       const queryOptimizer = new QueryOptimizer(prisma);
-      
+
       const employees = await queryOptimizer.getOptimizedEmployees(
         req.user.organizationId,
         100
       );
-      
+
       res.json({
         success: true,
         data: employees
@@ -159,10 +161,10 @@ export function createOptimizedProfilesRoutes(prisma: PrismaClient) {
     try {
       console.log('🔍 POST /api/profiles - Dados recebidos:', req.body);
       console.log('🔍 User info:', req.user);
-      
+
       const body = createProfileSchema.parse(req.body);
       console.log('🔍 Dados validados:', body);
-      
+
       if (!req.user || !req.user.organizationId) {
         console.error('❌ Usuário não autenticado ou sem organizationId');
         return res.status(401).json({
@@ -170,18 +172,61 @@ export function createOptimizedProfilesRoutes(prisma: PrismaClient) {
           message: 'Usuário não autenticado'
         });
       }
-      
+
+      // Extrair password e role antes de criar o perfil
+      const { password, role, ...profileData } = body;
+
+      // Buscar configurações da organização
+      const settings = await prisma.organizationSettings.findUnique({
+        where: { organizationId: req.user.organizationId }
+      });
+
+      // Validar documento (CPF/CNPJ NÃO PODE REPETIR)
+      if (profileData.document && profileData.document !== '') {
+        const existingDocument = await prisma.profile.findFirst({
+          where: {
+            organizationId: req.user.organizationId,
+            document: profileData.document
+          }
+        });
+
+        if (existingDocument) {
+          return res.status(400).json({
+            success: false,
+            message: 'Já existe um cliente cadastrado com este CPF/CNPJ.'
+          });
+        }
+      }
+
+      // Validar telefone se não permitido duplicidade
+      if (profileData.phone && settings?.allowDuplicatePhones === false) {
+        const cleanPhone = profileData.phone.replace(/\D/g, '');
+        const existingPhone = await prisma.profile.findFirst({
+          where: {
+            organizationId: req.user.organizationId,
+            phone: { contains: cleanPhone }
+          }
+        });
+
+        if (existingPhone) {
+          return res.status(400).json({
+            success: false,
+            message: `O telefone ${profileData.phone} já pertence ao cliente "${existingPhone.name}".`
+          });
+        }
+      }
+
       const profile = await prisma.profile.create({
         data: {
-          ...body,
-          email: body.email === '' ? null : body.email, // Converter string vazia para null
-          document: body.document === '' ? null : body.document, // Converter string vazia para null
+          ...profileData,
+          email: profileData.email === '' ? null : profileData.email,
+          document: profileData.document === '' ? null : profileData.document,
           organizationId: req.user.organizationId,
-          // Definir padrões se não especificado
-          type: body.type || 'INDIVIDUAL',
-          isCustomer: body.isCustomer ?? true,
-          isSupplier: body.isSupplier ?? false,
-          isEmployee: body.isEmployee ?? false
+          type: profileData.type || 'INDIVIDUAL',
+          isCustomer: profileData.isCustomer ?? true,
+          isSupplier: profileData.isSupplier ?? false,
+          isEmployee: profileData.isEmployee ?? false,
+          active: profileData.active ?? true
         },
         select: {
           id: true,
@@ -194,24 +239,85 @@ export function createOptimizedProfilesRoutes(prisma: PrismaClient) {
           isSupplier: true,
           isEmployee: true,
           address: true,
+          addressNumber: true,
           city: true,
           state: true,
           zipCode: true,
+          active: true,
           createdAt: true
         }
       });
-      
+
+      // Se for funcionário com senha e email, criar/atualizar User
+      if (profile.isEmployee && password && password.trim() !== '' && profile.email) {
+        const bcrypt = require('bcryptjs');
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Verificar se já existe um usuário com este email
+        const existingUser = await prisma.user.findFirst({
+          where: {
+            organizationId: req.user.organizationId,
+            email: profile.email
+          }
+        });
+
+        let connectedUserId = '';
+
+        if (existingUser) {
+          const updatedUser = await prisma.user.update({
+            where: { id: existingUser.id },
+            data: {
+              password: hashedPassword,
+              name: profile.name,
+              active: profile.active,
+              role: role || 'USER'
+            }
+          });
+          connectedUserId = updatedUser.id;
+        } else {
+          const newUser = await prisma.user.create({
+            data: {
+              organizationId: req.user.organizationId,
+              email: profile.email,
+              password: hashedPassword,
+              name: profile.name,
+              role: role || 'USER',
+              active: profile.active
+            }
+          });
+          connectedUserId = newUser.id;
+        }
+
+        // Vincular ao Profile
+        await prisma.profile.update({
+          where: { id: profile.id },
+          data: { userId: connectedUserId }
+        });
+      }
+
       console.log('✅ Perfil criado:', profile);
-      
+
       res.status(201).json({
         success: true,
         data: profile
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Erro ao criar perfil:', error);
+
+      // Tratar erro de duplicidade (Prisma P2002)
+      if (error.code === 'P2002') {
+        const target = error.meta?.target || [];
+        if (target.includes('document')) {
+          return res.status(400).json({
+            success: false,
+            message: 'Já existe um cliente cadastrado com este CPF/CNPJ.'
+          });
+        }
+      }
+
       res.status(500).json({
         success: false,
-        message: 'Erro interno do servidor'
+        message: 'Erro interno do servidor ao criar perfil'
       });
     }
   });
@@ -220,7 +326,7 @@ export function createOptimizedProfilesRoutes(prisma: PrismaClient) {
   router.get('/:id', async (req: any, res) => {
     try {
       const { id } = req.params;
-      
+
       const profile = await prisma.profile.findFirst({
         where: {
           id,
@@ -237,6 +343,7 @@ export function createOptimizedProfilesRoutes(prisma: PrismaClient) {
           isSupplier: true,
           isEmployee: true,
           address: true,
+          addressNumber: true,
           city: true,
           state: true,
           zipCode: true,
@@ -250,7 +357,7 @@ export function createOptimizedProfilesRoutes(prisma: PrismaClient) {
           message: 'Perfil não encontrado'
         });
       }
-      
+
       res.json({
         success: true,
         data: profile
@@ -269,7 +376,7 @@ export function createOptimizedProfilesRoutes(prisma: PrismaClient) {
     try {
       const { id } = req.params;
       const body = updateProfileSchema.parse(req.body);
-      
+
       // Verificar se o perfil existe e pertence à organização
       const existingProfile = await prisma.profile.findFirst({
         where: {
@@ -284,10 +391,55 @@ export function createOptimizedProfilesRoutes(prisma: PrismaClient) {
           message: 'Perfil não encontrado'
         });
       }
-      
+
+      // Extrair password e role antes de atualizar o perfil
+      const { password, role, ...profileData } = body;
+
+      // Buscar configurações da organização
+      const settings = await prisma.organizationSettings.findUnique({
+        where: { organizationId: req.user.organizationId }
+      });
+
+      // Validar documento (CPF/CNPJ NÃO PODE REPETIR)
+      if (profileData.document && profileData.document !== '') {
+        const existingDocument = await prisma.profile.findFirst({
+          where: {
+            organizationId: req.user.organizationId,
+            document: profileData.document,
+            id: { not: id }
+          }
+        });
+
+        if (existingDocument) {
+          return res.status(400).json({
+            success: false,
+            message: 'Já existe outro cliente cadastrado com este CPF/CNPJ.'
+          });
+        }
+      }
+
+      // Validar telefone se não permitido duplicidade
+      if (profileData.phone && settings?.allowDuplicatePhones === false) {
+        const cleanPhone = profileData.phone.replace(/\D/g, '');
+        const existingPhone = await prisma.profile.findFirst({
+          where: {
+            organizationId: req.user.organizationId,
+            phone: { contains: cleanPhone },
+            id: { not: id }
+          }
+        });
+
+        if (existingPhone) {
+          return res.status(400).json({
+            success: false,
+            message: `O telefone ${profileData.phone} já pertence ao cliente "${existingPhone.name}".`
+          });
+        }
+      }
+
       const profile = await prisma.profile.update({
         where: { id },
-        data: body,
+        data: profileData,
         select: {
           id: true,
           name: true,
@@ -299,14 +451,91 @@ export function createOptimizedProfilesRoutes(prisma: PrismaClient) {
           isSupplier: true,
           isEmployee: true,
           address: true,
+          addressNumber: true,
           city: true,
           state: true,
           zipCode: true,
+          active: true,
           createdAt: true,
           updatedAt: true
         }
       });
-      
+
+      // Se for funcionário e houver senha ou mudança de status, sincronizar com User
+      if (profile.isEmployee && profile.email) {
+        const existingUser = await prisma.user.findFirst({
+          where: {
+            organizationId: req.user.organizationId,
+            email: profile.email
+          }
+        });
+
+        if (password && password.trim() !== '') {
+          // Se há senha, criar ou atualizar usuário
+          const bcrypt = require('bcryptjs');
+          const hashedPassword = await bcrypt.hash(password, 10);
+
+          let connectedUserId = '';
+
+          if (existingUser) {
+            const updatedUser = await prisma.user.update({
+              where: { id: existingUser.id },
+              data: {
+                password: hashedPassword,
+                name: profile.name,
+                role: role || 'USER',
+                active: profile.active
+              }
+            });
+            connectedUserId = updatedUser.id;
+          } else {
+            const newUser = await prisma.user.create({
+              data: {
+                organizationId: req.user.organizationId,
+                email: profile.email,
+                password: hashedPassword,
+                name: profile.name,
+                role: role || 'USER',
+                active: profile.active
+              }
+            });
+            connectedUserId = newUser.id;
+          }
+
+          // Vincular ao Profile (Silencioso se já estiver vinculado)
+          try {
+            await prisma.profile.update({
+              where: { id: profile.id },
+              data: { userId: connectedUserId }
+            });
+          } catch (e) {
+            console.log('ℹ️ Vínculo de usuário já existente ou inválido para este perfil');
+          }
+        } else if (existingUser && (profileData.active !== undefined || role !== undefined)) {
+          // Se não há senha mas há mudança de status ou cargo, atualizar o usuário
+          await prisma.user.update({
+            where: { id: existingUser.id },
+            data: {
+              active: profile.active,
+              name: profile.name,
+              ...(role && { role })
+            }
+          });
+
+          // Garantir vínculo (Silencioso se já estiver vinculado)
+          if (!profile.userId) {
+            try {
+              await prisma.profile.update({
+                where: { id: profile.id },
+                data: { userId: existingUser.id }
+              });
+            } catch (e) {
+              // Já vinculado ou erro de restrição única
+            }
+          }
+        }
+      }
+
       res.json({
         success: true,
         data: profile
@@ -324,7 +553,7 @@ export function createOptimizedProfilesRoutes(prisma: PrismaClient) {
   router.delete('/:id', async (req: any, res) => {
     try {
       const { id } = req.params;
-      
+
       // Verificar se o perfil existe e pertence à organização
       const existingProfile = await prisma.profile.findFirst({
         where: {
@@ -353,11 +582,11 @@ export function createOptimizedProfilesRoutes(prisma: PrismaClient) {
           message: 'Não é possível excluir este perfil pois ele possui pedidos associados'
         });
       }
-      
+
       await prisma.profile.delete({
         where: { id }
       });
-      
+
       res.json({
         success: true,
         message: 'Perfil excluído com sucesso'

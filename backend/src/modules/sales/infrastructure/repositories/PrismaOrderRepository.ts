@@ -7,12 +7,21 @@ import { Money } from '../../../../shared/domain/value-objects/Money';
 import { Dimensions } from '../../../../shared/domain/value-objects/Dimensions';
 
 export class PrismaOrderRepository implements OrderRepository {
-  constructor(private prisma: any) {}
+  constructor(private prisma: any) { }
 
   async save(order: Order): Promise<Order> {
     const data = order.toJSON();
-    
+
     if (order.id) {
+      console.log(`[Order Repository] Iniciando save() - Atualização do pedido ${order.id}`);
+      console.log(`[Order Repository] Dados toJSON():`, {
+        status: data.status,
+        cancelledAt: data.cancelledAt,
+        cancellationReason: data.cancellationReason,
+        cancellationPaymentAction: data.cancellationPaymentAction,
+        cancellationRefundAmount: data.cancellationRefundAmount
+      });
+
       // Atualizar pedido existente
       const updatedOrder = await this.prisma.$transaction(async (tx: any) => {
         // Remover itens existentes
@@ -26,6 +35,7 @@ export class PrismaOrderRepository implements OrderRepository {
           data: {
             customerId: data.customerId,
             status: data.status,
+            processStatusId: data.processStatusId,
             subtotal: data.subtotal,
             discount: data.discount,
             tax: data.tax,
@@ -34,6 +44,15 @@ export class PrismaOrderRepository implements OrderRepository {
             validUntil: data.validUntil,
             notes: data.notes,
             updatedAt: new Date(),
+            approvedAt: data.approvedAt,
+            inProductionAt: data.inProductionAt,
+            finishedAt: data.finishedAt,
+            deliveredAt: data.deliveredAt,
+            cancelledAt: data.cancelledAt,
+            cancelledById: data.cancelledById,
+            cancellationReason: data.cancellationReason,
+            cancellationPaymentAction: data.cancellationPaymentAction,
+            cancellationRefundAmount: data.cancellationRefundAmount,
             items: {
               create: data.items.map((item: any) => ({
                 productId: item.productId,
@@ -63,6 +82,11 @@ export class PrismaOrderRepository implements OrderRepository {
           }
         });
 
+        console.log(`[Order Repository] Update do Prisma concluído:`, {
+          status: updated.status,
+          cancelledAt: updated.cancelledAt,
+          cancellationReason: updated.cancellationReason
+        });
         return updated;
       });
 
@@ -75,6 +99,7 @@ export class PrismaOrderRepository implements OrderRepository {
           customerId: data.customerId,
           organizationId: data.organizationId,
           status: data.status,
+          processStatusId: data.processStatusId,
           subtotal: data.subtotal,
           discount: data.discount,
           tax: data.tax,
@@ -82,6 +107,15 @@ export class PrismaOrderRepository implements OrderRepository {
           deliveryDate: data.deliveryDate,
           validUntil: data.validUntil,
           notes: data.notes,
+          approvedAt: data.approvedAt,
+          inProductionAt: data.inProductionAt,
+          finishedAt: data.finishedAt,
+          deliveredAt: data.deliveredAt,
+          cancelledAt: data.cancelledAt,
+          cancelledById: data.cancelledById,
+          cancellationReason: data.cancellationReason,
+          cancellationPaymentAction: data.cancellationPaymentAction,
+          cancellationRefundAmount: data.cancellationRefundAmount,
           items: {
             create: data.items.map((item: any) => ({
               productId: item.productId,
@@ -119,6 +153,7 @@ export class PrismaOrderRepository implements OrderRepository {
     const order = await this.prisma.order.findUnique({
       where: { id },
       include: {
+        processStatus: true,
         items: {
           include: {
             product: {
@@ -152,6 +187,7 @@ export class PrismaOrderRepository implements OrderRepository {
     const order = await this.prisma.order.findUnique({
       where: { orderNumber: orderNumber.value },
       include: {
+        processStatus: true,
         items: true,
         customer: {
           select: {
@@ -169,26 +205,26 @@ export class PrismaOrderRepository implements OrderRepository {
 
   async findAll(filters?: OrderFilters): Promise<Order[]> {
     const whereClause: any = {};
-    
+
     if (filters?.organizationId) {
       whereClause.organizationId = filters.organizationId;
     }
-    
+
     if (filters?.customerId) {
       whereClause.customerId = filters.customerId;
     }
-    
+
     if (filters?.status) {
       whereClause.status = filters.status;
     }
-    
+
     if (filters?.search) {
       whereClause.OR = [
         { orderNumber: { contains: filters.search, mode: 'insensitive' } },
         { customer: { name: { contains: filters.search, mode: 'insensitive' } } }
       ];
     }
-    
+
     if (filters?.dateFrom || filters?.dateTo) {
       whereClause.createdAt = {};
       if (filters.dateFrom) {
@@ -198,7 +234,7 @@ export class PrismaOrderRepository implements OrderRepository {
         whereClause.createdAt.lte = filters.dateTo;
       }
     }
-    
+
     if (filters?.customer) {
       whereClause.customer = {
         name: { contains: filters.customer, mode: 'insensitive' }
@@ -208,6 +244,7 @@ export class PrismaOrderRepository implements OrderRepository {
     const orders = await this.prisma.order.findMany({
       where: whereClause,
       include: {
+        processStatus: true,
         items: {
           include: {
             product: {
@@ -298,8 +335,8 @@ export class PrismaOrderRepository implements OrderRepository {
     ]);
 
     const avgOrderValue = totalOrders > 0 ? Number(totalValue._sum.total || 0) / totalOrders : 0;
-    const monthlyGrowth = lastMonthOrders > 0 
-      ? ((currentMonthOrders - lastMonthOrders) / lastMonthOrders) * 100 
+    const monthlyGrowth = lastMonthOrders > 0
+      ? ((currentMonthOrders - lastMonthOrders) / lastMonthOrders) * 100
       : 0;
 
     const byStatus = ordersByStatus.reduce((acc: any, item: any) => {
@@ -337,7 +374,7 @@ export class PrismaOrderRepository implements OrderRepository {
 
   async findExpiredOrders(organizationId: string): Promise<Order[]> {
     const now = new Date();
-    
+
     const orders = await this.prisma.order.findMany({
       where: {
         organizationId,
@@ -391,7 +428,17 @@ export class PrismaOrderRepository implements OrderRepository {
       validUntil: prismaOrder.validUntil,
       notes: prismaOrder.notes,
       createdAt: prismaOrder.createdAt,
-      updatedAt: prismaOrder.updatedAt
+      updatedAt: prismaOrder.updatedAt,
+      approvedAt: prismaOrder.approvedAt,
+      inProductionAt: prismaOrder.inProductionAt,
+      finishedAt: prismaOrder.finishedAt,
+      deliveredAt: prismaOrder.deliveredAt,
+      cancelledAt: prismaOrder.cancelledAt,
+      cancelledById: prismaOrder.cancelledById,
+      cancellationReason: prismaOrder.cancellationReason,
+      cancellationPaymentAction: prismaOrder.cancellationPaymentAction,
+      cancellationRefundAmount: prismaOrder.cancellationRefundAmount ? Number(prismaOrder.cancellationRefundAmount) : undefined,
+      processStatusId: prismaOrder.processStatusId
     });
   }
 }
