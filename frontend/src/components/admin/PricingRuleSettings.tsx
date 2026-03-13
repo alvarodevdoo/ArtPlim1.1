@@ -1,232 +1,222 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Edit2, Trash2, Plus, Check } from 'lucide-react';
-import api from '@/lib/api';
+import { Edit2, Trash2, Plus, Download, Upload } from 'lucide-react';
 import { toast } from 'sonner';
+import PricingRuleEditorModal, { PricingFormulaRule } from './pricing/PricingRuleEditorModal';
 
-interface PricingRule {
-    id: string;
-    name: string;
-    type: 'UNIT' | 'SQUARE_METER' | 'TIME_AREA';
-    formula: {
-        material: boolean;
-        machineTime: boolean;
-        labor: boolean;
-        fixedCost: boolean;
-        profit: boolean;
-    };
-    config?: any;
-    active: boolean;
-}
+// Em ambiente real, chamaria a API. Por enquanto, no front, simulamos o armazenamento.
+const MOCK_STORAGE_KEY = 'artplim_pricing_rules';
 
 const PricingRuleSettings: React.FC = () => {
-    const [rules, setRules] = useState<PricingRule[]>([]);
+    const [rules, setRules] = useState<PricingFormulaRule[]>([]);
     const [loading, setLoading] = useState(false);
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [formData, setFormData] = useState<Partial<PricingRule>>({
-        name: '',
-        type: 'UNIT',
-        formula: {
-            material: false,
-            machineTime: false,
-            labor: false,
-            fixedCost: false,
-            profit: true
-        },
-        active: true
-    });
-    const [isCreating, setIsCreating] = useState(false);
+
+    // Modal State
+    const [isEditorOpen, setIsEditorOpen] = useState(false);
+    const [editingRule, setEditingRule] = useState<PricingFormulaRule | null>(null);
 
     useEffect(() => {
         loadRules();
     }, []);
 
-    const loadRules = async () => {
+    const loadRules = () => {
+        setLoading(true);
         try {
-            setLoading(true);
-            const response = await api.get('/api/catalog/pricing-rules');
-            setRules(response.data.data);
+            const saved = localStorage.getItem(MOCK_STORAGE_KEY);
+            if (saved) {
+                setRules(JSON.parse(saved));
+            } else {
+                // Mock inicial
+                const initialMocks: PricingFormulaRule[] = [
+                    {
+                        id: 'rule_1',
+                        internalName: 'Lona Promocional por M²',
+                        formulaString: '(largura * altura) * preco_m2 + acabamento',
+                        active: true,
+                        variables: [
+                            { id: 'largura', name: 'Largura', type: 'INPUT', unit: 'm', lockedUnit: true },
+                            { id: 'altura', name: 'Altura', type: 'INPUT', unit: 'm', lockedUnit: true },
+                            { id: 'preco_m2', name: 'Preço Custo M²', type: 'FIXED', unit: 'moeda', lockedUnit: true, fixedValue: 25.50 },
+                            { id: 'acabamento', name: 'Taxa de Acabamento', type: 'FIXED', unit: 'moeda', lockedUnit: true, fixedValue: 15.00 }
+                        ]
+                    }
+                ];
+                setRules(initialMocks);
+                localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(initialMocks));
+            }
         } catch (error) {
-            toast.error('Erro ao carregar regras de precificação');
+            toast.error('Erro ao carregar regras de precificação locais');
         } finally {
             setLoading(false);
         }
     };
 
-    const handleCreate = () => {
-        setFormData({
-            name: '',
-            type: 'UNIT',
-            formula: {
-                material: false,
-                machineTime: false,
-                labor: false,
-                fixedCost: false,
-                profit: true
-            },
-            active: true
-        });
-        setIsCreating(true);
-        setEditingId(null);
+    const saveRulesToStorage = (newRules: PricingFormulaRule[]) => {
+        setRules(newRules);
+        localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(newRules));
     };
 
-    const handleEdit = (rule: PricingRule) => {
-        setEditingId(rule.id);
-        setFormData(rule);
-        setIsCreating(false);
+    // --- AÇÕES DO CRUD ---
+    const handleCreateNew = () => {
+        setEditingRule(null);
+        setIsEditorOpen(true);
     };
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('Tem certeza que deseja excluir esta regra?')) return;
-        try {
-            await api.delete(`/api/catalog/pricing-rules/${id}`);
-            toast.success('Regra removida');
-            loadRules();
-        } catch (error: any) {
-            toast.error(error.response?.data?.message || 'Erro ao remover regra');
-        }
+    const handleEdit = (rule: PricingFormulaRule) => {
+        setEditingRule(rule);
+        setIsEditorOpen(true);
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        try {
-            if (editingId) {
-                await api.put(`/api/catalog/pricing-rules/${editingId}`, formData);
-                toast.success('Regra atualizada');
-            } else {
-                await api.post('/api/catalog/pricing-rules', formData);
-                toast.success('Regra criada');
+    const handleDelete = (id: string) => {
+        if (!confirm('Tem certeza que deseja excluir esta regra de cálculo?')) return;
+        const newRules = rules.filter(r => r.id !== id);
+        saveRulesToStorage(newRules);
+        toast.success('Regra removida com sucesso!');
+    };
+
+    const handleSaveRule = (ruleData: PricingFormulaRule) => {
+        let updatedList = [...rules];
+
+        if (ruleData.id) {
+            // Update
+            const index = updatedList.findIndex(r => r.id === ruleData.id);
+            if (index >= 0) {
+                updatedList[index] = ruleData;
             }
-            setEditingId(null);
-            setIsCreating(false);
-            loadRules();
-        } catch (error: any) {
-            toast.error(error.response?.data?.message || 'Erro ao salvar regra');
+        } else {
+            // Create
+            ruleData.id = `rule_${Date.now()}`;
+            updatedList.push(ruleData);
         }
+
+        saveRulesToStorage(updatedList);
+        setIsEditorOpen(false);
+        setEditingRule(null);
+        toast.success('Regra salva com sucesso!');
     };
 
-    const toggleFormulaComponent = (component: keyof PricingRule['formula']) => {
-        setFormData(prev => ({
-            ...prev,
-            formula: {
-                ...prev.formula!,
-                [component]: !prev.formula![component]
+    // --- IMPORT / EXPORT (JSON) ---
+    const handleExportJSON = () => {
+        const dataStr = JSON.stringify(rules, null, 2);
+        const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+
+        const exportFileDefaultName = `formulas_artplim_${new Date().toISOString().split('T')[0]}.json`;
+
+        const linkElement = document.createElement('a');
+        linkElement.setAttribute('href', dataUri);
+        linkElement.setAttribute('download', exportFileDefaultName);
+        linkElement.click();
+        toast.success('Exportação do arquivo JSON inicializada!');
+    };
+
+    const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const importedRules = JSON.parse(event.target?.result as string);
+                if (Array.isArray(importedRules)) {
+                    // Simples validação estrutural
+                    const isValid = importedRules.every(r => r.internalName && r.formulaString && Array.isArray(r.variables));
+
+                    if (isValid) {
+                        saveRulesToStorage(importedRules);
+                        toast.success(`Importados com sucesso ${importedRules.length} regras.`);
+                    } else {
+                        toast.error('O arquivo JSON não segue a estrutura válida do ArtPlim.');
+                    }
+                } else {
+                    toast.error('Formato inválido. Esperado um array de Regras.');
+                }
+            } catch (err) {
+                toast.error('Falha ao processar arquivo JSON.');
             }
-        }));
+            // Reset input
+            if (e.target) e.target.value = '';
+        };
+        reader.readAsText(file);
     };
-
-    const renderForm = () => (
-        <div className="bg-slate-50 p-4 rounded-lg border mb-4">
-            <h4 className="font-medium mb-4">{editingId ? 'Editar Regra' : 'Nova Regra de Precificação'}</h4>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label className="text-sm font-medium">Nome</label>
-                        <Input
-                            value={formData.name}
-                            onChange={e => setFormData({ ...formData, name: e.target.value })}
-                            placeholder="Ex: Corte Laser, Adesivo em Metro"
-                            required
-                        />
-                    </div>
-                    <div>
-                        <label className="text-sm font-medium">Tipo Base</label>
-                        <select
-                            value={formData.type}
-                            onChange={e => setFormData({ ...formData, type: e.target.value as any })}
-                            className="w-full h-10 px-3 border rounded-md"
-                        >
-                            <option value="UNIT">Por Unidade (Simples)</option>
-                            <option value="SQUARE_METER">Por Metro Quadrado (Área)</option>
-                            <option value="TIME_AREA">Por Tempo + Área (Máquina)</option>
-                        </select>
-                        <p className="text-xs text-muted-foreground mt-1">Define as variáveis base (Largura/Altura vs. Qtd)</p>
-                    </div>
-                </div>
-
-                <div className="bg-white p-3 rounded border">
-                    <label className="text-sm font-medium mb-2 block">Componentes da Fórmula (O que compõe o preço?)</label>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                        {[
-                            { key: 'material', label: 'Custo de Material' },
-                            { key: 'machineTime', label: 'Tempo de Máquina' },
-                            { key: 'labor', label: 'Mão de Obra' },
-                            { key: 'fixedCost', label: 'Custo Fixo / Setup' },
-                            { key: 'profit', label: 'Lucro / Markup' },
-                        ].map(({ key, label }) => (
-                            <div
-                                key={key}
-                                onClick={() => toggleFormulaComponent(key as any)}
-                                className={`
-                                    cursor-pointer px-3 py-2 rounded-md border text-sm flex items-center gap-2 transition-colors
-                                    ${formData.formula?.[key as keyof PricingRule['formula']]
-                                        ? 'bg-primary/10 border-primary text-primary'
-                                        : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'}
-                                `}
-                            >
-                                <div className={`w-4 h-4 rounded border flex items-center justify-center ${formData.formula?.[key as keyof typeof formData.formula] ? 'bg-primary border-primary' : 'bg-white border-gray-300'}`}>
-                                    {formData.formula?.[key as keyof typeof formData.formula] && <Check className="w-3 h-3 text-white" />}
-                                </div>
-                                {label}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                <div className="flex justify-end gap-2 pt-2">
-                    <Button type="button" variant="outline" onClick={() => { setIsCreating(false); setEditingId(null); }}>Cancelar</Button>
-                    <Button type="submit">Salvar</Button>
-                </div>
-            </form>
-        </div>
-    );
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col md:flex-row md:justify-between items-start md:items-center gap-4">
                 <div>
-                    <h3 className="text-lg font-medium">Regras de Precificação</h3>
-                    <p className="text-sm text-gray-500">Defina como seus produtos e serviços são cobrados.</p>
+                    <h3 className="text-lg font-medium">Gestão de Precificação (Fórmulas)</h3>
+                    <p className="text-sm text-gray-500">Crie regras e expressões matemáticas para o cálculo dos produtos.</p>
                 </div>
-                {!isCreating && !editingId && (
-                    <Button onClick={handleCreate}>
-                        <Plus className="w-4 h-4 mr-2" /> Nova Regra
+
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative overflow-hidden inline-block">
+                        <Button variant="outline" size="sm" className="bg-white" onClick={() => document.getElementById('import-json')?.click()}>
+                            <Upload className="w-4 h-4 mr-2" /> Importar JSON
+                        </Button>
+                        <input
+                            type="file"
+                            id="import-json"
+                            accept=".json"
+                            className="hidden"
+                            onChange={handleImportJSON}
+                        />
+                    </div>
+                    <Button variant="outline" size="sm" className="bg-white" onClick={handleExportJSON}>
+                        <Download className="w-4 h-4 mr-2" /> Exportar Tudo
                     </Button>
-                )}
+                    <Button onClick={handleCreateNew} size="sm" className="bg-indigo-600 hover:bg-indigo-700">
+                        <Plus className="w-4 h-4 mr-2" /> Nova Fórmula
+                    </Button>
+                </div>
             </div>
 
-            {(isCreating || editingId) && renderForm()}
-
-            <div className="space-y-2">
+            <div className="space-y-3">
                 {loading ? (
-                    <div>Carregando...</div>
+                    <div className="text-center py-10 text-slate-500">Carregando fórmulas...</div>
+                ) : rules.length === 0 ? (
+                    <div className="text-center py-12 bg-white rounded-lg border border-dashed border-slate-300 text-slate-500">
+                        Nenhuma fórmula cadastrada. Crie uma nova para começar.
+                    </div>
                 ) : (
                     rules.map(rule => (
-                        <div key={rule.id} className="flex items-center justify-between p-3 bg-white border rounded-lg hover:shadow-sm transition-shadow">
-                            <div>
-                                <div className="font-medium flex items-center gap-2">
-                                    {rule.name}
-                                    <span className="text-xs px-2 py-0.5 bg-gray-100 rounded text-gray-600 border">{rule.type}</span>
+                        <div key={rule.id} className="flex flex-col md:flex-row md:items-center justify-between p-4 bg-white border border-slate-200 rounded-xl hover:shadow-md transition-shadow gap-4">
+                            <div className="flex-1">
+                                <div className="font-semibold text-slate-800 flex items-center gap-2 text-lg">
+                                    {rule.internalName}
                                 </div>
-                                <div className="text-xs text-gray-500 flex gap-1 mt-1">
-                                    {Object.entries(rule.formula || {})
-                                        .filter(([_, active]) => active)
-                                        .map(([key]) => (
-                                            <span key={key} className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100">
-                                                {key === 'machineTime' ? 'Máquina' : key === 'fixedCost' ? 'Fixos' : key}
-                                            </span>
-                                        ))}
+                                <div className="mt-2 text-sm text-slate-600 font-mono bg-slate-50 px-2 py-1 rounded border border-slate-100 inline-block">
+                                    <span className="text-slate-400 select-none">𝑓(x) = </span> {rule.formulaString}
+                                </div>
+                                <div className="flex flex-wrap gap-2 mt-3">
+                                    {rule.variables.map(v => (
+                                        <div key={v.id} className={`text-xs px-2 py-1 rounded flex items-center gap-1 border ${v.type === 'INPUT' ? 'bg-sky-50 border-sky-100 text-sky-700' : 'bg-emerald-50 border-emerald-100 text-emerald-700'}`}>
+                                            <span className="font-semibold">{v.name}</span>
+                                            <span className="opacity-60">({v.unit})</span>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <Button size="sm" variant="ghost" onClick={() => handleEdit(rule)}><Edit2 className="w-4 h-4" /></Button>
-                                <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700" onClick={() => handleDelete(rule.id)}><Trash2 className="w-4 h-4" /></Button>
+
+                            <div className="flex items-center gap-2 self-end md:self-center">
+                                <Button size="sm" variant="outline" className="text-slate-600" onClick={() => handleEdit(rule)}>
+                                    <Edit2 className="w-4 h-4 mr-2" /> Editar
+                                </Button>
+                                <Button size="sm" variant="outline" className="text-red-500 border-red-200 hover:bg-red-50 hover:text-red-700" onClick={() => handleDelete(rule.id!)}>
+                                    <Trash2 className="w-4 h-4" />
+                                </Button>
                             </div>
                         </div>
                     ))
                 )}
             </div>
+
+            {/* Modal Principal do Editor */}
+            {isEditorOpen && (
+                <PricingRuleEditorModal
+                    rule={editingRule}
+                    onSave={handleSaveRule}
+                    onClose={() => setIsEditorOpen(false)}
+                />
+            )}
         </div>
     );
 };

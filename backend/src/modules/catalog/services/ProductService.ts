@@ -4,13 +4,25 @@ import { NotFoundError, ValidationError } from '../../../shared/infrastructure/e
 interface CreateProductInput {
   name: string;
   description?: string;
+  productType?: string;
   pricingMode: PricingMode;
-  pricingRuleId?: string; // Substitui o antigo Product Type
+  pricingRuleId?: string | null;
+  localFormulaId?: string | null;
   salePrice?: number;
   minPrice?: number;
-  costPrice?: number; // Novo campo para custo
+  costPrice?: number;
   markup: number;
-  organizationId: string; // Adicionar organizationId para validação
+  organizationId: string;
+  // Controle de estoque
+  trackStock?: boolean;
+  stockQuantity?: number | null;
+  stockMinQuantity?: number | null;
+  stockUnit?: string | null;
+  formulaData?: any;
+}
+
+interface UpdateProductInput extends Partial<CreateProductInput> {
+  localFormulaId?: string | null;
 }
 
 export class ProductService {
@@ -39,16 +51,24 @@ export class ProductService {
 
     const product = await this.prisma.product.create({
       data: {
-        organizationId: data.organizationId,
+        organization: { connect: { id: data.organizationId } },
         name: data.name,
         description: data.description,
+        productType: data.productType || 'PRODUCT',
         pricingMode: data.pricingMode,
-        pricingRuleId: data.pricingRuleId, // Salvar regra de precificação
+        ...(data.pricingRuleId ? { pricingRule: { connect: { id: data.pricingRuleId } } } : {}),
+        localFormulaId: data.localFormulaId || null,
         salePrice: data.salePrice,
         minPrice: data.minPrice,
-        costPrice: data.costPrice, // Incluir costPrice
-        markup: data.markup
-      }
+        costPrice: data.costPrice,
+        markup: data.markup,
+        formulaData: data.formulaData || null,
+        // Controle de estoque
+        trackStock: data.trackStock ?? false,
+        stockQuantity: data.trackStock ? (data.stockQuantity ?? null) : null,
+        stockMinQuantity: data.trackStock ? (data.stockMinQuantity ?? null) : null,
+        stockUnit: data.trackStock ? (data.stockUnit ?? null) : null
+      } as any
     });
 
     return product;
@@ -126,6 +146,10 @@ export class ProductService {
       where: { id },
       data: {
         ...data,
+        pricingRuleId: undefined, // Remover campo escalar para usar relação
+        ...(data.pricingRuleId !== undefined ? (
+          data.pricingRuleId ? { pricingRule: { connect: { id: data.pricingRuleId } } } : { pricingRule: { disconnect: true } }
+        ) : {}),
         updatedAt: new Date()
       },
       include: {
@@ -136,7 +160,7 @@ export class ProductService {
         },
         operations: true
       }
-    });
+    } as any);
 
     return product;
   }

@@ -22,9 +22,6 @@ import Configuracoes from '@/pages/Configuracoes';
 import Estoque from '@/pages/Estoque';
 import Producao from '@/pages/Producao';
 import Financeiro from '@/pages/Financeiro';
-import PricingEngine from '@/pages/PricingEngine';
-import ProductRegistryUnified from '@/pages/PricingEngine/ProductRegistryUnified';
-
 
 // Criar QueryClient
 const queryClient = new QueryClient({
@@ -162,21 +159,6 @@ function App() {
                 </ProtectedRoute>
               } />
 
-              <Route path="/pricing-engine" element={
-                <ProtectedRoute>
-                  <Layout>
-                    <PricingEngine />
-                  </Layout>
-                </ProtectedRoute>
-              } />
-
-              <Route path="/pricing-engine/unified" element={
-                <ProtectedRoute>
-                  <Layout>
-                    <ProductRegistryUnified />
-                  </Layout>
-                </ProtectedRoute>
-              } />
 
               {/* Redirect para dashboard se logado */}
               <Route path="*" element={<Navigate to="/" replace />} />

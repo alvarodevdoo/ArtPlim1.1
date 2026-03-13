@@ -3,26 +3,40 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import CurrencyInput from '@/components/ui/CurrencyInput';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Plus, Search, Edit, Trash2, Package, Settings, Wrench } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Package, Settings, Wrench, ShoppingBag, Briefcase, Warehouse } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { ProductComponentManager } from '@/components/catalog/ProductComponentManager';
 import { ProductConfigurationManager } from '@/components/catalog/ProductConfigurationManager';
+import type { PricingFormulaRule } from '@/components/admin/pricing/PricingRuleEditorModal';
+import { evaluateFormula } from '@/lib/pricing/formulaUtils';
 
+const LOCAL_FORMULAS_KEY = 'artplim_pricing_rules';
+
+
+// Fórmulas locais (salvas em Configurações via localStorage)
 
 interface Produto {
   id: string;
   name: string;
   description?: string;
-  pricingRuleId?: string; // Substitui o antigo Product Type
+  productType: 'PRODUCT' | 'SERVICE';
+  localFormulaId?: string;
+  pricingRuleId?: string;
   pricingMode: 'SIMPLE_AREA' | 'SIMPLE_UNIT' | 'DYNAMIC_ENGINEER';
   salePrice?: number;
   minPrice?: number;
-  costPrice?: number; // Novo campo para custo
+  costPrice?: number;
   markup: number;
   active: boolean;
+  // Controle de estoque
+  trackStock?: boolean;
+  stockQuantity?: number;
+  stockMinQuantity?: number;
+  stockUnit?: string;
+  formulaData?: any;
   components?: Array<{
     id: string;
     material: {
@@ -38,6 +52,44 @@ interface Produto {
   };
 }
 
+type FormData = {
+  name: string;
+  description: string;
+  productType: 'PRODUCT' | 'SERVICE';
+  localFormulaId: string;
+  pricingRuleId: string;
+  pricingMode: 'SIMPLE_UNIT' | 'SIMPLE_AREA' | 'DYNAMIC_ENGINEER';
+  salePrice: number;
+  minPrice: number;
+  markup: number;
+  costPrice: number;
+  // Valores das variáveis da fórmula (INPUT)
+  formulaVarValues: Record<string, number | string>;
+  // Estoque
+  trackStock: boolean;
+  stockQuantity: number;
+  stockMinQuantity: number;
+  stockUnit: string;
+};
+
+const defaultForm: FormData = {
+  name: '',
+  description: '',
+  productType: 'PRODUCT',
+  localFormulaId: '',
+  pricingRuleId: '',
+  pricingMode: 'SIMPLE_AREA',
+  salePrice: 0,
+  minPrice: 0,
+  markup: 2.0,
+  costPrice: 0,
+  formulaVarValues: {},
+  trackStock: false,
+  stockQuantity: 0,
+  stockMinQuantity: 0,
+  stockUnit: 'un',
+};
+
 const Produtos: React.FC = () => {
   const { settings } = useAuth();
   const [produtos, setProdutos] = useState<Produto[]>([]);
@@ -48,82 +100,27 @@ const Produtos: React.FC = () => {
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [configuringProduct, setConfiguringProduct] = useState<Produto | null>(null);
   const [activeConfigTab, setActiveConfigTab] = useState<'materials' | 'configurations'>('materials');
-
-  interface PricingRule {
-    id: string;
-    name: string;
-    type: 'UNIT' | 'SQUARE_METER' | 'TIME_AREA';
-    formula: {
-      material: boolean;
-      machineTime: boolean;
-      labor: boolean;
-      fixedCost: boolean;
-      profit: boolean;
-    };
-    active: boolean;
-  }
-  const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
-
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    pricingRuleId: '' as string,
-    pricingMode: 'SIMPLE_AREA' as 'SIMPLE_UNIT' | 'SIMPLE_AREA' | 'DYNAMIC_ENGINEER',
-    salePrice: 0,
-    minPrice: 0,
-    markup: 2.0,
-    costPrice: 0
-  });
+  const [localFormulas, setLocalFormulas] = useState<PricingFormulaRule[]>([]);
+  const [formData, setFormData] = useState<FormData>(defaultForm);
 
   useEffect(() => {
     loadProdutos();
-    loadPricingRules();
+    loadLocalFormulas();
   }, []);
 
-  const loadPricingRules = async () => {
+  const loadLocalFormulas = () => {
     try {
-      const response = await api.get('/api/catalog/pricing-rules');
-      // Filtrar apenas ativos
-      setPricingRules(response.data.data.filter((t: any) => t.active));
-    } catch (error) {
-      console.error('Error loading pricing rules', error);
-      toast.error('Erro ao carregar regras de precificação');
+      const saved = localStorage.getItem(LOCAL_FORMULAS_KEY);
+      if (saved) {
+        const all: PricingFormulaRule[] = JSON.parse(saved);
+        setLocalFormulas(all.filter(r => r.active !== false));
+      }
+    } catch (e) {
+      console.error('Erro ao ler fórmulas locais', e);
     }
   };
-
-  /*
-  const checkMaterials = async () => {
-    try {
-      const response = await api.get('/api/catalog/materials');
-      const materials = response.data.data || [];
-      setHasMaterials(materials.length > 0);
-    } catch (error) {
-      setHasMaterials(false);
-    }
-  };
-  */
-
-  // Resetar pricingMode se engenharia for desabilitada
-  useEffect(() => {
-    if (!settings?.enableEngineering && formData.pricingMode === 'DYNAMIC_ENGINEER') {
-      setFormData(prev => ({ ...prev, pricingMode: 'SIMPLE_AREA' as const }));
-    }
-  }, [settings?.enableEngineering, formData.pricingMode]);
 
   const handleNewProduct = () => {
-    // Removido conforme solicitação: não é obrigatório ter materiais para cadastrar produtos
-    /*
-    if (!hasMaterials) {
-      toast.error('Não é possível criar produtos sem materiais cadastrados.', {
-        duration: 5000,
-        action: {
-          label: 'Cadastrar Materiais',
-          onClick: () => window.open('/materiais', '_blank')
-        }
-      });
-      return;
-    }
-    */
     setShowForm(true);
   };
 
@@ -141,16 +138,41 @@ const Produtos: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const payload = {
+
+
+    const payload: any = {
       name: formData.name,
       description: formData.description || undefined,
-      pricingRuleId: formData.pricingRuleId || undefined,
-      pricingMode: formData.pricingMode,
-      salePrice: formData.salePrice > 0 ? formData.salePrice : undefined,
+      productType: formData.productType,
+      localFormulaId: formData.localFormulaId || null,
+      pricingRuleId: formData.pricingRuleId || null,
+      pricingMode: formData.localFormulaId ? 'SIMPLE_AREA' : formData.pricingMode,
+      salePrice: formData.salePrice > 0 ? formData.salePrice : 0,
       minPrice: formData.minPrice > 0 ? formData.minPrice : undefined,
       markup: formData.markup,
-      costPrice: formData.costPrice > 0 ? formData.costPrice : undefined // Incluir custo quando disponível
+      costPrice: formData.costPrice > 0 ? formData.costPrice : undefined,
+      formulaData: formData.formulaVarValues || null,
     };
+
+    // Campos de estoque — apenas para produtos
+    if (formData.productType === 'PRODUCT') {
+      payload.trackStock = formData.trackStock;
+      if (formData.trackStock) {
+        payload.stockQuantity = formData.stockQuantity;
+        payload.stockMinQuantity = formData.stockMinQuantity;
+        payload.stockUnit = formData.stockUnit || 'un';
+      } else {
+        payload.stockQuantity = null;
+        payload.stockMinQuantity = null;
+        payload.stockUnit = null;
+      }
+    } else {
+      // Serviços não têm estoque
+      payload.trackStock = false;
+      payload.stockQuantity = null;
+      payload.stockMinQuantity = null;
+      payload.stockUnit = null;
+    }
 
     try {
       if (editingProduto) {
@@ -163,38 +185,78 @@ const Produtos: React.FC = () => {
 
       setShowForm(false);
       setEditingProduto(null);
-      resetForm();
+      setFormData(defaultForm);
       loadProdutos();
     } catch (error: any) {
       const errorMessage = error.response?.data?.message || 'Erro ao salvar produto';
-      const errorCode = error.response?.data?.code;
-
-      if (errorCode === 'NO_MATERIALS_AVAILABLE') {
-        toast.error(errorMessage, {
-          duration: 5000,
-          action: {
-            label: 'Cadastrar Materiais',
-            onClick: () => window.open('/materiais', '_blank')
-          }
-        });
-      } else {
-        toast.error(errorMessage);
-      }
+      toast.error(errorMessage);
     }
   };
 
   const handleEdit = (produto: Produto) => {
     setEditingProduto(produto);
+    // Resgatar valores das variáveis da fórmula associada (se houver)
+    const formulaId = produto.localFormulaId || produto.pricingRuleId || '';
+    const formula = localFormulas.find(f => f.id === formulaId);
+    let initVars: Record<string, number | string> = {};
+    
+    if (formula) {
+      if (produto.formulaData && typeof produto.formulaData === 'object') {
+        // Se já temos dados salvos no produto, usamos eles
+        initVars = { ...produto.formulaData };
+      } else {
+        // Caso contrário, inicializamos com os valores padrão da fórmula
+        formula.variables.forEach(v => {
+          initVars[v.id] = v.type === 'FIXED' ? (v.fixedValue ?? 0) : '';
+        });
+      }
+    }
+
     setFormData({
       name: produto.name,
       description: produto.description || '',
+      productType: produto.productType || 'PRODUCT',
+      localFormulaId: produto.localFormulaId || '',
       pricingRuleId: produto.pricingRuleId || '',
       pricingMode: produto.pricingMode,
       salePrice: produto.salePrice || 0,
       minPrice: produto.minPrice || 0,
       markup: produto.markup,
-      costPrice: (produto as any).costPrice || 0 // Carregar custo se disponível
+      costPrice: (produto as any).costPrice || 0,
+      formulaVarValues: initVars,
+      trackStock: produto.trackStock || false,
+      stockQuantity: produto.stockQuantity || 0,
+      stockMinQuantity: produto.stockMinQuantity || 0,
+      stockUnit: produto.stockUnit || 'un',
     });
+
+    // Forçar recálculo imediato após carregar os dados
+    setTimeout(() => {
+      const formula = localFormulas.find(f => f.id === formulaId);
+      if (formula) {
+        const scope: Record<string, number> = {};
+        formula.variables.forEach(v => {
+          if (v.type === 'FIXED') {
+            scope[v.id] = v.fixedValue ?? 0;
+          } else {
+            const raw = String(initVars[v.id] || '').replace(',', '.');
+            const num = parseFloat(raw);
+            if (isNaN(num)) {
+              // Fallback inteligente baseado na unidade para cálculo de referência (1 metro)
+              if (v.unit === 'cm') scope[v.id] = 100;
+              else if (v.unit === 'mm') scope[v.id] = 1000;
+              else scope[v.id] = 1.0;
+            } else {
+              scope[v.id] = num;
+            }
+          }
+        });
+        const result = evaluateFormula(formula.formulaString, scope, formula.variables);
+        if (typeof result === 'number' && isFinite(result)) {
+          setFormData(prev => ({ ...prev, salePrice: parseFloat(result.toFixed(2)) }));
+        }
+      }
+    }, 50);
     setShowForm(true);
   };
 
@@ -214,19 +276,6 @@ const Produtos: React.FC = () => {
     setConfiguringProduct(produto);
     setActiveConfigTab('materials');
     setShowConfigModal(true);
-  };
-
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      description: '',
-      pricingRuleId: '',
-      pricingMode: 'SIMPLE_AREA',
-      salePrice: 0,
-      minPrice: 0,
-      markup: 2.0,
-      costPrice: 0 // Reset do campo de custo
-    });
   };
 
   const getPricingModeLabel = (mode: string) => {
@@ -267,7 +316,7 @@ const Produtos: React.FC = () => {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Produtos</h1>
           <p className="text-muted-foreground">
-            Gerencie seu catálogo de produtos
+            Gerencie seu catálogo de produtos e serviços
           </p>
         </div>
         <Button onClick={handleNewProduct}>
@@ -298,137 +347,329 @@ const Produtos: React.FC = () => {
                 {editingProduto ? 'Editar Produto' : 'Novo Produto'}
               </CardTitle>
               <CardDescription>
-                Configure as informações do produto
+                Configure as informações do produto ou serviço
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Seletor de Regra de Precificação */}
-                <div className="space-y-3">
-                  <label className="text-sm font-medium">Regra de Precificação *</label>
-                  <select
-                    value={formData.pricingRuleId}
-                    onChange={(e) => {
-                      const selectedId = e.target.value;
-                      const rule = pricingRules.find(r => r.id === selectedId);
+              <form onSubmit={handleSubmit} className="space-y-5">
 
-                      if (rule) {
-                        setFormData(prev => ({
-                          ...prev,
-                          pricingRuleId: rule.id,
-                          // Mapear o tipo da regra para o pricingMode do sistema
-                          pricingMode: rule.type === 'UNIT' ? 'SIMPLE_UNIT' :
-                            rule.type === 'TIME_AREA' ? 'DYNAMIC_ENGINEER' :
-                              'SIMPLE_AREA'
-                        }));
-                      } else {
-                        setFormData(prev => ({
-                          ...prev,
-                          pricingRuleId: '',
-                          pricingMode: 'SIMPLE_UNIT'
-                        }));
-                      }
-                    }}
-                    className="w-full h-10 px-3 py-2 border border-input rounded-md bg-background"
-                    required
-                  >
-                    <option value="" disabled>Selecione uma regra...</option>
-                    {pricingRules.map((rule) => (
-                      <option key={rule.id} value={rule.id}>
-                        {rule.name}
-                      </option>
-                    ))}
-                  </select>
+                {/* Radio compacto: Produto ou Serviço */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-muted-foreground">Tipo:</span>
+                  <div className="flex rounded-md border border-border overflow-hidden">
+                    <label className={`flex items-center gap-1.5 px-3 py-1.5 text-sm cursor-pointer transition-colors select-none ${
+                      formData.productType === 'PRODUCT'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-background text-muted-foreground hover:bg-muted'
+                    }`}>
+                      <input type="radio" name="productType" value="PRODUCT"
+                        checked={formData.productType === 'PRODUCT'}
+                        onChange={() => setFormData(prev => ({ ...prev, productType: 'PRODUCT' }))}
+                        className="sr-only"
+                      />
+                      <ShoppingBag className="w-3.5 h-3.5" />
+                      Produto
+                    </label>
+                    <label className={`flex items-center gap-1.5 px-3 py-1.5 text-sm cursor-pointer transition-colors select-none border-l border-border ${
+                      formData.productType === 'SERVICE'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-background text-muted-foreground hover:bg-muted'
+                    }`}>
+                      <input type="radio" name="productType" value="SERVICE"
+                        checked={formData.productType === 'SERVICE'}
+                        onChange={() => setFormData(prev => ({ ...prev, productType: 'SERVICE', trackStock: false }))}
+                        className="sr-only"
+                      />
+                      <Briefcase className="w-3.5 h-3.5" />
+                      Serviço
+                    </label>
+                  </div>
                 </div>
 
+                {/* Nome */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Nome do Produto *</label>
+                  <label className="text-sm font-medium">Nome *</label>
                   <Input
                     value={formData.name}
                     onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="Ex: Adesivo Vinil"
+                    placeholder={formData.productType === 'SERVICE' ? 'Ex: Instalação, Arte Vetorial...' : 'Ex: Adesivo Vinil, Banner...'}
                     required
                   />
                 </div>
 
+                {/* Descrição */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Descrição</label>
                   <Input
                     value={formData.description}
                     onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                    placeholder="Descrição opcional do produto"
+                    placeholder="Descrição opcional"
                   />
                 </div>
 
-
-
+                {/* Fórmula de precificação (opcional) — lê do localStorage */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Modo de Precificação *</label>
+                  <label className="text-sm font-medium">Fórmula de Precificação</label>
                   <select
-                    value={formData.pricingMode}
-                    onChange={(e) => setFormData(prev => ({ ...prev, pricingMode: e.target.value as any }))}
-                    className="w-full h-10 px-3 py-2 border border-input rounded-md bg-background"
-                    required
+                    value={formData.localFormulaId}
+                    onChange={(e) => {
+                      const selectedId = e.target.value;
+                      // Zerar os valores de variáveis ao trocar fórmula
+                      const next = localFormulas.find(f => f.id === selectedId);
+                      const initVars: Record<string, number | string> = {};
+                      if (next) {
+                        next.variables.forEach(v => {
+                          initVars[v.id] = v.type === 'FIXED' ? (v.fixedValue ?? 0) : '';
+                        });
+                      }
+                      setFormData(prev => {
+                        const nextState = { ...prev, localFormulaId: selectedId, formulaVarValues: initVars };
+                        
+                        // Calcular preço inicial com as novas variáveis (vazias tratadas como 1.0)
+                        if (next) {
+                          const scope: Record<string, number> = {};
+                          next.variables.forEach(v => {
+                            if (v.type === 'FIXED') {
+                              scope[v.id] = v.fixedValue ?? 0;
+                            } else {
+                              // Fallback inicial para cálculo de referência (1 metro)
+                              if (v.unit === 'cm') scope[v.id] = 100;
+                              else if (v.unit === 'mm') scope[v.id] = 1000;
+                              else scope[v.id] = 1.0;
+                            }
+                          });
+                          const result = evaluateFormula(next.formulaString, scope, next.variables);
+                          if (typeof result === 'number' && isFinite(result)) {
+                            nextState.salePrice = parseFloat(result.toFixed(2));
+                          }
+                        }
+                        
+                        if (!selectedId) {
+                          nextState.pricingMode = 'SIMPLE_UNIT';
+                        }
+                        
+                        return nextState;
+                      });
+                    }}
+                    className="w-full h-10 px-3 py-2 border border-input rounded-md bg-background text-sm"
                   >
-                    <option value="SIMPLE_AREA">Preço por m²</option>
-                    <option value="SIMPLE_UNIT">Preço por unidade</option>
-                    {settings?.enableEngineering && (
-                      <option value="DYNAMIC_ENGINEER">Cálculo dinâmico (custo + margem)</option>
-                    )}
+                    <option value="">Sem fórmula (preço manual)</option>
+                    {localFormulas.map((formula) => (
+                      <option key={formula.id} value={formula.id!}>
+                        {formula.internalName}
+                      </option>
+                    ))}
                   </select>
-
-                  {!settings?.enableEngineering && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      💡 Para usar cálculo dinâmico, ative o módulo de Engenharia de Produto nas configurações
+                  {localFormulas.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      💡 Crie fórmulas em <strong>Configurações → Precificação</strong> para cálculo automático
                     </p>
                   )}
                 </div>
 
-                {(formData.pricingMode === 'SIMPLE_AREA' || formData.pricingMode === 'SIMPLE_UNIT') && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">
-                          Preço de Venda (R$) *
-                        </label>
-                        <CurrencyInput
-                          value={formData.salePrice}
-                          onValueChange={(value) => setFormData(prev => ({ ...prev, salePrice: value || 0 }))}
-                          placeholder="R$ 0,00"
-                        />
+                {/* Campos editáveis das variáveis da fórmula */}
+                {(() => {
+                  const selectedFormula = localFormulas.find(f => f.id === formData.localFormulaId);
+                  if (!selectedFormula) return null;
+
+                  const inputVars = selectedFormula.variables.filter(v => v.type === 'INPUT');
+                  const fixedVars = selectedFormula.variables.filter(v => v.type === 'FIXED');
+
+                  const calculateUpdatedPrice = (currentVars: Record<string, any>) => {
+                    const scope: Record<string, number> = {};
+                    selectedFormula.variables.forEach(v => {
+                      if (v.type === 'FIXED') {
+                        scope[v.id] = v.fixedValue ?? 0;
+                      } else {
+                        const raw = String(currentVars[v.id] || '').replace(',', '.');
+                        const num = parseFloat(raw);
+                        // Se estiver vazio, usamos fallback de 1 unidade de medida real (ex: 1m, 100cm, 1000mm)
+                        if (isNaN(num)) {
+                          if (v.unit === 'cm') scope[v.id] = 100;
+                          else if (v.unit === 'mm') scope[v.id] = 1000;
+                          else scope[v.id] = 1.0;
+                        } else {
+                          scope[v.id] = num;
+                        }
+                      }
+                    });
+
+                    const result = evaluateFormula(selectedFormula.formulaString, scope, selectedFormula.variables);
+                    return typeof result === 'number' && isFinite(result) ? result : formData.salePrice;
+                  };
+
+                  const handleVarChange = (varId: string, rawValue: string) => {
+                    const updatedVars = { ...formData.formulaVarValues, [varId]: rawValue };
+                    const calculatedPrice = calculateUpdatedPrice(updatedVars);
+
+                    setFormData(prev => ({
+                      ...prev,
+                      formulaVarValues: updatedVars,
+                      salePrice: parseFloat(calculatedPrice.toFixed(2))
+                    }));
+                  };
+
+                  return (
+                    <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide shrink-0">
+                          Variáveis da fórmula
+                        </p>
+                        <code className="text-xs bg-muted px-2 py-0.5 rounded font-mono text-muted-foreground truncate">
+                          {selectedFormula.formulaString}
+                        </code>
                       </div>
 
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">
-                          Preço Mínimo (R$)
-                        </label>
-                        <CurrencyInput
-                          value={formData.minPrice}
-                          onValueChange={(value) => setFormData(prev => ({ ...prev, minPrice: value || 0 }))}
-                          placeholder="R$ 0,00"
-                        />
+                      {/* Inputs editáveis */}
+                      {inputVars.length > 0 && (
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                          {inputVars.map(v => (
+                            <div key={v.id} className="space-y-1">
+                              <label className="text-xs font-medium text-foreground flex items-center gap-1">
+                                {v.name}
+                                <span className="text-muted-foreground font-normal">({v.unit})</span>
+                              </label>
+                              <Input
+                                type="text"
+                                inputMode="decimal"
+                                value={String(formData.formulaVarValues[v.id] ?? '')}
+                                onChange={e => handleVarChange(v.id, e.target.value)}
+                                placeholder="0"
+                                className="h-9 font-mono text-sm"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Valores fixos — somente leitura */}
+                      {fixedVars.length > 0 && (
+                        <div className="flex flex-wrap gap-2 pt-1 border-t border-border">
+                          {fixedVars.map(v => (
+                            <div key={v.id} className="flex items-center gap-1 px-2 py-1 bg-muted rounded text-xs text-muted-foreground font-mono">
+                              <span className="font-semibold text-foreground">{v.name}</span>
+                              <span>=</span>
+                              <span className="text-emerald-600 font-bold">{v.fixedValue ?? '—'}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Resultado calculado */}
+                      <div className="flex items-center justify-end gap-2 pt-1 border-t border-border">
+                        <span className="text-xs text-muted-foreground">Preço calculado:</span>
+                        <span className="text-base font-bold text-primary">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(formData.salePrice)}
+                        </span>
                       </div>
                     </div>
+                  );
+                })()}
 
-                    {/* Campo de custo quando engenharia estiver desabilitada */}
-                    {!settings?.enableEngineering && (
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">
-                          Custo do Produto (R$)
-                        </label>
-                        <CurrencyInput
-                          value={formData.costPrice}
-                          onValueChange={(value) => setFormData(prev => ({ ...prev, costPrice: value || 0 }))}
-                          placeholder="R$ 0,00"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          💡 Custo interno do produto para controle de margem
-                        </p>
+
+                {/* Preços — apenas quando não há fórmula selecionada */}
+                {!formData.localFormulaId && (
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium">Preço de Venda (R$)</label>
+                      <CurrencyInput
+                        value={formData.salePrice}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, salePrice: value || 0 }))}
+                        placeholder="R$ 0,00"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium">Preço Mínimo (R$)</label>
+                      <CurrencyInput
+                        value={formData.minPrice}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, minPrice: value || 0 }))}
+                        placeholder="R$ 0,00"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium">Custo (R$)</label>
+                      <CurrencyInput
+                        value={formData.costPrice}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, costPrice: value || 0 }))}
+                        placeholder="R$ 0,00"
+                      />
+                    </div>
+                  </div>
+                )}
+
+
+                {/* Controle de estoque — apenas para produtos */}
+                {formData.productType === 'PRODUCT' && (
+                  <div className="space-y-3 p-4 rounded-lg border border-border bg-muted/30">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        id="trackStock"
+                        checked={formData.trackStock}
+                        onChange={(e) => setFormData(prev => ({ ...prev, trackStock: e.target.checked }))}
+                        className="w-4 h-4 rounded border-border accent-primary"
+                      />
+                      <div className="flex items-center gap-2">
+                        <Warehouse className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">Controlar estoque</span>
+                      </div>
+                    </label>
+
+                    {formData.trackStock && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Quantidade Atual
+                          </label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={formData.stockQuantity}
+                            onChange={(e) => setFormData(prev => ({ ...prev, stockQuantity: parseFloat(e.target.value) || 0 }))}
+                            placeholder="0"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Estoque Mínimo
+                          </label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={formData.stockMinQuantity}
+                            onChange={(e) => setFormData(prev => ({ ...prev, stockMinQuantity: parseFloat(e.target.value) || 0 }))}
+                            placeholder="0"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Unidade
+                          </label>
+                          <select
+                            value={formData.stockUnit}
+                            onChange={(e) => setFormData(prev => ({ ...prev, stockUnit: e.target.value }))}
+                            className="w-full h-10 px-3 py-2 border border-input rounded-md bg-background text-sm"
+                          >
+                            <option value="un">un (unidade)</option>
+                            <option value="m²">m² (metro quadrado)</option>
+                            <option value="m">m (metro linear)</option>
+                            <option value="kg">kg (quilograma)</option>
+                            <option value="g">g (grama)</option>
+                            <option value="l">l (litro)</option>
+                            <option value="cx">cx (caixa)</option>
+                            <option value="pc">pc (peça)</option>
+                          </select>
+                        </div>
                       </div>
                     )}
                   </div>
                 )}
 
+                {/* Markup para modo DYNAMIC_ENGINEER */}
                 {formData.pricingMode === 'DYNAMIC_ENGINEER' && (
                   <div className="space-y-2">
                     <label className="text-sm font-medium">
@@ -448,14 +689,14 @@ const Produtos: React.FC = () => {
                   </div>
                 )}
 
-                <div className="flex justify-end space-x-2 pt-4">
+                <div className="flex justify-end space-x-2 pt-4 border-t">
                   <Button
                     type="button"
                     variant="outline"
                     onClick={() => {
                       setShowForm(false);
                       setEditingProduto(null);
-                      resetForm();
+                      setFormData(defaultForm);
                     }}
                   >
                     Cancelar
@@ -476,25 +717,36 @@ const Produtos: React.FC = () => {
           <Card key={produto.id}>
             <CardHeader>
               <div className="flex justify-between items-start">
-                <div>
-                  <CardTitle className="text-lg">{produto.name}</CardTitle>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    {produto.productType === 'SERVICE'
+                      ? <Briefcase className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      : <ShoppingBag className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                    }
+                    <CardTitle className="text-lg leading-tight">{produto.name}</CardTitle>
+                  </div>
                   <CardDescription className="flex items-center space-x-2 flex-wrap gap-1">
-                    {produto.pricingRuleId && (
-                      <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs font-medium border">
-                        {pricingRules.find(r => r.id === produto.pricingRuleId)?.name || 'Regra Personalizada'}
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${produto.productType === 'SERVICE'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-blue-100 text-blue-700'
+                      }`}>
+                      {produto.productType === 'SERVICE' ? 'Serviço' : 'Produto'}
+                    </span>
+
+                    {(produto.localFormulaId || produto.pricingRuleId) && (
+                      <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-medium border">
+                        {localFormulas.find(f => f.id === (produto.localFormulaId || produto.pricingRuleId))?.internalName || 'Fórmula'}
                       </span>
                     )}
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${getPricingModeColor(produto.pricingMode)}`}>
-                      {getPricingModeLabel(produto.pricingMode)}
-                    </span>
-                    {produto.pricingMode === 'DYNAMIC_ENGINEER' && !settings?.enableEngineering && (
-                      <span className="px-2 py-1 bg-yellow-100 text-yellow-600 rounded text-xs font-medium">
-                        ⚠️ DESABILITADO
+
+                    {!(produto.localFormulaId || produto.pricingRuleId) && (
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${getPricingModeColor(produto.pricingMode)}`}>
+                        {getPricingModeLabel(produto.pricingMode)}
                       </span>
                     )}
                   </CardDescription>
                 </div>
-                <div className="flex space-x-1">
+                <div className="flex space-x-1 shrink-0 ml-2">
                   <Button
                     size="icon"
                     variant="ghost"
@@ -530,11 +782,9 @@ const Produtos: React.FC = () => {
                 )}
 
                 <div className="space-y-1">
-                  {produto.salePrice && (
-                    <p className="text-sm">
-                      <span className="font-medium">Preço: </span>
+                  {produto.salePrice !== undefined && (
+                    <p className="text-xl font-bold text-primary">
                       {formatCurrency(produto.salePrice)}
-                      {produto.pricingMode === 'SIMPLE_AREA' && '/m²'}
                     </p>
                   )}
 
@@ -545,8 +795,7 @@ const Produtos: React.FC = () => {
                     </p>
                   )}
 
-                  {/* Mostrar custo quando engenharia estiver desabilitada */}
-                  {!settings?.enableEngineering && produto.costPrice && (
+                  {produto.costPrice && (
                     <p className="text-sm">
                       <span className="font-medium">Custo: </span>
                       {formatCurrency(produto.costPrice)}
@@ -558,6 +807,25 @@ const Produtos: React.FC = () => {
                       <span className="font-medium">Margem: </span>
                       {produto.markup}x
                     </p>
+                  )}
+
+                  {/* Estoque */}
+                  {produto.trackStock && produto.productType === 'PRODUCT' && (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <Warehouse className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">
+                        Estoque: {produto.stockQuantity ?? 0} {produto.stockUnit || 'un'}
+                        {produto.stockMinQuantity != null && (
+                          <span className={
+                            (produto.stockQuantity ?? 0) <= produto.stockMinQuantity
+                              ? ' text-red-500 font-medium'
+                              : ''
+                          }>
+                            {' '}(mín: {produto.stockMinQuantity})
+                          </span>
+                        )}
+                      </span>
+                    </div>
                   )}
                 </div>
 

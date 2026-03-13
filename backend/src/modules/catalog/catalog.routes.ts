@@ -10,12 +10,23 @@ import { getTenantClient } from '../../shared/infrastructure/database/tenant';
 const createProductSchema = z.object({
   name: z.string().min(2),
   description: z.string().optional(),
-  pricingMode: z.enum(['SIMPLE_AREA', 'SIMPLE_UNIT', 'DYNAMIC_ENGINEER']),
-  pricingRuleId: z.string().uuid().optional(),
-  salePrice: z.number().min(0).optional(),
-  minPrice: z.number().min(0).optional(),
-  markup: z.number().positive().default(2.0)
+  productType: z.enum(['PRODUCT', 'SERVICE', 'PRINT_SHEET', 'PRINT_ROLL', 'LASER_CUT', 'UNIT', 'SQUARE_METER', 'TIME_AREA']).optional().default('PRODUCT'),
+  pricingMode: z.enum(['SIMPLE_AREA', 'SIMPLE_UNIT', 'DYNAMIC_ENGINEER']).optional().default('SIMPLE_AREA'),
+  pricingRuleId: z.string().uuid().optional().nullable(),
+  localFormulaId: z.string().optional().nullable(),
+  salePrice: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional()),
+  minPrice: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional()),
+  costPrice: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional()),
+  markup: z.preprocess((val) => (val === '' || val === null || val === undefined) ? 2.0 : isNaN(Number(val)) ? 2.0 : Number(val), z.number().positive().default(2.0)),
+  // Controle de estoque
+  trackStock: z.boolean().optional().default(false),
+  stockQuantity: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional().nullable()),
+  stockMinQuantity: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional().nullable()),
+  stockUnit: z.string().optional().nullable(),
+  formulaData: z.any().optional(),
 });
+
+const updateProductSchema = createProductSchema.partial();
 
 const createMaterialSchema = z.object({
   name: z.string().min(2),

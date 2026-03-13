@@ -11,12 +11,15 @@ export class QueryOptimizer {
         id: true,
         name: true,
         description: true,
+        productType: true,
+        localFormulaId: true,
         pricingRuleId: true,
         pricingMode: true,
         salePrice: true,
         minPrice: true,
         markup: true,
         active: true,
+        formulaData: true,
         components: {
           select: {
             id: true,
@@ -187,11 +190,13 @@ export class QueryOptimizer {
       select: {
         id: true,
         name: true,
+        localFormulaId: true,
         pricingRuleId: true,
         pricingMode: true,
         salePrice: true,
         minPrice: true,
         markup: true,
+        formulaData: true,
         components: {
           select: {
             id: true,

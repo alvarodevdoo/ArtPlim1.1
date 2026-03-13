@@ -634,9 +634,9 @@ const Configuracoes: React.FC = () => {
             <div className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Regras de Precificação</CardTitle>
+                  <CardTitle>Regras de Precificação (Motor Dinâmico)</CardTitle>
                   <CardDescription>
-                    Configure como seus produtos e serviços são cobrados
+                    Configure fórmulas com variáveis dinâmicas de engenharia para produtos
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

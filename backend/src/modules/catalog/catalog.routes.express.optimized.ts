@@ -12,13 +12,21 @@ const listQuerySchema = z.object({
 const createProductSchema = z.object({
   name: z.string().min(2),
   description: z.string().optional(),
-  pricingMode: z.enum(['SIMPLE_AREA', 'SIMPLE_UNIT', 'DYNAMIC_ENGINEER']),
-  pricingRuleId: z.string().uuid().optional(),
-  salePrice: z.number().min(0).optional(),
-  minPrice: z.number().min(0).optional(),
-  costPrice: z.number().min(0).optional(),
-  markup: z.number().positive().default(2.0),
-  active: z.boolean().optional()
+  productType: z.enum(['PRODUCT', 'SERVICE', 'PRINT_SHEET', 'PRINT_ROLL', 'LASER_CUT', 'UNIT', 'SQUARE_METER', 'TIME_AREA']).optional().default('PRODUCT'),
+  pricingMode: z.enum(['SIMPLE_AREA', 'SIMPLE_UNIT', 'DYNAMIC_ENGINEER']).optional().default('SIMPLE_AREA'),
+  localFormulaId: z.string().optional().nullable(),
+  pricingRuleId: z.string().uuid().optional().nullable(),
+  salePrice: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional()),
+  minPrice: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional()),
+  costPrice: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional()),
+  markup: z.preprocess((val) => (val === '' || val === null || val === undefined) ? 2.0 : isNaN(Number(val)) ? 2.0 : Number(val), z.number().positive().default(2.0)),
+  active: z.boolean().optional(),
+  formulaData: z.any().optional(),
+  // Controle de estoque
+  trackStock: z.boolean().optional().default(false),
+  stockQuantity: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional().nullable()),
+  stockMinQuantity: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional().nullable()),
+  stockUnit: z.string().optional().nullable(),
 });
 
 const updateProductSchema = createProductSchema.partial();
@@ -119,28 +127,45 @@ export function createOptimizedCatalogRoutes(prisma: PrismaClient) {
         data: {
           name: body.name,
           description: body.description,
-          pricingMode: body.pricingMode,
+          productType: body.productType || 'PRODUCT',
+          pricingMode: body.pricingMode || 'SIMPLE_AREA',
+          // Salvar ID local da fórmula como string simples
+          localFormulaId: body.localFormulaId || null,
+          // Usar relação connect para pricingRuleId
+          ...(body.pricingRuleId ? { pricingRule: { connect: { id: body.pricingRuleId } } } : {}),
           salePrice: body.salePrice,
           minPrice: body.minPrice,
           costPrice: body.costPrice,
           markup: body.markup,
           active: body.active ?? true,
+          formulaData: body.formulaData || null,
+          trackStock: body.trackStock ?? false,
+          stockQuantity: body.trackStock ? (body.stockQuantity ?? null) : null,
+          stockMinQuantity: body.trackStock ? (body.stockMinQuantity ?? null) : null,
+          stockUnit: body.trackStock ? (body.stockUnit ?? null) : null,
           organization: { connect: { id: req.user.organizationId } },
-          pricingRule: body.pricingRuleId ? { connect: { id: body.pricingRuleId } } : undefined
-        },
+        } as any,
         select: {
           id: true,
           name: true,
           description: true,
+          productType: true,
+          localFormulaId: true,
           pricingRuleId: true,
           pricingMode: true,
           salePrice: true,
           minPrice: true,
+          costPrice: true,
           markup: true,
+          trackStock: true,
+          stockQuantity: true,
+          stockMinQuantity: true,
+          stockUnit: true,
           active: true,
+          formulaData: true,
           createdAt: true
-        }
-      });
+        } as any
+      } as any);
 
       res.status(201).json({
         success: true,
@@ -169,13 +194,16 @@ export function createOptimizedCatalogRoutes(prisma: PrismaClient) {
           id: true,
           name: true,
           description: true,
+          productType: true,
           pricingMode: true,
+          localFormulaId: true,
           pricingRuleId: true,
           salePrice: true,
           minPrice: true,
           costPrice: true,
           markup: true,
           active: true,
+          formulaData: true,
           createdAt: true,
           updatedAt: true,
           components: {
@@ -199,7 +227,7 @@ export function createOptimizedCatalogRoutes(prisma: PrismaClient) {
               }
             }
           }
-        }
+        } as any
       });
 
       if (!product) {
@@ -296,23 +324,48 @@ export function createOptimizedCatalogRoutes(prisma: PrismaClient) {
       const product = await prisma.product.update({
         where: { id },
         data: {
-          ...body,
-          pricingRule: body.pricingRuleId ? { connect: { id: body.pricingRuleId } } : undefined,
-          pricingRuleId: undefined // Let connect handle it
-        },
+          name: body.name,
+          description: body.description,
+          productType: body.productType,
+          pricingMode: body.pricingMode,
+          // Salvar ID local da fórmula como string simples
+          localFormulaId: body.localFormulaId !== undefined ? (body.localFormulaId || null) : undefined,
+          ...(body.pricingRuleId !== undefined ? (
+            body.pricingRuleId ? { pricingRule: { connect: { id: body.pricingRuleId } } } : { pricingRule: { disconnect: true } }
+          ) : {}),
+          salePrice: body.salePrice,
+          minPrice: body.minPrice,
+          costPrice: body.costPrice,
+          markup: body.markup,
+          formulaData: body.formulaData !== undefined ? (body.formulaData || null) : undefined,
+          active: body.active,
+          trackStock: body.trackStock,
+          stockQuantity: body.trackStock ? (body.stockQuantity ?? null) : null,
+          stockMinQuantity: body.trackStock ? (body.stockMinQuantity ?? null) : null,
+          stockUnit: body.trackStock ? (body.stockUnit ?? null) : null,
+          updatedAt: new Date(),
+        } as any,
         select: {
           id: true,
           name: true,
           description: true,
+          productType: true,
+          localFormulaId: true,
           pricingRuleId: true,
           pricingMode: true,
           salePrice: true,
           minPrice: true,
+          costPrice: true,
           markup: true,
+          trackStock: true,
+          stockQuantity: true,
+          stockMinQuantity: true,
+          stockUnit: true,
           active: true,
+          formulaData: true,
           updatedAt: true
-        }
-      });
+        } as any
+      } as any);
 
       res.json({
         success: true,
@@ -646,7 +699,7 @@ export function createOptimizedCatalogRoutes(prisma: PrismaClient) {
         data: {
           ...body,
           updatedAt: new Date()
-        }
+        } as any,
       });
 
       res.json({
