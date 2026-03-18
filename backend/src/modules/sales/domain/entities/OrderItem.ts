@@ -24,6 +24,7 @@ export interface OrderItemProps {
   // Tamanho personalizado
   customSizeName?: string;
   isCustomSize?: boolean;
+  attributes?: Record<string, any>;
 }
 
 export class OrderItem {
@@ -47,6 +48,7 @@ export class OrderItem {
   private _complexity?: string;
   private _customSizeName?: string;
   private _isCustomSize?: boolean;
+  private _attributes?: Record<string, any>;
 
   constructor(props: OrderItemProps) {
     this._id = props.id;
@@ -69,6 +71,7 @@ export class OrderItem {
     this._complexity = props.complexity;
     this._customSizeName = props.customSizeName;
     this._isCustomSize = props.isCustomSize;
+    this._attributes = props.attributes;
 
     this.validate();
   }
@@ -161,6 +164,10 @@ export class OrderItem {
     return this._isCustomSize;
   }
 
+  get attributes(): Record<string, any> | undefined {
+    return this._attributes;
+  }
+
   // Métodos de negócio
   updateQuantity(newQuantity: number): void {
     if (newQuantity <= 0) {
@@ -204,7 +211,8 @@ export class OrderItem {
       setupTime: this._setupTime,
       complexity: this._complexity,
       customSizeName: this._customSizeName,
-      isCustomSize: this._isCustomSize
+      isCustomSize: this._isCustomSize,
+      attributes: this._attributes
     };
   }
 }

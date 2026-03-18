@@ -1,6 +1,6 @@
 import React from 'react';
 import { Skeleton } from './skeleton';
-import { Card, CardContent, CardHeader } from './card';
+import { Card, CardContent, CardHeader } from './Card';
 import { Loader2, RefreshCw } from 'lucide-react';
 
 // Loading para tabelas

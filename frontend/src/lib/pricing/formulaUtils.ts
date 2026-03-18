@@ -1,4 +1,4 @@
-import * as mathjs from 'mathjs';
+import { evaluate, parse, unit } from 'mathjs';
 
 /**
  * Extrai variáveis de uma fórmula em forma de string.
@@ -8,9 +8,11 @@ export const extractVariables = (formulaStr: string): string[] => {
     if (!formulaStr || formulaStr.trim() === '') return [];
 
     try {
-        // Fallback rápido usando Regex para pegar palavras não numéricas
-        // Matches de palavras que comecem com letra ou _, seguidos de letras, números ou _
-        const matches = formulaStr.match(/[a-zA-Z_][a-zA-Z0-9_]*/g);
+        // Primeiro: Remover os rótulos de detalhamento (#) para não extrair "Filamento" se estiver em (expr)#Filamento
+        const formulaWithoutLabels = formulaStr.replace(/#[a-zA-ZáàâãééêíïóôõõúüçÁÀÂÃÉÈÊÍÏÓÔÕÖÚÜÇ_0-9]*/g, '');
+
+        // Suporte a caracteres acentuados (PT-BR) e underscores
+        const matches = formulaWithoutLabels.match(/[a-zA-ZáàâãééêíïóôõõúüçÁÀÂÃÉÈÊÍÏÓÔÕÖÚÜÇ_][a-zA-Z0-9áàâãééêíïóôõõúüçÁÀÂÃÉÈÊÍÏÓÔÕÖÚÜÇ_]*/g);
         if (!matches) return [];
 
         // Palavras reservadas da matemática / mathjs
@@ -81,7 +83,7 @@ export const validateFormulaSyntax = (formulaStr: string): true | string => {
     if (!formulaStr || formulaStr.trim() === '') return "A fórmula está vazia.";
 
     try {
-        mathjs.parse(formulaStr);
+        parse(formulaStr);
         return true;
     } catch (error: any) {
         return error.message || "Erro de sintaxe na fórmula.";
@@ -96,46 +98,181 @@ export const evaluateFormula = (formulaStr: string, scope: Record<string, number
     try {
         if (!formulaStr || formulaStr.trim() === '') return 0;
 
+        // 0. Preparar detalhamento (BREAKDOWN)
+        const breakdown: { label: string, value: number }[] = [];
+        
+        // Identificar blocos de detalhamento: (expressao)#Rotulo
+        const breakdownRegex = /\(([^)]+)\)#([a-zA-ZáàâãééêíïóôõõúüçÁÀÂÃÉÈÊÍÏÓÔÕÖÚÜÇ_0-9]+)/g;
+        let match;
+
+        // 0. Limpar comentários e normalizar operadores comuns (×, ÷)
+        const cleanFormula = formulaStr
+            .replace(/#[a-zA-ZáàâãééêíïóôõõúüçÁÀÂÃÉÈÊÍÏÓÔÕÖÚÜÇ_0-9]+/g, '') // Remove os rótulos # para o mathjs não quebrar
+            .replace(/×/g, '*')
+            .replace(/÷/g, '/');
+
         // 1. Extrair tanto os valores do simulador (scope) quanto os valores FIXOS das variáveis
         const normalizedScope: Record<string, any> = {};
 
         // Primeiro: Adicionar os valores vindos do simulador
         Object.keys(scope).forEach(key => {
-            normalizedScope[key] = scope[key];
-            normalizedScope[key.toLowerCase()] = scope[key];
+            const val = scope[key];
+            normalizedScope[key] = val;
+            normalizedScope[key.toLowerCase()] = val;
+            normalizedScope[key.toUpperCase()] = val;
         });
 
         // Segundo: Adicionar os valores FIXOS
         if (ruleVariables && Array.isArray(ruleVariables)) {
             ruleVariables.forEach(v => {
                 if (v.type === 'FIXED' && v.fixedValue !== undefined) {
-                    normalizedScope[v.id] = v.fixedValue;
-                    normalizedScope[v.id.toLowerCase()] = v.fixedValue;
+                    const val = v.fixedValue;
+                    normalizedScope[v.id] = val;
+                    normalizedScope[v.id.toLowerCase()] = val;
+                    normalizedScope[v.id.toUpperCase()] = val;
                 }
             });
 
-            // Terceiro: Aplicar normalizações
+            // Terceiro: Aplicar normalizações universais via MathJS
             ruleVariables.forEach(variable => {
                 const lowerId = variable.id.toLowerCase();
-                const actualId = normalizedScope.hasOwnProperty(variable.id) ? variable.id : (normalizedScope.hasOwnProperty(lowerId) ? lowerId : null);
+                const upperId = variable.id.toUpperCase();
 
-                if (actualId && variable.unit) {
-                    let val = normalizedScope[actualId];
-                    switch (variable.unit) {
-                        case 'mm': val = val / 1000; break;
-                        case 'cm': val = val / 100; break;
-                        case 'mm2': val = val / 1000000; break;
-                        case 'cm2': val = val / 10000; break;
-                        case 'g': val = val / 1000; break;
-                        case '%': val = val / 100; break;
+                // Prioridade: ID exato > lowercase > uppercase
+                const actualId = normalizedScope.hasOwnProperty(variable.id)
+                    ? variable.id
+                    : (normalizedScope.hasOwnProperty(lowerId) ? lowerId : (normalizedScope.hasOwnProperty(upperId) ? upperId : null));
+
+                if (actualId) {
+                    let val = typeof normalizedScope[actualId] === 'string' 
+                        ? parseFloat((normalizedScope[actualId] as string).replace(',', '.')) 
+                        : normalizedScope[actualId];
+                    
+                    if (isNaN(val)) val = 0;
+                    // TIPOS DE VARIÁVEL - Normalização Estrita para a Menor Unidade Comum
+                    const roleMappings: Record<string, string> = {
+                        'LENGTH': 'mm',
+                        'AREA': 'mm2',
+                        'VOLUME': 'ml',
+                        'TIME': 's',
+                        'WEIGHT': 'g',
+                        'ENERGY': 'Wh',
+                        'POWER': 'W',
+                        'PERCENT': '%'
+                    };
+
+                    const baseUnitFromRole = (variable.role && variable.role !== 'NONE') ? roleMappings[variable.role] : null;
+                    const baseUnit = variable.baseUnit || baseUnitFromRole || variable.unit || null;
+
+                    // Busca exaustiva pela unidade no escopo (insensível à caixa)
+                    const unitKey = `${actualId}_unit`;
+                    const lowerUnitKey = `${variable.id.toLowerCase()}_unit`;
+                    const upperUnitKey = `${variable.id.toUpperCase()}_unit`;
+
+                    let currentUnit = (scope as any)[unitKey]
+                        || (scope as any)[lowerUnitKey]
+                        || (scope as any)[upperUnitKey]
+                        || variable.unit
+                        || baseUnit;
+
+                    // Mapeamento exaustivo de unidades de UI para unidades MathJS
+                    const unitMapping: Record<string, string> = {
+                        // Comprimento
+                        'KM': 'km', 'M': 'm', 'CM': 'cm', 'MM': 'mm',
+                        // Área
+                        'M2': 'm2', 'M²': 'm2', 'CM2': 'cm2', 'CM²': 'cm2', 'MM2': 'mm2', 'MM²': 'mm2',
+                        // Volume
+                        'L': 'l', 'ML': 'ml',
+                        // Tempo
+                        'H': 'h', 'MIN': 'min', 'S': 's',
+                        // Peso
+                        'KG': 'kg', 'G': 'g', 'MG': 'mg',
+                        // Energia
+                        'KWH': 'kWh', 'WH': 'Wh', 'MWH': 'mWh',
+                        // Potência
+                        'KW': 'kW', 'W': 'W', 'MW': 'mW'
+                    };
+
+                    const normalizeUnit = (u: string) => {
+                        if (!u) return u;
+                        const upperU = u.toUpperCase();
+                        // Remover ^ para compatibilidade se vier M^2
+                        const cleanU = upperU.replace('^', '');
+                        return unitMapping[cleanU] || u.toLowerCase();
+                    };
+
+                    const normalizedBase = normalizeUnit(baseUnit);
+                    const normalizedCurrent = normalizeUnit(currentUnit);
+
+                    // Lista de unidades "não-físicas"
+                    const nonPhysicalUnits = ['X', 'moeda', 'un', 'unidade', 'und', 'pç', 'pcas', 'folhas'];
+                    const isPhysical = (u: string) => u && !nonPhysicalUnits.includes(u.toLowerCase()) && u !== '%';
+
+                    if (variable.role === 'COST_RATE') {
+                        // Se for uma taxa (Ex: R$/kg), normaliza para a menor unidade (Ex: R$/g)
+                        const rateUnit = currentUnit || '';
+                        if (rateUnit.includes('/')) {
+                            const [_curr, unitPart] = rateUnit.split('/');
+                            const normalizedUnitPart = normalizeUnit(unitPart.trim());
+                            
+                            // Determinar a unidade base de destino (Ex: kWh -> Wh, KG -> G)
+                            const targetBaseMap: Record<string, string> = {
+                                'kWh': 'Wh', 'Wh': 'Wh', 'mWh': 'Wh',
+                                'kg': 'g', 'g': 'g', 'mg': 'g',
+                                'km': 'mm', 'm': 'mm', 'cm': 'mm', 'mm': 'mm',
+                                'l': 'ml', 'ml': 'ml'
+                            };
+                            
+                            const normalizedBasePart = targetBaseMap[normalizedUnitPart] || normalizedUnitPart;
+                            
+                            if (normalizedUnitPart !== normalizedBasePart) {
+                                try {
+                                    // Para taxas (Ex: R$/kg), se kg vira g (fator 1000), o preço deve ser DIVIDIDO por 1000
+                                    const factor = unit(1, normalizedUnitPart).toNumber(normalizedBasePart);
+                                    const converted = val / factor;
+                                    normalizedScope[variable.id] = converted;
+                                    normalizedScope[lowerId] = converted;
+                                    normalizedScope[upperId] = converted;
+                                } catch (e: any) {
+                                    console.warn(`Erro na conversão de taxa ${actualId}:`, e);
+                                    return `Erro conversao taxa ${actualId}: ` + e.message;
+                                }
+                            }
+                        }
+                    } else if (baseUnit === '%' || variable.role === 'PERCENT') {
+                        const converted = val / 100;
+                        normalizedScope[variable.id] = converted;
+                        normalizedScope[lowerId] = converted;
+                        normalizedScope[upperId] = converted;
+                    } else if (normalizedBase && normalizedCurrent && isPhysical(normalizedBase) && isPhysical(normalizedCurrent) && normalizedBase !== normalizedCurrent) {
+                        try {
+                            const converted = unit(val, normalizedCurrent).toNumber(normalizedBase);
+                            normalizedScope[variable.id] = converted;
+                            normalizedScope[lowerId] = converted;
+                            normalizedScope[upperId] = converted;
+                        } catch (e: any) {
+                            console.warn(`Erro na conversão de ${actualId}:`, e);
+                            return `Erro conversao ${actualId} (${normalizedCurrent} para ${normalizedBase}): ` + e.message;
+                        }
                     }
-                    normalizedScope[variable.id] = val;
-                    normalizedScope[lowerId] = val;
                 }
             });
         }
 
-        let result = mathjs.evaluate(formulaStr, normalizedScope);
+        // AGORA: Calcular os sub-blocos do breakdown usando o scope já normalizado
+
+        breakdownRegex.lastIndex = 0; // Reset regex
+        while ((match = breakdownRegex.exec(formulaStr)) !== null) {
+            const subExpr = match[1];
+            const label = match[2];
+            try {
+                const subRes = evaluate(subExpr.replace(/×/g, '*').replace(/÷/g, '/'), normalizedScope);
+                const val = typeof subRes === 'number' ? subRes : (subRes?.value || 0);
+                breakdown.push({ label, value: Math.round(val * 100) / 100 });
+            } catch (e) {}
+        }
+
+        let result = evaluate(cleanFormula, normalizedScope);
 
         // Conversão final robusta para número
         let numericResult: number = NaN;
@@ -159,9 +296,88 @@ export const evaluateFormula = (formulaStr: string, scope: Record<string, number
             return Math.round(numericResult * 100) / 100;
         }
 
-        return `Erro: Resultado não numérico (${typeof result}). Verifique as variáveis.`;
+        return `Erro: Resultado não numérico.`;
     } catch (error: any) {
-        console.error("MATH ERROR:", error);
+        // Tentar capturar nome de variável indefinida de forma amigável
+        if (error.message && error.message.includes('Undefined symbol')) {
+            const sym = error.message.split('Undefined symbol ')[1];
+            return `Pendente: ${sym}`;
+        }
         return `Erro: ${error.message}`;
+    }
+}
+
+/**
+ * Quebra a fórmula em componentes baseados no operador de soma (+).
+ * Retorna uma lista de { name, value } para exibição em tooltips.
+ */
+export interface FormulaComponent {
+    name: string;
+    value: number;
+    raw: string;
+}
+
+export const getFormulaComponentBreakdown = (
+    formulaStr: string,
+    scope: Record<string, number>,
+    ruleVariables?: any[]
+): FormulaComponent[] => {
+    if (!formulaStr) return [];
+
+    try {
+        // Função auxiliar para quebrar strings em + respeitando parênteses
+        const parts: string[] = [];
+        let current = "";
+        let parenLevel = 0;
+
+        for (let i = 0; i < formulaStr.length; i++) {
+            const char = formulaStr[i];
+            if (char === '(') parenLevel++;
+            if (char === ')') parenLevel--;
+
+            if (char === '+' && parenLevel === 0) {
+                parts.push(current.trim());
+                current = "";
+            } else {
+                current += char;
+            }
+        }
+        parts.push(current.trim());
+
+        const breakdown: FormulaComponent[] = [];
+
+        parts.forEach(part => {
+            if (!part || part.trim() === "") return;
+
+            // Extrair nome amigável do comentário #
+            let name = "";
+            let expression = part;
+
+            if (part.includes('#')) {
+                const subParts = part.split('#');
+                expression = subParts[0].trim();
+                name = subParts[1].trim();
+            }
+
+            // Se não tiver nome, tenta inferir algo ou usa "Custo Adicional"
+            if (!name) {
+                const vars = extractVariables(expression);
+                if (vars.length === 1) {
+                    name = vars[0].charAt(0).toUpperCase() + vars[0].slice(1).replace(/_/g, ' ');
+                } else {
+                    name = "Outro Custo";
+                }
+            }
+
+            const val = evaluateFormula(expression, scope, ruleVariables);
+            if (typeof val === 'number') {
+                breakdown.push({ name, value: val, raw: expression });
+            }
+        });
+
+        return breakdown;
+    } catch (e) {
+        console.error("Erro ao gerar detalhamento da fórmula:", e);
+        return [];
     }
 }

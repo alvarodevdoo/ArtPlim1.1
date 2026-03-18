@@ -15,7 +15,6 @@ export interface Produto {
     productType?: ItemType;
     pricingMode: 'SIMPLE_AREA' | 'SIMPLE_UNIT' | 'DYNAMIC_ENGINEER';
     salePrice?: number;
-    minPrice?: number;
     standardSizes?: StandardSize[];
 }
 

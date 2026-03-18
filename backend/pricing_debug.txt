@@ -1,0 +1,52 @@
+--- Products with fixed prices ---
+ÔöîÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔö¼ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔö¼ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔö¼ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔö¼ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÉ
+Ôöé (index) Ôöé name             Ôöé minPrice Ôöé salePrice Ôöé hasFormula Ôöé
+Ôö£ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔö╝ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔö╝ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔö╝ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔö╝ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöñ
+Ôöé 0       Ôöé 'Painel'         Ôöé '80'     Ôöé '80'      Ôöé false      Ôöé
+Ôöé 1       Ôöé 'Banner em Lona' Ôöé '15'     Ôöé '0'       Ôöé true       Ôöé
+Ôöé 2       Ôöé 'Adesivo Vinil'  Ôöé '30'     Ôöé '45'      Ôöé true       Ôöé
+ÔööÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔö┤ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔö┤ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔö┤ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔö┤ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÿ
+
+--- Pricing Rules ---
+Rule: Padr├úo Lonas (Markup 2.5x)
+Formula: "CUSTO_MATERIAIS * 2.5"
+---
+Rule: Vinil
+Formula: {
+  "variables": [
+    {
+      "id": "largura",
+      "name": "Largura",
+      "type": "INPUT",
+      "unit": "cm",
+      "lockedUnit": false
+    },
+    {
+      "id": "altura",
+      "name": "Altura",
+      "type": "INPUT",
+      "unit": "cm",
+      "lockedUnit": false
+    },
+    {
+      "id": "price",
+      "name": "Pre├ºo por m┬▓",
+      "type": "INPUT",
+      "unit": "moeda",
+      "fixedValue": 80,
+      "lockedUnit": true
+    },
+    {
+      "id": "price_for",
+      "name": "custo",
+      "type": "INPUT",
+      "unit": "moeda",
+      "visible": false,
+      "fixedValue": 25,
+      "lockedUnit": false
+    }
+  ],
+  "formulaString": " ceil( ( largura * altura ) * price )",
+  "costFormulaString": "( largura * altura ) * price_for"
+}
+---

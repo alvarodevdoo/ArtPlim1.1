@@ -11,7 +11,6 @@ interface Produto {
     description?: string;
     pricingMode: 'SIMPLE_AREA' | 'SIMPLE_UNIT' | 'DYNAMIC_ENGINEER';
     salePrice?: number;
-    minPrice?: number;
     productType?: ItemType; // Corrigido para usar ItemType enum
     usageCount?: number; // Para ordenação por mais usado
 }

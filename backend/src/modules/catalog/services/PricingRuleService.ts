@@ -19,8 +19,8 @@ export class PricingRuleService {
                 organizationId: data.organizationId,
                 name: data.name,
                 type: data.type,
-                formula: data.formula,
-                config: data.config,
+                formula: typeof data.formula === 'string' ? data.formula : JSON.stringify(data.formula),
+                config: data.config ? (typeof data.config === 'string' ? data.config : JSON.stringify(data.config)) : null,
                 active: data.active ?? true
             }
         });
@@ -50,10 +50,27 @@ export class PricingRuleService {
     }
 
     async update(id: string, data: Partial<CreatePricingRuleInput>) {
+        const updateData: any = { ...data };
+        
+        if (updateData.formula) {
+            updateData.formula = typeof updateData.formula === 'string' 
+                ? updateData.formula 
+                : JSON.stringify(updateData.formula);
+        }
+
+        if (updateData.config) {
+            updateData.config = typeof updateData.config === 'string'
+                ? updateData.config
+                : JSON.stringify(updateData.config);
+        }
+
+        // Destructuring para remover organizationId do update do Prisma
+        const { organizationId: _orgId, ...finalUpdateData } = updateData;
+
         return this.prisma.pricingRule.update({
             where: { id },
             data: {
-                ...data,
+                ...finalUpdateData,
                 updatedAt: new Date()
             }
         });

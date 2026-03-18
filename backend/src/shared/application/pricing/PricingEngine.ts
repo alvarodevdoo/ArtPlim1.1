@@ -1,351 +1,242 @@
-import { PricingMode } from '@prisma/client';
-import { ProductComponentService } from '../../../modules/catalog/services/ProductComponentService';
 import { prisma } from '../../infrastructure/database/prisma';
+import { all, create } from 'mathjs';
+
+const math = create(all);
 
 interface CalculationInput {
-  product: {
-    id: string;
-    name: string;
-    pricingMode: PricingMode;
-    salePrice?: number;
-    minPrice?: number;
-    markup: number;
-  };
-  width: number;  // mm
-  height: number; // mm
+  productId: string;
   quantity: number;
-  configurations?: Record<string, any>;
-  organizationSettings?: {
-    enableEngineering: boolean;
-    defaultMarkup: number;
-  };
-}
-
-interface ConfigurationSelections {
-  [configurationId: string]: any;
-}
-
-interface ComponentModifier {
-  componentId: string;
-  modificationType: 'MULTIPLY' | 'ADD' | 'REPLACE';
-  value: number;
-  unit?: string;
-}
-
-interface AdditionalComponent {
-  materialId: string;
-  consumptionMethod: string;
-  quantity: number;
-  wastePercentage: number;
-  isOptional: boolean;
+  variables?: Record<string, { value: any; unit: string | null }>;
+  selectedOptionIds?: string[];
+  organizationId: string;
 }
 
 interface CalculationOutput {
-  costPrice: number;       // Custo interno
-  calculatedPrice: number; // Preço sugerido
-  unitPrice: number;       // Preço final (inicialmente igual ao calculado)
-  details: string[];       // Log do cálculo
-  configurationSurcharge?: number; // Sobretaxa das configurações
-  materials?: Array<{
-    name: string;
-    needed: number;
-    unit: string;
-    cost: number;
-    wasteApplied: number;
-    isFromConfiguration?: boolean;
-  }>;
-  configurationBreakdown?: Array<{
-    configurationName: string;
-    selectedOption: string;
-    priceModifier: number;
-    materialChanges: string[];
+  costPrice: number;       // Custo total de insumos (CUSTO_MATERIAIS)
+  unitPrice: number;       // Preço final calculado/validado
+  totalPrice: number;      // unitPrice * quantity
+  details: string[];       // Log do cálculo para debug
+  insumos: Array<{
+    id: string;
+    nome: string;
+    quantidade: number;
+    unidade: string;
+    custoUnitario: number;
+    custoTotal: number;
   }>;
 }
 
 export class PricingEngine {
-  private productComponentService: ProductComponentService;
+  constructor() {}
 
-  constructor() {
-    this.productComponentService = new ProductComponentService(prisma);
-  }
-  
   async execute(input: CalculationInput): Promise<CalculationOutput> {
-    const { product, width, height, quantity, configurations = {}, organizationSettings } = input;
+    const { productId, quantity = 1, variables = {}, selectedOptionIds = [], organizationId } = input;
+
+    // 1. Buscar Produto com Ficha Técnica Base e Regra
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        fichasTecnicas: {
+          include: { insumo: true }
+        },
+        pricingRule: true
+      }
+    });
+
+    if (!product) throw new Error("Produto não encontrado.");
+
+    const logs: string[] = [];
+    let totalMaterialCost = 0;
+    const insumosCalculados: any[] = [];
+
+    // 2. Resolver Variáveis e Unidades (Normalização via MathJS)
+    const rawFormula = product.pricingRule?.formula;
+    let formulaDataRaw: any = {};
     
-    // Se o modo é DYNAMIC_ENGINEER mas a engenharia está desabilitada, forçar modo simples
-    let effectivePricingMode = product.pricingMode;
-    if (product.pricingMode === 'DYNAMIC_ENGINEER' && 
-        organizationSettings && 
-        !organizationSettings.enableEngineering) {
-      
-      // Fallback para modo simples por área
-      effectivePricingMode = 'SIMPLE_AREA';
-      
-      // Usar markup padrão da organização se não houver salePrice
-      if (!product.salePrice && organizationSettings.defaultMarkup) {
-        // Estimativa básica: R$ 50/m² como base
-        const estimatedCostPerM2 = 50;
-        const suggestedPrice = estimatedCostPerM2 * organizationSettings.defaultMarkup;
-        
-        const areaM2 = (width * height) / 1_000_000;
-        const totalPerUnit = areaM2 * suggestedPrice;
-        const minPrice = product.minPrice || 0;
-        const finalPrice = Math.max(totalPerUnit, minPrice);
-        
-        return {
-          costPrice: areaM2 * estimatedCostPerM2,
-          calculatedPrice: finalPrice,
-          unitPrice: finalPrice,
-          details: [
-            `⚠️ MODO ENGENHARIA DESABILITADO - Usando cálculo simplificado`,
-            `Área: ${areaM2.toFixed(3)}m²`,
-            `Custo estimado: R$ ${estimatedCostPerM2.toFixed(2)}/m²`,
-            `Markup aplicado: ${organizationSettings.defaultMarkup}x`,
-            `Preço sugerido: R$ ${suggestedPrice.toFixed(2)}/m²`,
-            `Preço mínimo: R$ ${minPrice.toFixed(2)}`,
-            `Preço final: R$ ${finalPrice.toFixed(2)}`
-          ]
-        };
+    if (typeof rawFormula === 'string') {
+      try {
+        formulaDataRaw = JSON.parse(rawFormula);
+      } catch (e) {
+        console.error("[PricingEngine] Erro ao parsear formula JSON:", e);
       }
-    }
-    
-    // MODO 1: Preço Simples por Área (m²)
-    if (effectivePricingMode === 'SIMPLE_AREA') {
-      const areaM2 = (width * height) / 1_000_000;
-      const basePrice = product.salePrice || 0;
-      const totalPerUnit = areaM2 * basePrice;
-      const minPrice = product.minPrice || 0;
-      const finalPrice = Math.max(totalPerUnit, minPrice);
-      
-      return {
-        costPrice: 0, // No modo simples, custo é estimado
-        calculatedPrice: finalPrice,
-        unitPrice: finalPrice,
-        details: [
-          `Área: ${areaM2.toFixed(3)}m²`,
-          `Preço base: R$ ${basePrice.toFixed(2)}/m²`,
-          `Subtotal: R$ ${totalPerUnit.toFixed(2)}`,
-          `Preço mínimo: R$ ${minPrice.toFixed(2)}`,
-          `Preço final: R$ ${finalPrice.toFixed(2)}`
-        ]
-      };
+    } else if (rawFormula && typeof rawFormula === 'object') {
+      formulaDataRaw = rawFormula;
     }
 
-    // MODO 2: Preço Simples por Unidade
-    if (effectivePricingMode === 'SIMPLE_UNIT') {
-      const basePrice = product.salePrice || 0;
-      const minPrice = product.minPrice || 0;
-      const finalPrice = Math.max(basePrice, minPrice);
+    const ruleVariables = formulaDataRaw?.variables || [];
+    const normalizedScope: Record<string, number> = {};
+
+    // Mapear variáveis do frontend para o escopo, normalizando se necessário
+    for (const v of ruleVariables) {
+      const lowerId = v.id.toLowerCase();
+      const upperId = v.id.toUpperCase();
       
-      return {
-        costPrice: 0,
-        calculatedPrice: finalPrice,
-        unitPrice: finalPrice,
-        details: [
-          `Preço unitário: R$ ${basePrice.toFixed(2)}`,
-          `Preço mínimo: R$ ${minPrice.toFixed(2)}`,
-          `Preço final: R$ ${finalPrice.toFixed(2)}`
-        ]
-      };
-    }
-
-    // MODO 3: Engenharia (Custo + Margem) - USANDO COMPONENTES REAIS
-    if (effectivePricingMode === 'DYNAMIC_ENGINEER') {
-      // Verificar se a engenharia está habilitada
-      if (organizationSettings && !organizationSettings.enableEngineering) {
-        throw new Error("Modo de Engenharia Dinâmica não está habilitado para esta organização");
-      }
-
-      // Buscar componentes reais do produto
-      const components = await this.productComponentService.listComponents(product.id);
+      const received = (variables as any)[v.id] || (variables as any)[lowerId] || (variables as any)[upperId];
+      const baseUnit = v.baseUnit || v.unit || null;
       
-      if (components.length === 0) {
-        throw new Error("Produto não possui materiais configurados. Configure materiais primeiro.");
-      }
-
-      let totalCost = 0;
-      const logs: string[] = [];
-      const materials: Array<{
-        name: string;
-        needed: number;
-        unit: string;
-        cost: number;
-        wasteApplied: number;
-      }> = [];
-
-      // A. Custo de Materiais usando componentes reais
-      for (const component of components) {
-        // Pular materiais opcionais se não há materiais obrigatórios suficientes
-        if (component.isOptional && totalCost === 0) {
-          continue;
-        }
-
-        const materialCalculation = this.calculateRealMaterialCost(
-          component, 
-          width, 
-          height, 
-          quantity,
-          configurations
-        );
-        
-        if (materialCalculation.cost > 0) {
-          totalCost += materialCalculation.cost;
-          logs.push(`${component.material.name}: ${materialCalculation.needed.toFixed(2)} ${materialCalculation.unit} = R$ ${materialCalculation.cost.toFixed(2)}`);
+      let val = 0;
+      try {
+        if (received && typeof received === 'object' && received.value !== undefined) {
+          val = typeof received.value === 'string' ? Number(received.value.replace(',', '.')) : received.value;
           
-          materials.push({
-            name: component.material.name,
-            needed: materialCalculation.needed,
-            unit: materialCalculation.unit,
-            cost: materialCalculation.cost,
-            wasteApplied: materialCalculation.wasteApplied
-          });
-        }
-      }
+          // Lista de unidades "não-físicas" - não converter no mathjs
+          const nonPhysicalUnits = ['X', 'moeda', '%', 'un', 'unidade', 'und', 'pç', 'pcas', 'folhas'];
+          const isPhysical = (u: string) => u && !nonPhysicalUnits.includes(u.toLowerCase());
 
-      // B. Aplicar configurações que afetam preço
-      let configurationModifier = 0;
-      const configLogs: string[] = [];
-      const configurationBreakdown: Array<{
-        configurationName: string;
-        selectedOption: string;
-        priceModifier: number;
-        materialChanges: string[];
-      }> = [];
-      
-      // Buscar configurações do produto se existirem seleções
-      if (Object.keys(configurations).length > 0) {
-        try {
-          const productConfigurations = await prisma.productConfiguration.findMany({
-            where: { productId: product.id },
-            include: {
-              options: true
+          if (baseUnit && received.unit && isPhysical(baseUnit) && isPhysical(received.unit)) {
+            const unitMapping: Record<string, string> = {
+              'M': 'm', 'M2': 'm2', 'M²': 'm2', 'CM': 'cm', 'MM': 'mm',
+              'KG': 'kg', 'G': 'g', 'L': 'l', 'H': 'h'
+            };
+            const normalize = (u: string) => unitMapping[u.toUpperCase()] || u;
+            const normBase = normalize(baseUnit);
+            const normCurrent = normalize(received.unit);
+
+            if (normBase !== normCurrent) {
+              val = math.unit(val, normCurrent).toNumber(normBase);
+              logs.push(`Variável [${v.name}] normalizada: ${received.value}${received.unit} -> ${val}${baseUnit}`);
             }
-          });
-
-          for (const config of productConfigurations) {
-            const selectedValue = configurations[config.id];
-            if (!selectedValue) continue;
-
-            // Para configurações SELECT, buscar a opção selecionada
-            if (config.type === 'SELECT') {
-              const selectedOption = config.options.find(opt => opt.value === selectedValue);
-              if (selectedOption && selectedOption.priceModifier) {
-                const modifier = Number(selectedOption.priceModifier);
-                configurationModifier += modifier;
-                
-                configurationBreakdown.push({
-                  configurationName: config.name,
-                  selectedOption: selectedOption.label,
-                  priceModifier: modifier,
-                  materialChanges: []
-                });
-
-                configLogs.push(`${config.name}: ${selectedOption.label} = ${modifier > 0 ? '+' : ''}R$ ${modifier.toFixed(2)}`);
-              }
-            }
-            // Para configurações NUMBER/BOOLEAN, aplicar lógica específica se necessário
-            else if (config.affectsPricing) {
-              // Implementar lógica específica para outros tipos se necessário
-              configLogs.push(`${config.name}: ${selectedValue} (configuração aplicada)`);
-            }
-          }
-        } catch (error) {
-          console.error('Erro ao processar configurações:', error);
-          configLogs.push('⚠️ Erro ao processar algumas configurações');
-        }
-      }
-
-      const suggestedPrice = (totalCost + configurationModifier) * product.markup;
-      const minPrice = product.minPrice || 0;
-      const finalPrice = Math.max(suggestedPrice, minPrice);
-
-      return {
-        costPrice: totalCost,
-        calculatedPrice: suggestedPrice,
-        unitPrice: finalPrice,
-        configurationSurcharge: configurationModifier,
-        materials,
-        configurationBreakdown,
-        details: [
-          `Quantidade: ${quantity} unidades`,
-          `Custo de materiais: R$ ${totalCost.toFixed(2)}`,
-          `Modificador configurações: R$ ${configurationModifier.toFixed(2)}`,
-          `Markup: ${product.markup}x`,
-          `Preço sugerido: R$ ${suggestedPrice.toFixed(2)}`,
-          `Preço mínimo: R$ ${minPrice.toFixed(2)}`,
-          `Preço final: R$ ${finalPrice.toFixed(2)}`,
-          ...logs,
-          ...configLogs
-        ]
-      };
-    }
-
-    throw new Error("Modo de precificação inválido");
-  }
-
-  private calculateRealMaterialCost(
-    component: any, 
-    width: number, 
-    height: number, 
-    quantity: number,
-    configurations: Record<string, any>
-  ): { cost: number; needed: number; unit: string; wasteApplied: number } {
-    
-    const wastePercentage = component.manualWastePercentage || component.wastePercentage;
-    let consumption = 0;
-    let unit = component.material.unit;
-    
-    switch (component.consumptionMethod) {
-      case 'BOUNDING_BOX':
-        // Para chapas: calcular quantas chapas são necessárias
-        if (component.material.format === 'SHEET') {
-          const itemArea = (width * height) / 1_000_000; // m²
-          const sheetArea = ((component.material.standardWidth || 0) * (component.material.standardLength || 0)) / 1_000_000;
-          
-          if (sheetArea > 0 && width <= (component.material.standardWidth || 0) && height <= (component.material.standardLength || 0)) {
-            const sheetsPerItem = Math.ceil(itemArea / sheetArea);
-            consumption = sheetsPerItem * quantity;
-            unit = 'folhas';
           }
         } else {
-          // Para outros formatos, usar área
-          consumption = ((width * height) / 1_000_000) * quantity; // m²
-          unit = 'm²';
+          val = v.fixedValue !== undefined ? Number(v.fixedValue) : 0;
         }
-        break;
+
+        // Registrar no escopo por ID e por Nome (para facilitar fórmulas amigáveis)
+        normalizedScope[v.id] = val;
         
-      case 'LINEAR_NEST':
-        // Para rolos: comprimento linear
-        if (component.material.format === 'ROLL') {
-          const materialWidth = component.material.standardWidth || 1000;
-          if (width <= materialWidth) {
-            consumption = (height * quantity) / 1000; // metros
-            unit = 'metros';
-          }
-        }
-        break;
+        // Injetar por nome normalizado (ex: "Largura do Produto" -> "LARGURA_DO_PRODUTO")
+        const cleanName = v.name.toUpperCase().replace(/\s+/g, '_').normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        if (!normalizedScope[cleanName]) normalizedScope[cleanName] = val;
         
-      case 'FIXED_AMOUNT':
-        // Quantidade fixa por item
-        consumption = quantity;
-        unit = component.material.unit;
-        break;
-        
-      default:
-        // Default: área
-        consumption = ((width * height) / 1_000_000) * quantity;
-        unit = 'm²';
+        // Injetar por Role (Papeis fixos) - Isso garante que LARGURA sempre funcione se marcada como WIDTH
+        if (v.role === 'WIDTH') normalizedScope['LARGURA'] = normalizedScope['WIDTH'] = val;
+        if (v.role === 'HEIGHT') normalizedScope['ALTURA'] = normalizedScope['HEIGHT'] = val;
+        if (v.role === 'DEPTH') normalizedScope['PROFUNDIDADE'] = normalizedScope['DEPTH'] = val;
+        if (v.role === 'LENGTH') normalizedScope['COMPRIMENTO'] = normalizedScope['LENGTH'] = val;
+        if (v.role === 'SQUARE_METERS') normalizedScope['M2'] = normalizedScope['AREA'] = val;
+
+      } catch (err: any) {
+        logs.push(`⚠️ Variável [${v.name}]: Erro de conversão (${err.message}). Usando valor bruto.`);
+        normalizedScope[v.id] = val;
+      }
     }
-    
-    // Aplica percentual de perda
-    const consumptionWithWaste = consumption * (1 + wastePercentage);
-    const cost = consumptionWithWaste * component.material.costPerUnit;
-    
+
+    // Identificar Dimensões Físicas para o BOM (Consumo de Material)
+    let BOM_M2 = 0;
+    let BOM_M = 0;
+    let physicalWidthMm = 0;
+    let physicalHeightMm = 0;
+
+    for (const v of ruleVariables) {
+      const val = normalizedScope[v.id] || 0;
+      const unit = v.baseUnit;
+
+      try {
+        if (v.role === 'SQUARE_METERS') BOM_M2 = unit ? math.unit(val, unit).toNumber('m2') : val;
+        if (v.role === 'LINEAR_METERS') BOM_M = unit ? math.unit(val, unit).toNumber('m') : val;
+        if (v.role === 'WIDTH') physicalWidthMm = unit ? math.unit(val, unit).toNumber('mm') : val;
+        if (v.role === 'HEIGHT') physicalHeightMm = unit ? math.unit(val, unit).toNumber('mm') : val;
+      } catch (e: any) {
+        logs.push(`⚠️ Erro BOM física [${v.name}]: ${e.message}`);
+      }
+    }
+
+
+
+
+    // Fallback: Se não tem Área direta, calcula via Largura x Altura
+    if (BOM_M2 === 0 && physicalWidthMm > 0 && physicalHeightMm > 0) {
+      BOM_M2 = (physicalWidthMm * physicalHeightMm) / 1000000;
+    }
+    // Fallback: Se não tem Metro Linear direto, calcula via Max(Largura, Altura)
+    if (BOM_M === 0 && (physicalWidthMm > 0 || physicalHeightMm > 0)) {
+      BOM_M = Math.max(physicalWidthMm, physicalHeightMm) / 1000;
+    }
+
+    // 4. Coletar e Calcular Itens de Ficha Técnica (BOM)
+    const todosItensFicha = [...product.fichasTecnicas];
+
+    if (selectedOptionIds.length > 0) {
+      const itensOpcoes = await prisma.fichaTecnicaInsumo.findMany({
+        where: {
+          configurationOptionId: { in: selectedOptionIds },
+          organizationId
+        },
+        include: { insumo: true }
+      });
+      todosItensFicha.push(...itensOpcoes);
+    }
+
+    for (const item of todosItensFicha) {
+      const insumo = item.insumo;
+      let custoItem = 0;
+      let qtdReal = Number(item.quantidade);
+
+      switch (insumo.unidadeBase) {
+        case 'M2':
+          custoItem = BOM_M2 * Number(insumo.custoUnitario) * qtdReal;
+          break;
+        case 'M':
+          custoItem = BOM_M * Number(insumo.custoUnitario) * qtdReal;
+          break;
+        default:
+          custoItem = Number(insumo.custoUnitario) * qtdReal;
+      }
+
+      totalMaterialCost += custoItem;
+      insumosCalculados.push({
+        id: insumo.id,
+        nome: insumo.nome,
+        quantidade: qtdReal,
+        unidade: insumo.unidadeBase,
+        custoUnitario: Number(insumo.custoUnitario),
+        custoTotal: custoItem
+      });
+    }
+
+    // 5. Avaliar Fórmulas de Custo e Venda
+    const formulaString = product.customFormula || formulaDataRaw?.formulaString;
+    const costFormulaString = formulaDataRaw?.costFormulaString;
+
+    if (product.customFormula) {
+      logs.push(`Usando fórmula customizada do produto: ${product.customFormula}`);
+    } else if (formulaDataRaw?.formulaString) {
+      logs.push(`Usando fórmula da regra [${product.pricingRule?.name}]: ${formulaDataRaw.formulaString}`);
+    }
+
+    const finalScope = {
+      ...normalizedScope,
+      CUSTO_MATERIAIS: totalMaterialCost,
+      QUANTIDADE: quantity
+    };
+
+    let finalUnitCost = totalMaterialCost;
+    let finalUnitPrice = Number(product.salePrice) || 0;
+
+    try {
+      if (costFormulaString) {
+        finalUnitCost = Number(math.evaluate(costFormulaString, finalScope));
+        logs.push(`Custo Financeiro resolvido (${costFormulaString}) = R$ ${finalUnitCost.toFixed(2)}`);
+      }
+      
+      if (formulaString) {
+        finalUnitPrice = Number(math.evaluate(formulaString, finalScope));
+        logs.push(`Preço de Venda resolvido (${formulaString}) = R$ ${finalUnitPrice.toFixed(2)}`);
+      } else if (!product.salePrice) {
+        finalUnitPrice = finalUnitCost; // Safe fallback
+      }
+    } catch (err: any) {
+      throw new Error(`Erro na avaliação da fórmula: ${err.message}`);
+    }
+
+
+
     return {
-      cost,
-      needed: consumptionWithWaste,
-      unit,
-      wasteApplied: wastePercentage * 100
+      costPrice: finalUnitCost,
+      unitPrice: finalUnitPrice,
+      totalPrice: finalUnitPrice * quantity,
+      details: logs,
+      insumos: insumosCalculados
     };
   }
 }

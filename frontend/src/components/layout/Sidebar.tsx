@@ -15,7 +15,8 @@ import {
   Settings,
   Warehouse,
   Factory,
-  DollarSign
+  DollarSign,
+  FlaskConical
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -73,6 +74,12 @@ const allMenuItems: MenuItem[] = [
     href: '/pedidos',
     icon: ShoppingCart,
     alwaysVisible: true
+  },
+  {
+    title: 'Insumos / Custos',
+    href: '/insumos',
+    icon: FlaskConical,
+    permission: 'inventory.view'
   },
   {
     title: 'Estoque',

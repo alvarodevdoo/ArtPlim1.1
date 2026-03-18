@@ -5,8 +5,8 @@ import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 
 import { cn } from "../../lib/utils"
-import { Button } from "./button"
-import { Calendar } from "./calendar"
+import { Button } from "./Button"
+import { Calendar } from "./Calendar"
 import {
   Popover,
   PopoverContent,

@@ -16,10 +16,9 @@ export class QueryOptimizer {
         pricingRuleId: true,
         pricingMode: true,
         salePrice: true,
-        minPrice: true,
-        markup: true,
         active: true,
         formulaData: true,
+        pricingRule: true,
         components: {
           select: {
             id: true,
@@ -197,6 +196,7 @@ export class QueryOptimizer {
         minPrice: true,
         markup: true,
         formulaData: true,
+        pricingRule: true,
         components: {
           select: {
             id: true,

@@ -5,6 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Plus, Trash2, Edit, Settings, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
+import { SeletorInsumos } from '@/features/insumos/SeletorInsumos';
+import { useInsumos } from '@/features/insumos/useInsumos';
+import { InsumoMaterialSelecionado } from '@/features/insumos/types';
 
 interface ConfigurationOption {
   id: string;
@@ -12,6 +15,7 @@ interface ConfigurationOption {
   value: string;
   priceModifier: number;
   displayOrder: number;
+  configurationId: string;
   additionalComponents?: any[];
 }
 
@@ -59,6 +63,11 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
     displayOrder: '',
     isAvailable: true
   });
+  
+  // Estado para os insumos da ficha técnica (da opção sendo editada)
+  const [fichaTecnica, setFichaTecnica] = useState<InsumoMaterialSelecionado[]>([]);
+  const { insumos } = useInsumos();
+  const [expandedConfigs, setExpandedConfigs] = useState<Set<string>>(new Set());
 
   const [formData, setFormData] = useState({
     name: '',
@@ -73,9 +82,45 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
     displayOrder: ''
   });
 
+  // Estado para Ficha Técnica do Produto Base
+  const [showBaseFicha, setShowBaseFicha] = useState(false);
+  const [fichaBase, setFichaBase] = useState<InsumoMaterialSelecionado[]>([]);
+
   useEffect(() => {
     loadConfigurations();
+    loadBaseFicha();
   }, [productId]);
+
+  const loadBaseFicha = async () => {
+    try {
+      const resp = await api.get(`/api/catalog/products/${productId}/ficha-tecnica`);
+      const items = resp.data.data.map((item: any) => ({
+        insumoId: item.insumoId,
+        nome: item.insumo.nome,
+        precoBase: Number(item.insumo.custoUnitario),
+        quantidadeUtilizada: item.quantidade,
+        unidadeBase: item.insumo.unidadeBase
+      }));
+      setFichaBase(items);
+    } catch (err) {
+      console.error('Erro ao carregar ficha técnica base:', err);
+    }
+  };
+
+  const handleSaveBaseFicha = async () => {
+    try {
+      await api.post(`/api/catalog/products/${productId}/ficha-tecnica`, {
+        items: fichaBase.map(f => ({
+          insumoId: f.insumoId,
+          quantidade: f.quantidadeUtilizada
+        }))
+      });
+      toast.success('Ficha técnica base salva com sucesso!');
+      setShowBaseFicha(false);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error?.message || 'Erro ao salvar ficha técnica base');
+    }
+  };
 
   const loadConfigurations = async () => {
     try {
@@ -188,11 +233,12 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
   const handleAddOption = (configId: string) => {
     setSelectedConfigForOption(configId);
     setEditingOption(null);
+    setFichaTecnica([]);
     resetOptionForm();
     setShowOptionForm(true);
   };
 
-  const handleEditOption = (option: ConfigurationOption) => {
+  const handleEditOption = async (option: ConfigurationOption) => {
     setEditingOption(option);
     setSelectedConfigForOption(null);
     setOptionFormData({
@@ -204,6 +250,23 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
       displayOrder: option.displayOrder.toString(),
       isAvailable: true
     });
+    
+    // Carregar ficha técnica da opção
+    try {
+      const resp = await api.get(`/api/catalog/options/${option.id}/ficha-tecnica`);
+      const items = resp.data.data.map((item: any) => ({
+        insumoId: item.insumoId,
+        nome: item.insumo.nome,
+        precoBase: Number(item.insumo.custoUnitario),
+        quantidadeUtilizada: item.quantidade,
+        unidadeBase: item.insumo.unidadeBase
+      }));
+      setFichaTecnica(items);
+    } catch (err) {
+      console.error('Erro ao carregar ficha técnica:', err);
+      setFichaTecnica([]);
+    }
+
     setShowOptionForm(true);
   };
 
@@ -235,17 +298,31 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
     };
     
     try {
+      let optionId = '';
       if (editingOption) {
         await api.put(`/api/catalog/configurations/${editingOption.configurationId}/options/${editingOption.id}`, payload);
+        optionId = editingOption.id;
         toast.success('Opção atualizada com sucesso!');
       } else {
-        await api.post(`/api/catalog/configurations/${selectedConfigForOption}/options`, payload);
+        const res = await api.post(`/api/catalog/configurations/${selectedConfigForOption}/options`, payload);
+        optionId = res.data.data.id;
         toast.success('Opção criada com sucesso!');
       }
       
+      // Salvar ficha técnica se houver itens ou se for edição
+      if (fichaTecnica.length > 0 || editingOption) {
+        await api.post(`/api/catalog/options/${optionId}/ficha-tecnica`, {
+          items: fichaTecnica.map(f => ({
+            insumoId: f.insumoId,
+            quantidade: f.quantidadeUtilizada
+          }))
+        });
+      }
+
       setShowOptionForm(false);
       setEditingOption(null);
       setSelectedConfigForOption(null);
+      setFichaTecnica([]);
       resetOptionForm();
       loadConfigurations();
     } catch (error: any) {
@@ -292,10 +369,16 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
             Configure opções dinâmicas para "{productName}"
           </p>
         </div>
-        <Button onClick={() => setShowForm(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          Nova Configuração
-        </Button>
+        <div className="flex space-x-2">
+          <Button variant="outline" onClick={() => setShowBaseFicha(true)}>
+            <Settings className="w-4 h-4 mr-2" />
+            Ficha Técnica Base
+          </Button>
+          <Button onClick={() => setShowForm(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Nova Configuração
+          </Button>
+        </div>
       </div>
 
       {/* Info Card */}
@@ -570,6 +653,15 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
                   </div>
                 </div>
 
+                {/* Seção de Ficha Técnica (Insumos) */}
+                <div className="pt-4 border-t">
+                  <SeletorInsumos 
+                    insumos={insumos}
+                    materiaisIniciais={fichaTecnica}
+                    onMaterialsChange={(mats) => setFichaTecnica(mats)}
+                  />
+                </div>
+
                 <div className="flex justify-end space-x-2 pt-4">
                   <Button 
                     type="button" 
@@ -588,6 +680,37 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
                   </Button>
                 </div>
               </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Base Ficha Técnica Modal */}
+      {showBaseFicha && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <CardHeader>
+              <CardTitle>Ficha Técnica Base - {productName}</CardTitle>
+              <CardDescription>
+                Materiais que compõem este produto independentemente das opções selecionadas.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <SeletorInsumos 
+                  insumos={insumos}
+                  materiaisIniciais={fichaBase}
+                  onMaterialsChange={(mats) => setFichaBase(mats)}
+                />
+                <div className="flex justify-end space-x-2 pt-4 border-t">
+                  <Button variant="outline" onClick={() => setShowBaseFicha(false)}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleSaveBaseFicha}>
+                    Salvar Ficha Técnica Base
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>

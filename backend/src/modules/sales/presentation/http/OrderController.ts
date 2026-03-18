@@ -187,8 +187,7 @@ export class OrderController {
           name: true,
           description: true,
           pricingMode: true,
-          salePrice: true,
-          minPrice: true
+          salePrice: true
         }
       });
     } catch (error) {
@@ -251,66 +250,34 @@ export class OrderController {
 
   async simulate(request: FastifyRequest, reply: FastifyReply) {
     try {
-      const { productId, width, height, quantity } = request.body as {
-        productId: string;
-        width: number;
-        height: number;
-        quantity: number;
-      };
+      const { productId, quantity, variables, selectedOptionIds: bodySelectedOptionIds } = request.body as any;
+      const organizationId = request.user?.organizationId;
 
-      // Buscar dados do produto
-      const product = await this.getProductData(productId);
-
-      if (!product) {
-        return reply.status(404).send({
+      if (!organizationId) {
+        return reply.status(401).send({
           success: false,
-          error: {
-            message: 'Produto não encontrado',
-            statusCode: 404
-          }
+          error: { message: 'Organization required', statusCode: 401 }
         });
       }
 
-      let unitPrice = 0;
-
-      // Calcular preço baseado no modo de precificação
-      switch (product.pricingMode) {
-        case 'SIMPLE_AREA':
-          if (product.salePrice) {
-            const area = (width * height) / 1000000; // m²
-            unitPrice = product.salePrice * area;
-          }
-          break;
-
-        case 'SIMPLE_UNIT':
-          if (product.salePrice) {
-            unitPrice = product.salePrice;
-          }
-          break;
-
-        case 'DYNAMIC_ENGINEER':
-          // Para produtos dinâmicos, usar preço mínimo como base
-          if (product.minPrice) {
-            unitPrice = product.minPrice;
-          }
-          break;
-      }
-
-      // Aplicar preço mínimo se configurado
-      if (product.minPrice && unitPrice < product.minPrice) {
-        unitPrice = product.minPrice;
-      }
+      const pricingEngine = new (require('../../../../shared/application/pricing/PricingEngine').PricingEngine)();
+      
+      const result = await pricingEngine.execute({
+        productId,
+        quantity,
+        variables: variables || {},
+        selectedOptionIds: bodySelectedOptionIds || [],
+        organizationId
+      });
 
       return reply.send({
         success: true,
         data: {
-          unitPrice: Math.max(unitPrice, 0),
-          totalPrice: Math.max(unitPrice * quantity, 0),
-          product: {
-            id: product.id,
-            name: product.name,
-            pricingMode: product.pricingMode
-          }
+          unitPrice: result.unitPrice,
+          totalPrice: result.totalPrice,
+          costPrice: result.costPrice,
+          details: result.details,
+          insumos: result.insumos
         }
       });
     } catch (error: any) {

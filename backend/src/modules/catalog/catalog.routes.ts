@@ -5,6 +5,8 @@ import { MaterialService } from './services/MaterialService';
 import { ProductComponentService } from './services/ProductComponentService';
 import { ProductConfigurationService } from './services/ProductConfigurationService';
 import { ConfigurationValidationService } from './services/ConfigurationValidationService';
+import { FichaTecnicaService } from './services/FichaTecnicaService';
+import { PricingRuleService } from './services/PricingRuleService';
 import { getTenantClient } from '../../shared/infrastructure/database/tenant';
 
 const createProductSchema = z.object({
@@ -12,12 +14,11 @@ const createProductSchema = z.object({
   description: z.string().optional(),
   productType: z.enum(['PRODUCT', 'SERVICE', 'PRINT_SHEET', 'PRINT_ROLL', 'LASER_CUT', 'UNIT', 'SQUARE_METER', 'TIME_AREA']).optional().default('PRODUCT'),
   pricingMode: z.enum(['SIMPLE_AREA', 'SIMPLE_UNIT', 'DYNAMIC_ENGINEER']).optional().default('SIMPLE_AREA'),
-  pricingRuleId: z.string().uuid().optional().nullable(),
-  localFormulaId: z.string().optional().nullable(),
+  pricingRuleId: z.preprocess((val) => val === '' ? null : val, z.string().uuid().optional().nullable()),
+  customFormula: z.string().optional().nullable(),
+  localFormulaId: z.preprocess((val) => val === '' ? null : val, z.string().optional().nullable()),
   salePrice: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional()),
-  minPrice: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional()),
   costPrice: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional()),
-  markup: z.preprocess((val) => (val === '' || val === null || val === undefined) ? 2.0 : isNaN(Number(val)) ? 2.0 : Number(val), z.number().positive().default(2.0)),
   // Controle de estoque
   trackStock: z.boolean().optional().default(false),
   stockQuantity: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional().nullable()),
@@ -111,7 +112,8 @@ export async function catalogRoutes(fastify: FastifyInstance) {
 
   // ========== PRODUTOS ==========
 
-  // Listar produtos
+  // Listar produtos (Movido para catalogRoutesOptimized)
+  /*
   fastify.get('/products', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
@@ -127,6 +129,7 @@ export async function catalogRoutes(fastify: FastifyInstance) {
       data: products
     });
   });
+  */
 
   // Criar produto
   fastify.post('/products', {
@@ -185,20 +188,14 @@ export async function catalogRoutes(fastify: FastifyInstance) {
 
   // ========== MATERIAIS ==========
 
-  // Listar materiais
+  // Listar materiais (Movido para catalogRoutesOptimized)
+  /*
   fastify.get('/materials', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const prisma = getTenantClient(request.user!.organizationId);
-    const materialService = new MaterialService(prisma);
-
-    const materials = await materialService.list();
-
-    return reply.send({
-      success: true,
-      data: materials
-    });
+    ...
   });
+  */
 
   // Criar material
   fastify.post('/materials', {
@@ -530,7 +527,7 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const prisma = getTenantClient(request.user!.organizationId);
     const configService = new ProductConfigurationService(prisma);
 
-    const template = await configService.createTemplate(id, name, request.user!.id);
+    const template = await configService.createTemplate(id, name, (request.user as any).id);
 
     return reply.code(201).send({
       success: true,
@@ -579,7 +576,7 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const prisma = getTenantClient(request.user!.organizationId);
     const configService = new ProductConfigurationService(prisma);
 
-    const exportData = await configService.exportConfigurations(id, request.user!.id);
+    const exportData = await configService.exportConfigurations(id, (request.user as any).id);
 
     return reply.send({
       success: true,
@@ -733,7 +730,7 @@ export async function catalogRoutes(fastify: FastifyInstance) {
 
     const prisma = getTenantClient(request.user!.organizationId);
     const service = new PricingRuleService(prisma);
-    const rule = await service.create({ ...body, type: body.type as any, organizationId: request.user!.organizationId });
+    const rule = await service.create({ ...body, formula: body.formula || {}, type: body.type as any, organizationId: (request.user as any).organizationId });
     return reply.code(201).send({ success: true, data: rule });
   });
 
@@ -767,5 +764,45 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     await service.delete(id);
     return reply.send({ success: true, message: 'Regra removida' });
   });
+
+  // ========== FICHA TÉCNICA (PORTADO DE EXPRESS) ==========
+
+  // GET /api/catalog/:targetType/:targetId/ficha-tecnica
+  fastify.get('/:targetType/:targetId/ficha-tecnica', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { targetId } = request.params as { targetId: string };
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new FichaTecnicaService(prisma);
+
+    const organizationId = (request.user as any).organizationId;
+    const items = await service.getByTarget(organizationId, targetId);
+    return reply.send({ success: true, data: items });
+  });
+
+  // POST /api/catalog/:targetType/:targetId/ficha-tecnica
+  fastify.post('/:targetType/:targetId/ficha-tecnica', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { targetType, targetId } = request.params as { targetType: string; targetId: string };
+    const { items } = request.body as { items: any[] };
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new FichaTecnicaService(prisma);
+
+    const data: any = {
+      organizationId: request.user!.organizationId,
+      items
+    };
+
+    if (targetType === 'products') {
+      data.productId = targetId;
+    } else if (targetType === 'options') {
+      data.configurationOptionId = targetId;
+    } else {
+      return reply.code(400).send({ success: false, error: { message: 'Alvo inválido (deve ser products ou options).' } });
+    }
+
+    const result = await service.save(request.user!.organizationId, data);
+    return reply.send({ success: true, data: result });
+  });
 }
-import { PricingRuleService } from './services/PricingRuleService';

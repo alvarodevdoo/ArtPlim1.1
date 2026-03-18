@@ -9,9 +9,7 @@ interface CreateProductInput {
   pricingRuleId?: string | null;
   localFormulaId?: string | null;
   salePrice?: number;
-  minPrice?: number;
   costPrice?: number;
-  markup: number;
   organizationId: string;
   // Controle de estoque
   trackStock?: boolean;
@@ -19,6 +17,7 @@ interface CreateProductInput {
   stockMinQuantity?: number | null;
   stockUnit?: string | null;
   formulaData?: any;
+  customFormula?: string | null;
 }
 
 interface UpdateProductInput extends Partial<CreateProductInput> {
@@ -59,10 +58,9 @@ export class ProductService {
         ...(data.pricingRuleId ? { pricingRule: { connect: { id: data.pricingRuleId } } } : {}),
         localFormulaId: data.localFormulaId || null,
         salePrice: data.salePrice,
-        minPrice: data.minPrice,
         costPrice: data.costPrice,
-        markup: data.markup,
         formulaData: data.formulaData || null,
+        customFormula: data.customFormula || null,
         // Controle de estoque
         trackStock: data.trackStock ?? false,
         stockQuantity: data.trackStock ? (data.stockQuantity ?? null) : null,
@@ -90,6 +88,7 @@ export class ProductService {
         }
       },
       operations: true,
+      pricingRule: true,
       _count: {
         select: {
           orderItems: true
@@ -125,7 +124,8 @@ export class ProductService {
             material: true
           }
         },
-        operations: true
+        operations: true,
+        pricingRule: true
       }
     });
 
@@ -142,10 +142,13 @@ export class ProductService {
       await this.validateEngineeringMode(data.organizationId, data.pricingMode);
     }
 
+    // Destructuring para remover organizationId do update do Prisma
+    const { organizationId: _orgId, ...updateData } = data;
+
     const product = await this.prisma.product.update({
       where: { id },
       data: {
-        ...data,
+        ...updateData,
         pricingRuleId: undefined, // Remover campo escalar para usar relação
         ...(data.pricingRuleId !== undefined ? (
           data.pricingRuleId ? { pricingRule: { connect: { id: data.pricingRuleId } } } : { pricingRule: { disconnect: true } }
@@ -158,9 +161,10 @@ export class ProductService {
             material: true
           }
         },
-        operations: true
+        operations: true,
+        pricingRule: true
       }
-    } as any);
+    });
 
     return product;
   }

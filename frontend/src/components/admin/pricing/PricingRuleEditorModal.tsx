@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Wand2, Calculator, Info, Lock, Unlock, X, Plus } from 'lucide-react';
+import { Wand2, Calculator, Info, X, Plus, Eye, EyeOff, Star, ListChecks } from 'lucide-react';
 import {
     extractVariables,
     renameVariableInFormula,
@@ -12,16 +12,36 @@ import {
 import { toast } from 'sonner';
 
 export type FormulaVariableType = 'INPUT' | 'FIXED';
-export type FormulaVariableUnit = 'mm' | 'cm' | 'm' | 'mm2' | 'cm2' | 'm2' | 'un' | 'hora' | 'moeda' | 'g' | 'kg' | '%' | 'X';
+export type FormulaVariableRole = 
+    | 'LENGTH' | 'AREA' | 'TIME' | 'WEIGHT' 
+    | 'ENERGY' | 'POWER' | 'VOLUME' 
+    | 'PERCENT' | 'COST_RATE' | 'NONE';
 
 export interface FormulaVariable {
     id: string; // ex: largura_placa
     name: string; // ex: Largura da Placa
     type: FormulaVariableType;
-    unit: FormulaVariableUnit;
-    lockedUnit: boolean;
+    baseUnit: string | null; // Unidade usada na fórmula
+    allowedUnits: string[]; // Unidades permitidas no frontend
+    role: FormulaVariableRole; // Papel da variável para cálculo de BOM
+    visible: boolean; // Se a variável aparece no modal de venda
     fixedValue?: number; // Usado apenas quando type === 'FIXED'
+    defaultUnit?: string; // Unidade padrão ao abrir OS
 }
+
+// Sugestões de unidades por tipo
+const UNIT_SUGGESTIONS: Record<string, string[]> = {
+    LENGTH: ['mm', 'cm', 'm'],
+    AREA: ['mm²', 'cm²', 'm²'],
+    TIME: ['s', 'min', 'h'],
+    WEIGHT: ['mg', 'g', 'kg'],
+    VOLUME: ['ml', 'l'],
+    ENERGY: ['mWh', 'Wh', 'kWh'],
+    POWER: ['mW', 'W', 'kW'],
+    PERCENT: ['%'],
+    COST_RATE: ['R$/kWh', 'R$/kg', 'R$/m', 'R$/m²', 'R$/h'],
+    NONE: []
+};
 
 // Helper para tratar inputs numéricos que podem vir com vírgula do usuário (Brasil)
 const parseSafeFloat = (val: string | number): number => {
@@ -36,6 +56,7 @@ export interface PricingFormulaRule {
     internalName: string;
     productCategory?: string; // Opcional para não quebrar regras antigas caso ainda exista em storage
     formulaString: string;
+    costFormulaString?: string; // Nova fórmula opcional para cálculo de custo
     variables: FormulaVariable[];
     active: boolean;
 }
@@ -51,6 +72,7 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
     const [formData, setFormData] = useState<PricingFormulaRule>({
         internalName: '',
         formulaString: '',
+        costFormulaString: '',
         variables: [],
         active: true
     });
@@ -59,9 +81,13 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
 
     // Erros de sintaxe da fórmula live
     const [formulaError, setFormulaError] = useState<string | null>(null);
+    const [costFormulaError, setCostFormulaError] = useState<string | null>(null);
+
+    // Aba ativa no editor: 'venda' ou 'custo'
+    const [activeTab, setActiveTab] = useState<'venda' | 'custo'>('venda');
 
     // Estado para o Simulador
-    const [simulationValues, setSimulationValues] = useState<Record<string, number>>({});
+    const [simulationValues, setSimulationValues] = useState<Record<string, any>>({});
 
     // Sincroniza valores fixos com o simulador quando a regra carrega ou variáveis fixas mudam
     useEffect(() => {
@@ -83,12 +109,18 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
 
     useEffect(() => {
         if (rule) {
-            setFormData(rule);
+            setFormData({
+                ...rule,
+                costFormulaString: rule.costFormulaString || ''
+            });
 
             // Inicializar simulador com 0 para os inputs
-            const initialSim: Record<string, number> = {};
+            const initialSim: Record<string, any> = {};
             rule.variables.forEach(v => {
-                if (v.type === 'INPUT') initialSim[v.id] = 0;
+                if (v.type === 'INPUT') {
+                    initialSim[v.id] = 0;
+                    initialSim[`${v.id}_unit`] = v.baseUnit || null;
+                }
             });
             setSimulationValues(initialSim);
         }
@@ -97,34 +129,66 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
     // Validação em tempo real da fórmula
     useEffect(() => {
         const validation = validateFormulaSyntax(formData.formulaString);
-        if (validation === true) {
-            setFormulaError(null);
+        setFormulaError(validation === true ? null : validation);
+
+        if (formData.costFormulaString) {
+            const costValidation = validateFormulaSyntax(formData.costFormulaString);
+            setCostFormulaError(costValidation === true ? null : costValidation);
         } else {
-            setFormulaError(validation);
+            setCostFormulaError(null);
         }
-    }, [formData.formulaString]);
+    }, [formData.formulaString, formData.costFormulaString]);
 
     // Calculo do resultado do simulador live
-    const simulationResult = useMemo(() => {
-        if (formulaError) return 'Err';
-        if (!formData.formulaString.trim()) return 0;
+    const simulation = useMemo(() => {
+        const res = { venda: 0 as number | string, custo: 0 as number | string, breakdown: [] as any[] };
+        if (formulaError || costFormulaError) return res;
 
-        const scope: Record<string, number> = {};
+        const scope: Record<string, any> = { ...simulationValues };
         formData.variables.forEach(v => {
             if (v.type === 'FIXED') {
-                scope[v.id] = v.fixedValue || 0;
+                scope[v.id] = v.fixedValue ?? 0;
             } else {
-                scope[v.id] = simulationValues[v.id] || 0;
+                scope[v.id] = simulationValues[v.id] ?? 0;
+            }
+
+            // Injetar unidade padrão se não houver escolha manual no simulador
+            const unitKey = `${v.id}_unit`;
+            if (v.defaultUnit && !simulationValues[unitKey]) {
+                scope[unitKey] = v.defaultUnit;
             }
         });
 
-        return evaluateFormula(formData.formulaString, scope, formData.variables);
-    }, [formData.formulaString, formData.variables, simulationValues, formulaError]);
+        const saleRes = evaluateFormula(formData.formulaString, scope, formData.variables);
+        res.venda = typeof saleRes === 'number' ? saleRes : 0;
+
+        // Se o resultado for um objeto com breakdown (futuro), ou se extrairmos manualmente
+        // Por enquanto evaluateFormula retorna number, vamos ajustar para opcionalmente retornar breakdown
+        if (formData.costFormulaString) {
+            const costRes = evaluateFormula(formData.costFormulaString, scope, formData.variables);
+            res.custo = typeof costRes === 'number' ? costRes : 0;
+            
+            // Lógica de extração de breakdown manual para a UI
+            const breakdown: any[] = [];
+            const breakdownRegex = /\(([^)]+)\)#([a-zA-ZáàâãééêíïóôõõúüçÁÀÂÃÉÈÊÍÏÓÔÕÖÚÜÇ_0-9]+)/g;
+            let match;
+            while ((match = breakdownRegex.exec(formData.costFormulaString)) !== null) {
+                try {
+                    const subRes = evaluateFormula(match[1], scope, formData.variables);
+                    breakdown.push({ label: match[2], value: subRes });
+                } catch(e){}
+            }
+            res.breakdown = breakdown;
+        }
+
+        return res;
+    }, [formData.formulaString, formData.costFormulaString, formData.variables, simulationValues, formulaError, costFormulaError]);
 
 
     // Handlers
     const handleExtractVariables = () => {
-        const extracted = extractVariables(formData.formulaString);
+        const formulaToExtract = activeTab === 'venda' ? formData.formulaString : (formData.costFormulaString || '');
+        const extracted = extractVariables(formulaToExtract);
         const currentVars = [...formData.variables];
 
         let newAdded = 0;
@@ -135,8 +199,10 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                     id: varId,
                     name: varId.charAt(0).toUpperCase() + varId.slice(1).replace(/_/g, ' '),
                     type: 'INPUT',
-                    unit: 'X',
-                    lockedUnit: false
+                    baseUnit: '',
+                    allowedUnits: [],
+                    role: 'NONE',
+                    visible: true
                 });
                 newAdded++;
             }
@@ -167,6 +233,7 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
 
         // Renomear na String da fórmula
         const newFormulaStr = renameVariableInFormula(formData.formulaString, oldId, newId);
+        const newCostFormulaStr = formData.costFormulaString ? renameVariableInFormula(formData.costFormulaString, oldId, newId) : '';
 
         // Atualiza a variável e a fórmula num só ciclo
         const updatedVars = [...formData.variables];
@@ -175,6 +242,7 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
         setFormData(prev => ({
             ...prev,
             formulaString: newFormulaStr,
+            costFormulaString: newCostFormulaStr,
             variables: updatedVars
         }));
 
@@ -188,11 +256,13 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
 
         // Remove da lista e da String da matemática ao mesmo tempo (com os operadores)
         const newFormula = removeVariableFromFormula(formData.formulaString, varToRemove.id);
+        const newCostFormula = formData.costFormulaString ? removeVariableFromFormula(formData.costFormulaString, varToRemove.id) : '';
 
         setFormData(prev => ({
             ...prev,
             variables: updatedVars,
-            formulaString: newFormula
+            formulaString: newFormula,
+            costFormulaString: newCostFormula
         }));
     };
 
@@ -202,7 +272,7 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
             ...prev,
             variables: [
                 ...prev.variables,
-                { id: uniqueId, name: 'Nova Variável', type: 'INPUT', unit: 'X', lockedUnit: false }
+                { id: uniqueId, name: 'Nova Variável', type: 'INPUT', baseUnit: 'un', allowedUnits: [], role: 'NONE', visible: true }
             ]
         }));
     };
@@ -212,7 +282,7 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
         if (textarea) {
             const start = textarea.selectionStart;
             const end = textarea.selectionEnd;
-            const text = formData.formulaString;
+            const text = activeTab === 'venda' ? formData.formulaString : (formData.costFormulaString || '');
             const before = text.substring(0, start);
             const after = text.substring(end);
 
@@ -220,7 +290,7 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
 
             setFormData(prev => ({
                 ...prev,
-                formulaString: newText
+                [activeTab === 'venda' ? 'formulaString' : 'costFormulaString']: newText
             }));
 
             // Re-focar e posicionar o cursor após o render
@@ -233,7 +303,7 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
             // Fallback caso o ref não esteja disponível
             setFormData(prev => ({
                 ...prev,
-                formulaString: prev.formulaString + str
+                [activeTab === 'venda' ? 'formulaString' : 'costFormulaString']: (activeTab === 'venda' ? prev.formulaString : (prev.costFormulaString || '')) + str
             }));
         }
     };
@@ -243,7 +313,7 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
             toast.error("O nome da regra é obrigatório.");
             return;
         }
-        if (formulaError) {
+        if (formulaError || costFormulaError) {
             toast.error("A fórmula possui erros matemáticos. Corrija antes de salvar.");
             return;
         }
@@ -306,115 +376,197 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
-                                        {formData.variables.map((varItem, idx) => (
-                                            <div key={idx} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm shadow-slate-100 space-y-3 relative group">
-                                                <button
-                                                    onClick={() => removeVariable(idx)}
-                                                    className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                >
-                                                    <X className="w-3 h-3" />
-                                                </button>
+                                        {formData.variables.map((varItem, idx) => {
+                                            if (!varItem) return null;
+                                            return (
+                                                <div key={idx} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm shadow-slate-100 space-y-3 relative group">
+                                                    <button
+                                                        onClick={() => removeVariable(idx)}
+                                                        className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </button>
 
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    <div>
-                                                        <label className="text-[10px] uppercase font-bold text-slate-500 mb-0.5 block">ID Técnico (Fórmula)</label>
-                                                        <Input
-                                                            value={tempVarIds[idx] !== undefined ? tempVarIds[idx] : varItem.id}
-                                                            onChange={(e) => {
-                                                                const val = e.target.value;
-                                                                setTempVarIds(prev => ({ ...prev, [idx]: val }));
-                                                            }}
-                                                            onBlur={(e) => {
-                                                                const newId = e.target.value.trim();
-                                                                const oldId = varItem.id;
-
-                                                                setTempVarIds(prev => {
-                                                                    const next = { ...prev };
-                                                                    delete next[idx];
-                                                                    return next;
-                                                                });
-
-                                                                if (newId !== '' && newId !== oldId) {
-                                                                    handleVariableIdRename(idx, oldId, newId);
-                                                                }
-                                                            }}
-                                                            className="h-8 text-xs font-mono bg-slate-50 text-indigo-700 border-indigo-200"
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <label className="text-[10px] uppercase font-bold text-slate-500 mb-0.5 block">Nome Exibição (OS)</label>
-                                                        <Input
-                                                            value={varItem.name}
-                                                            onChange={e => handleVariableChange(idx, 'name', e.target.value)}
-                                                            className="h-8 text-xs"
-                                                            placeholder="Nome Público"
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex gap-2">
-                                                    <div className="w-1/3">
-                                                        <select
-                                                            value={varItem.type}
-                                                            onChange={e => handleVariableChange(idx, 'type', e.target.value)}
-                                                            className="w-full h-8 px-2 border border-slate-300 rounded text-xs bg-slate-50"
-                                                        >
-                                                            <option value="INPUT">Entrada</option>
-                                                            <option value="FIXED">Fixo</option>
-                                                        </select>
-                                                    </div>
-
-                                                    {varItem.type === 'FIXED' ? (
-                                                        <div className="flex-1">
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <div>
+                                                            <label className="text-[10px] uppercase font-bold text-slate-500 mb-0.5 block">ID Técnico (Fórmula)</label>
                                                             <Input
-                                                                type="text"
-                                                                value={varItem.fixedValue ?? ''}
-                                                                onChange={e => handleVariableChange(idx, 'fixedValue', parseSafeFloat(e.target.value))}
-                                                                placeholder="Valor constante"
-                                                                className="h-8 text-xs text-right"
+                                                                value={tempVarIds[idx] !== undefined ? tempVarIds[idx] : varItem.id}
+                                                                onChange={(e) => {
+                                                                    const val = e.target.value;
+                                                                    setTempVarIds(prev => ({ ...prev, [idx]: val }));
+                                                                }}
+                                                                onBlur={(e) => {
+                                                                    const newId = e.target.value.trim();
+                                                                    const oldId = varItem.id;
+
+                                                                    setTempVarIds(prev => {
+                                                                        const next = { ...prev };
+                                                                        delete next[idx];
+                                                                        return next;
+                                                                    });
+
+                                                                    if (newId !== '' && newId !== oldId) {
+                                                                        handleVariableIdRename(idx, oldId, newId);
+                                                                    }
+                                                                }}
+                                                                className="h-8 text-xs font-mono bg-slate-50 text-indigo-700 border-indigo-200"
                                                             />
                                                         </div>
-                                                    ) : (
-                                                        <div className="flex-1 flex gap-1">
-                                                            <select
-                                                                value={varItem.unit}
-                                                                onChange={e => handleVariableChange(idx, 'unit', e.target.value)}
-                                                                className="flex-1 h-8 px-2 border border-slate-300 rounded text-xs bg-white text-slate-700"
-                                                            >
-                                                                <optgroup label="Comprimento/Dimensão">
-                                                                    <option value="mm">mm</option>
-                                                                    <option value="cm">cm</option>
-                                                                    <option value="m">metros</option>
-                                                                </optgroup>
-                                                                <optgroup label="Superfície">
-                                                                    <option value="mm2">mm²</option>
-                                                                    <option value="cm2">cm²</option>
-                                                                    <option value="m2">m²</option>
-                                                                </optgroup>
-                                                                <optgroup label="Volume/Massa">
-                                                                    <option value="g">gramas</option>
-                                                                    <option value="kg">quilos</option>
-                                                                </optgroup>
-                                                                <optgroup label="Geral/Financeiro">
-                                                                    <option value="un">und</option>
-                                                                    <option value="hora">horas</option>
-                                                                    <option value="moeda">Valor (R$)</option>
-                                                                    <option value="%">%</option>
-                                                                    <option value="X">Nenhum / N/A</option>
-                                                                </optgroup>
-                                                            </select>
-                                                            <button
-                                                                onClick={() => handleVariableChange(idx, 'lockedUnit', !varItem.lockedUnit)}
-                                                                className={`w - 8 h - 8 flex items - center justify - center rounded border transition - colors ${varItem.lockedUnit ? 'bg-amber-100 border-amber-300 text-amber-700' : 'bg-slate-100 border-slate-200 text-slate-400'} `}
-                                                                title="Travar Unidade pro Vendedor"
-                                                            >
-                                                                {varItem.lockedUnit ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
-                                                            </button>
+                                                        <div>
+                                                            <label className="text-[10px] uppercase font-bold text-slate-500 mb-0.5 block">Nome Exibição (OS)</label>
+                                                            <Input
+                                                                value={varItem.name || ''}
+                                                                onChange={e => handleVariableChange(idx, 'name', e.target.value)}
+                                                                className="h-8 text-xs"
+                                                                placeholder="Nome Público"
+                                                            />
                                                         </div>
-                                                    )}
+                                                    </div>
+
+                                                     <div className="flex flex-col gap-3">
+                                                         <div className="flex gap-2">
+                                                             <div className="flex-1">
+                                                                 <label className="text-[10px] uppercase font-bold text-slate-500 mb-0.5 block">Tipo da Variável</label>
+                                                                 <select
+                                                                     value={varItem.role || 'NONE'}
+                                                                     onChange={e => {
+                                                                         const newRole = e.target.value as FormulaVariableRole;
+                                                                         const suggestions = UNIT_SUGGESTIONS[newRole] || [];
+                                                                         const updatedVars = [...formData.variables];
+                                                                         updatedVars[idx] = { 
+                                                                             ...updatedVars[idx], 
+                                                                             role: newRole,
+                                                                             allowedUnits: suggestions,
+                                                                             defaultUnit: suggestions.length > 0 ? suggestions[0] : ''
+                                                                         };
+                                                                         setFormData({ ...formData, variables: updatedVars });
+                                                                     }}
+                                                                     className="w-full h-8 px-2 border border-slate-300 rounded text-xs bg-slate-50 font-medium"
+                                                                 >
+                                                                     <option value="NONE">Valor (Financeiro)</option>
+                                                                     <option value="LENGTH">Medida (Comprimento)</option>
+                                                                     <option value="AREA">Área (Espaço)</option>
+                                                                     <option value="VOLUME">Volume (Capacidade)</option>
+                                                                     <option value="TIME">Tempo (Duração)</option>
+                                                                     <option value="WEIGHT">Peso (Massa)</option>
+                                                                     <option value="ENERGY">Energia (Consumo)</option>
+                                                                     <option value="POWER">Potência (Capacidade)</option>
+                                                                     <option value="PERCENT">Percentual (%)</option>
+                                                                     <option value="COST_RATE">Taxa de Custo (Ex: R$/kWh)</option>
+                                                                 </select>
+                                                             </div>
+                                                         </div>
+
+                                                         {/* Gestão de Unidades como Tags */}
+                                                         {varItem.role !== 'NONE' && (
+                                                             <div className="bg-slate-50 p-2 rounded-md border border-slate-200">
+                                                                 <label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5 block flex justify-between">
+                                                                     Configuração de Unidades 
+                                                                     <span className="text-[9px] lowercase italic font-normal">Estrela = Padrão PDV</span>
+                                                                 </label>
+                                                                 <div className="flex flex-wrap gap-1.5 mb-2">
+                                                                     {(varItem.allowedUnits || []).map(unit => (
+                                                                         <div 
+                                                                             key={unit} 
+                                                                             className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border transition-all ${varItem.defaultUnit === unit ? 'bg-amber-50 border-amber-300 text-amber-700 shadow-sm' : 'bg-white border-slate-200 text-slate-600'}`}
+                                                                         >
+                                                                             <button 
+                                                                                 onClick={() => handleVariableChange(idx, 'defaultUnit', unit)}
+                                                                                 className={`hover:scale-110 transition-transform ${varItem.defaultUnit === unit ? 'text-amber-500' : 'text-slate-300 hover:text-amber-400'}`}
+                                                                             >
+                                                                                 <Star className={`w-3 h-3 ${varItem.defaultUnit === unit ? 'fill-amber-500' : ''}`} />
+                                                                             </button>
+                                                                             <span>{unit}</span>
+                                                                             <button 
+                                                                                 onClick={() => {
+                                                                                     const newList = (varItem.allowedUnits || []).filter(u => u !== unit);
+                                                                                     handleVariableChange(idx, 'allowedUnits', newList);
+                                                                                     if (varItem.defaultUnit === unit) {
+                                                                                         handleVariableChange(idx, 'defaultUnit', newList[0] || '');
+                                                                                     }
+                                                                                 }}
+                                                                                 className="hover:text-red-500 text-slate-400"
+                                                                             >
+                                                                                 <X className="w-2.5 h-2.5" />
+                                                                             </button>
+                                                                         </div>
+                                                                     ))}
+                                                                     
+                                                                     {/* Seletor de adição de unidades sugeridas */}
+                                                                     {varItem.role && UNIT_SUGGESTIONS[varItem.role] && (
+                                                                         <div className="flex items-center ml-1">
+                                                                             <select
+                                                                                 className="h-6 text-[10px] px-1 border border-dashed border-slate-300 rounded bg-white text-slate-400 hover:text-slate-600 cursor-pointer outline-none"
+                                                                                 value=""
+                                                                                 onChange={(e) => {
+                                                                                     const val = e.target.value;
+                                                                                     if (val === 'CUSTOM') {
+                                                                                         const custom = prompt('Digite a sigla da unidade:');
+                                                                                         if (custom) {
+                                                                                             const newList = [...(varItem.allowedUnits || []), custom.trim()];
+                                                                                             handleVariableChange(idx, 'allowedUnits', newList);
+                                                                                         }
+                                                                                     } else if (val && !(varItem.allowedUnits || []).includes(val)) {
+                                                                                         const newList = [...(varItem.allowedUnits || []), val];
+                                                                                         handleVariableChange(idx, 'allowedUnits', newList);
+                                                                                         if (!varItem.defaultUnit) handleVariableChange(idx, 'defaultUnit', val);
+                                                                                     }
+                                                                                 }}
+                                                                             >
+                                                                                 <option value="">+ add</option>
+                                                                                 {(UNIT_SUGGESTIONS[varItem.role] || [])
+                                                                                     .filter(u => !(varItem.allowedUnits || []).includes(u))
+                                                                                     .map(u => (
+                                                                                         <option key={u} value={u}>{u}</option>
+                                                                                     ))
+                                                                                 }
+                                                                                 <option value="CUSTOM">Outra...</option>
+                                                                             </select>
+                                                                         </div>
+                                                                     )}
+                                                                 </div>
+                                                             </div>
+                                                         )}
+
+                                                        <div className="flex gap-2 items-center">
+                                                            <div className="w-1/3">
+                                                                <select
+                                                                    value={varItem.type || 'INPUT'}
+                                                                    onChange={e => handleVariableChange(idx, 'type', e.target.value)}
+                                                                    className="w-full h-8 px-2 border border-slate-300 rounded text-xs bg-slate-50"
+                                                                >
+                                                                    <option value="INPUT">Entrada</option>
+                                                                    <option value="FIXED">Fixo</option>
+                                                                </select>
+                                                            </div>
+
+                                                            {varItem.type === 'FIXED' ? (
+                                                                <div className="flex-1">
+                                                                    <Input
+                                                                        type="text"
+                                                                        value={varItem.fixedValue ?? ''}
+                                                                        onChange={e => handleVariableChange(idx, 'fixedValue', parseSafeFloat(e.target.value))}
+                                                                        placeholder="Valor constante"
+                                                                        className="h-8 text-xs text-right"
+                                                                    />
+                                                                </div>
+                                                            ) : (
+                                                                <div className="flex-1 flex gap-2 justify-end">
+                                                                    <button
+                                                                        onClick={() => handleVariableChange(idx, 'visible', varItem.visible === undefined ? false : !varItem.visible)}
+                                                                        className={`px-3 h-8 flex items-center justify-center rounded border transition-colors ${varItem.visible !== false ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-slate-100 border-slate-200 text-slate-400'}`}
+                                                                        title={varItem.visible !== false ? 'Visível na Venda' : 'Oculto na Venda'}
+                                                                    >
+                                                                        {varItem.visible !== false ? <><Eye className="w-3 h-3 mr-1" /> Visível</> : <><EyeOff className="w-3 h-3 mr-1" /> Oculto</>}
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
@@ -426,9 +578,20 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                     <div className="w-full md:w-7/12 flex flex-col bg-white">
                         <div className="p-6 flex-1 flex flex-col">
                             <div className="flex justify-between items-center mb-4">
-                                <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-                                    Editor Lógico
-                                </h3>
+                                <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+                                    <button
+                                        onClick={() => setActiveTab('venda')}
+                                        className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${activeTab === 'venda' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}
+                                    >
+                                        Fórmula de Venda
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab('custo')}
+                                        className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${activeTab === 'custo' ? 'bg-orange-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}
+                                    >
+                                        Fórmula de Custo
+                                    </button>
+                                </div>
                                 <Button size="sm" onClick={handleExtractVariables} className="bg-purple-600 hover:bg-purple-700">
                                     <Wand2 className="w-4 h-4 mr-2" /> Extrair Variáveis Mágica
                                 </Button>
@@ -478,7 +641,7 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                                             {formData.variables.map(v => (
                                                 <button
                                                     key={v.id}
-                                                    onClick={() => appendToFormula(` ${v.id} `)}
+                                                    onClick={() => appendToFormula(v.id.includes(' ') ? ` "${v.id}" ` : ` ${v.id} `)}
                                                     className="h-7 px-2 flex items-center justify-center bg-indigo-100 text-indigo-700 hover:bg-indigo-200 hover:text-indigo-800 border border-indigo-200 rounded shadow-sm text-[11px] font-mono font-bold transition-colors"
                                                     title={`Inserir ${v.name} na fórmula`}
                                                 >
@@ -494,15 +657,21 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                             <div className="relative flex-1 min-h-[250px] flex flex-col group mt-1">
                                 <textarea
                                     ref={formulaTextareaRef}
-                                    value={formData.formulaString}
-                                    onChange={e => setFormData(p => ({ ...p, formulaString: e.target.value }))}
-                                    className={`flex-1 w-full p-4 font-mono text-lg rounded-lg border-2 ring-0 transition-colors bg-slate-50 focus:bg-white resize-none ${formulaError ? 'border-red-300 focus:border-red-500' : 'border-slate-200 focus:border-indigo-400'}`}
-                                    placeholder="Digite sua matemática aqui... ex: (largura * altura) * preco_m2"
+                                    value={activeTab === 'venda' ? formData.formulaString : (formData.costFormulaString || '')}
+                                    onChange={e => setFormData(p => ({
+                                        ...p,
+                                        [activeTab === 'venda' ? 'formulaString' : 'costFormulaString']: e.target.value
+                                    }))}
+                                    className={`flex-1 w-full p-4 font-mono text-lg rounded-lg border-2 ring-0 transition-colors ${activeTab === 'venda'
+                                            ? (formulaError ? 'border-red-300 focus:border-red-500 bg-red-50/20' : 'border-slate-200 focus:border-indigo-400 bg-slate-50 focus:bg-white')
+                                            : (costFormulaError ? 'border-red-300 focus:border-red-500 bg-red-50/20' : 'border-slate-200 focus:border-orange-400 bg-orange-50/10 focus:bg-white')
+                                        } resize-none`}
+                                    placeholder={activeTab === 'venda' ? "Digite a lógica de VENDA... ex: custo * 2" : "Digite a lógica de CUSTO... ex: g * preco_g"}
                                 />
-                                {formulaError && (
+                                {(activeTab === 'venda' ? formulaError : costFormulaError) && (
                                     <div className="absolute -bottom-10 left-0 right-0 p-2 bg-red-100 text-red-700 text-sm rounded-md shadow flex items-center gap-2 z-10 transition-all opacity-100">
                                         <Info className="w-4 h-4 shrink-0" />
-                                        <span className="truncate">{formulaError}</span>
+                                        <span className="truncate">{activeTab === 'venda' ? formulaError : costFormulaError}</span>
                                     </div>
                                 )}
                             </div>
@@ -525,7 +694,7 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                             ) : (
                                 <>
                                     {/* Variáveis de Entrada (Simuláveis) */}
-                                    {formData.variables.filter(v => v.type === 'INPUT').map(v => (
+                                    {formData.variables.filter(v => v && v.type === 'INPUT').map(v => (
                                         <div key={v.id} className="w-40 flex flex-col">
                                             <label className="text-xs text-indigo-300 font-mono mb-1 truncate" title={v.name}>{v.name}</label>
                                             <div className="flex bg-slate-800 rounded border border-slate-700 focus-within:border-indigo-500 overflow-hidden">
@@ -536,36 +705,21 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                                                     value={simulationValues[v.id] ?? ''}
                                                     onChange={e => setSimulationValues(p => ({ ...p, [v.id]: parseSafeFloat(e.target.value) }))}
                                                 />
-                                                {v.lockedUnit ? (
+                                                {(!v.allowedUnits || v.allowedUnits.length === 0) ? (
                                                     <div className="h-9 px-2 flex items-center justify-center bg-slate-900 text-slate-500 text-xs font-mono border-l border-slate-700 uppercase">
-                                                        {v.unit}
+                                                        {v.baseUnit || '-'}
                                                     </div>
                                                 ) : (
                                                     <select
-                                                        value={v.unit}
+                                                        value={simulationValues[`${v.id}_unit`] || v.baseUnit || ''}
                                                         onChange={(e) => {
-                                                            const newVars = [...formData.variables];
-                                                            const idx = newVars.findIndex(item => item.id === v.id);
-                                                            if (idx !== -1) {
-                                                                newVars[idx].unit = e.target.value as any;
-                                                                setFormData(p => ({ ...p, variables: newVars }));
-                                                            }
+                                                            setSimulationValues(p => ({ ...p, [`${v.id}_unit`]: e.target.value }));
                                                         }}
                                                         className="h-9 px-1 bg-slate-800 text-slate-400 text-xs font-mono border-l border-slate-700 outline-none cursor-pointer hover:bg-slate-700 uppercase"
                                                     >
-                                                        <option value="mm">mm</option>
-                                                        <option value="cm">cm</option>
-                                                        <option value="m">m</option>
-                                                        <option value="mm2">mm²</option>
-                                                        <option value="cm2">cm²</option>
-                                                        <option value="m2">m²</option>
-                                                        <option value="g">g</option>
-                                                        <option value="kg">kg</option>
-                                                        <option value="un">un</option>
-                                                        <option value="hora">hrs</option>
-                                                        <option value="moeda">R$</option>
-                                                        <option value="%">%</option>
-                                                        <option value="X">-</option>
+                                                        {((v.allowedUnits && v.allowedUnits.length > 0) ? v.allowedUnits : [v.baseUnit || 'un']).filter((u, i, arr) => u && arr.indexOf(u) === i).map(u => (
+                                                            <option key={u} value={u!}>{u}</option>
+                                                        ))}
                                                     </select>
                                                 )}
                                             </div>
@@ -573,9 +727,9 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                                     ))}
 
                                     {/* Variáveis Fixas (Reference) */}
-                                    {formData.variables.filter(v => v.type === 'FIXED').length > 0 && (
+                                    {formData.variables.filter(v => v && v.type === 'FIXED').length > 0 && (
                                         <div className="flex gap-4 border-l border-slate-700 pl-4 py-1 ml-2">
-                                            {formData.variables.filter(v => v.type === 'FIXED').map(v => (
+                                            {formData.variables.filter(v => v && v.type === 'FIXED').map(v => (
                                                 <div key={v.id} className="w-28 opacity-60 flex flex-col">
                                                     <label className="text-[10px] uppercase text-emerald-400 font-bold mb-1 truncate tracking-wider" title={v.name}>
                                                         FIXO: {v.name}
@@ -584,7 +738,7 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                                                         <input
                                                             type="text"
                                                             className="w-full bg-slate-900/50 h-8 px-2 text-emerald-300 outline-none text-right font-mono text-sm"
-                                                            value={simulationValues[v.id] ?? v.fixedValue ?? ''}
+                                                            value={simulationValues[v.id] ?? (v.fixedValue || 0)}
                                                             onChange={e => setSimulationValues(p => ({ ...p, [v.id]: parseSafeFloat(e.target.value) }))}
                                                         />
                                                     </div>
@@ -597,11 +751,89 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                         </div>
 
                         {/* Card Result Preview */}
-                        <div className="bg-indigo-600 rounded-xl p-4 min-w-[200px] border border-indigo-500 shadow-2xl flex flex-col justify-center items-center">
-                            <span className="text-indigo-200 text-xs font-bold uppercase mb-1">Resultado Preview</span>
-                            <div className={`text - 3xl font - bold font - mono ${formulaError ? 'text-red-300 text-xl' : 'text-white'} `}>
-                                {formulaError ? 'Err' : (typeof simulationResult === 'number' ? `R$ ${simulationResult.toFixed(2)} ` : simulationResult)}
+                        <div className="flex flex-col gap-4">
+                            <div className="flex gap-4">
+                                <div className="bg-indigo-600 rounded-xl p-3 min-w-[140px] border border-indigo-500 shadow-lg flex flex-col justify-center items-center">
+                                    <span className="text-indigo-200 text-[10px] font-bold uppercase mb-1">Venda Preview</span>
+                                    <div className={`text-xl font-bold font-mono text-center px-1 ${formulaError || typeof simulation.venda === 'string' ? 'text-red-300 text-sm' : 'text-white'}`}>
+                                        {formulaError 
+                                            ? 'Erro Sintaxe' 
+                                            : (typeof simulation.venda === 'string' 
+                                                ? simulation.venda 
+                                                : `R$ ${simulation.venda.toFixed(2)}`
+                                              )
+                                        }
+                                    </div>
+                                </div>
+
+                                <div className="bg-orange-600 rounded-xl p-3 min-w-[140px] border border-orange-500 shadow-lg flex flex-col justify-center items-center relative group/cost">
+                                    <span className="text-orange-200 text-[10px] font-bold uppercase mb-1 flex items-center gap-1">
+                                        Custo Estimado <Info className="w-2.5 h-2.5" />
+                                    </span>
+                                    <div className={`text-xl font-bold font-mono text-center px-1 ${costFormulaError || typeof simulation.custo === 'string' ? 'text-red-300 text-sm' : 'text-white'}`}>
+                                        {costFormulaError 
+                                            ? 'Erro Sintaxe' 
+                                            : (typeof simulation.custo === 'string' 
+                                                ? simulation.custo 
+                                                : `R$ ${simulation.custo.toFixed(2)}`
+                                              )
+                                        }
+                                    </div>
+
+                                    {/* Detalhamento Hover */}
+                                    {simulation.breakdown.length > 0 && (
+                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-64 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl p-3 z-50 pointer-events-none opacity-0 group-hover/cost:opacity-100 transition-opacity">
+                                            <h5 className="text-[10px] font-bold text-orange-400 uppercase tracking-wider mb-2 border-b border-slate-700 pb-1">Detalhamento de Custos (Hover)</h5>
+                                            <div className="space-y-2">
+                                                {simulation.breakdown.map((item, i) => (
+                                                    <div key={i} className="flex justify-between items-center text-xs">
+                                                        <span className="text-slate-300 truncate mr-2">{item.label}</span>
+                                                        <span className="text-white font-mono font-bold whitespace-nowrap">
+                                                            {typeof item.value === 'number' 
+                                                                ? `R$ ${item.value.toFixed(2)}` 
+                                                                : item.value}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="bg-emerald-600 rounded-xl p-3 min-w-[140px] border border-emerald-500 shadow-lg flex flex-col justify-center items-center">
+                                    <span className="text-emerald-200 text-[10px] font-bold uppercase mb-1">Lucro Bruto</span>
+                                    <div className="text-xl font-bold font-mono text-white">
+                                        {(typeof simulation.venda === 'number' && typeof simulation.custo === 'number')
+                                            ? `R$ ${(simulation.venda - simulation.custo).toFixed(2)}`
+                                            : '—'}
+                                    </div>
+                                </div>
                             </div>
+
+                            {/* NOVO: Detalhamento Visível (Igual à imagem) */}
+                            {simulation.breakdown.length > 0 && (
+                                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                        <ListChecks className="w-3 h-3" /> Detalhamento do Orçamento
+                                    </h4>
+                                    <div className="space-y-2">
+                                        {simulation.breakdown.map((item, i) => (
+                                            <div key={i} className="flex justify-between items-center text-sm">
+                                                <span className="text-slate-600 font-medium">{item.label.replace(/_/g, ' ')}:</span>
+                                                <span className="text-slate-900 font-bold">
+                                                    {typeof item.value === 'number' 
+                                                        ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.value) 
+                                                        : item.value}
+                                                </span>
+                                            </div>
+                                        ))}
+                                        <div className="pt-2 mt-2 border-t border-slate-200 flex justify-between items-center text-sm font-black text-indigo-700">
+                                            <span>CUSTO TOTAL ESTIMADO:</span>
+                                            <span>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(typeof simulation.custo === 'number' ? simulation.custo : 0)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Botões Finais */}

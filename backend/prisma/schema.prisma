@@ -23,7 +23,9 @@ model Organization {
   budgets                Budget[]
   categories             Category[]
   configurationTemplates ConfigurationTemplate[]
+  fichasTecnicas         FichaTecnicaInsumo[]
   finishes               Finish[]
+  insumos                Insumo[]
   inventoryAlerts        InventoryAlert[]
   inventoryMovements     InventoryMovement[]
   machines               Machine[]
@@ -106,32 +108,33 @@ model AuditLog {
 }
 
 model Profile {
-  id             String       @id @default(uuid())
-  organizationId String
-  type           ProfileType
-  name           String
-  document       String?
-  email          String?
-  phone          String?
-  address        String?
-  city           String?
-  state          String?
-  zipCode        String?
-  isCustomer     Boolean      @default(false)
-  isSupplier     Boolean      @default(false)
-  isEmployee     Boolean      @default(false)
-  creditLimit    Decimal?     @db.Decimal(10, 2)
-  paymentTerms   Int?
-  active         Boolean      @default(true)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  addressNumber  String?
-  balance        Decimal      @default(0) @db.Decimal(15, 2)
-  userId         String?      @unique
-  budgets        Budget[]
-  orders         Order[]
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User?        @relation(fields: [userId], references: [id])
+  id                 String             @id @default(uuid())
+  organizationId     String
+  type               ProfileType
+  name               String
+  document           String?
+  email              String?
+  phone              String?
+  address            String?
+  city               String?
+  state              String?
+  zipCode            String?
+  isCustomer         Boolean            @default(false)
+  isSupplier         Boolean            @default(false)
+  isEmployee         Boolean            @default(false)
+  creditLimit        Decimal?           @db.Decimal(10, 2)
+  paymentTerms       Int?
+  active             Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  addressNumber      String?
+  balance            Decimal            @default(0) @db.Decimal(15, 2)
+  userId             String?            @unique
+  budgets            Budget[]
+  insumoFornecedores InsumoFornecedor[]
+  orders             Order[]
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user               User?              @relation(fields: [userId], references: [id])
 
   @@unique([organizationId, document])
   @@map("profiles")
@@ -192,16 +195,15 @@ model Product {
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
   pricingRuleId    String?
-  // ID da fórmula local (salva no localStorage das Configurações — sem FK)
-  localFormulaId   String?
-  // Valores salvos para as variáveis da fórmula
-  formulaData      Json?
-  // Controle de estoque (apenas para produtos do tipo PRODUCT)
-  trackStock       Boolean                @default(false)
-  stockQuantity    Float?
   stockMinQuantity Float?
+  stockQuantity    Float?
   stockUnit        String?
+  trackStock       Boolean                @default(false)
+  formulaData      Json?
+  localFormulaId   String?
+  customFormula    String?
   budgetItems      BudgetItem[]
+  fichasTecnicas   FichaTecnicaInsumo[]
   orderItems       OrderItem[]
   components       ProductComponent[]
   configurations   ProductConfiguration[]
@@ -254,6 +256,7 @@ model ConfigurationOption {
   createdAt            DateTime                 @default(now())
   updatedAt            DateTime                 @updatedAt
   configuration        ProductConfiguration     @relation(fields: [configurationId], references: [id], onDelete: Cascade)
+  fichasTecnicas       FichaTecnicaInsumo[]
   orderItemConfigs     OrderItemConfiguration[]
 
   @@map("configuration_options")
@@ -815,6 +818,64 @@ model PricingRule {
   @@map("pricing_rules")
 }
 
+/// Matéria-prima usada no motor de cálculo de orçamentos dinâmicos
+model Insumo {
+  id             String               @id @default(uuid())
+  organizationId String
+  nome           String
+  categoria      String
+  unidadeBase    UnidadeBase
+  custoUnitario  Decimal              @db.Decimal(10, 4)
+  ativo          Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  fichasTecnicas FichaTecnicaInsumo[]
+  fornecedores   InsumoFornecedor[]
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, categoria])
+  @@index([organizationId, ativo])
+  @@map("insumos")
+}
+
+/// Relação de quantidade de insumos associados a um Produto Base ou a uma Opção de Variação
+model FichaTecnicaInsumo {
+  id                    String               @id @default(uuid())
+  organizationId        String
+  insumoId              String
+  productId             String?
+  configurationOptionId String?
+  quantidade            Float
+  custoCalculado        Decimal              @db.Decimal(10, 4)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  option                ConfigurationOption? @relation(fields: [configurationOptionId], references: [id], onDelete: Cascade)
+  insumo                Insumo               @relation(fields: [insumoId], references: [id])
+  organization          Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product               Product?             @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([configurationOptionId])
+  @@map("ficha_tecnica_insumos")
+}
+
+model InsumoFornecedor {
+  id           String   @id @default(uuid())
+  insumoId     String
+  fornecedorId String
+  precoCusto   Decimal? @db.Decimal(10, 4)
+  referencia   String?
+  ativo        Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  fornecedor   Profile  @relation(fields: [fornecedorId], references: [id])
+  insumo       Insumo   @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+
+  @@unique([insumoId, fornecedorId])
+  @@map("insumo_fornecedores")
+}
+
 enum UserRole {
   OWNER
   ADMIN
@@ -975,4 +1036,13 @@ enum StatusScope {
   ORDER
   ITEM
   BOTH
+}
+
+/// Unidade de medida base do insumo
+enum UnidadeBase {
+  KG
+  M2
+  M
+  UN
+  LITRO
 }

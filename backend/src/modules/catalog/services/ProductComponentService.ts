@@ -5,23 +5,23 @@ interface CreateComponentRequest {
   materialId: string;
   consumptionMethod: 'BOUNDING_BOX' | 'LINEAR_NEST' | 'FIXED_AMOUNT';
   wastePercentage?: number;
-  manualWastePercentage?: number;
+  manualWastePercentage?: number | null;
   wasteUnits?: number;
-  manualWasteUnits?: number;
+  manualWasteUnits?: number | null;
   isOptional?: boolean;
   priority?: number;
-  notes?: string;
+  notes?: string | null;
 }
 
 interface UpdateComponentRequest {
   consumptionMethod?: 'BOUNDING_BOX' | 'LINEAR_NEST' | 'FIXED_AMOUNT';
   wastePercentage?: number;
-  manualWastePercentage?: number;
+  manualWastePercentage?: number | null;
   wasteUnits?: number;
-  manualWasteUnits?: number;
+  manualWasteUnits?: number | null;
   isOptional?: boolean;
   priority?: number;
-  notes?: string;
+  notes?: string | null;
 }
 
 export class ProductComponentService {

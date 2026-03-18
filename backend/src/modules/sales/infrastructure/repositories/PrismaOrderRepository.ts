@@ -73,7 +73,8 @@ export class PrismaOrderRepository implements OrderRepository {
                 setupTime: item.setupTime,
                 complexity: item.complexity,
                 customSizeName: item.customSizeName,
-                isCustomSize: item.isCustomSize
+                isCustomSize: item.isCustomSize,
+                attributes: item.attributes
               }))
             }
           },
@@ -136,7 +137,8 @@ export class PrismaOrderRepository implements OrderRepository {
               setupTime: item.setupTime,
               complexity: item.complexity,
               customSizeName: item.customSizeName,
-              isCustomSize: item.isCustomSize
+              isCustomSize: item.isCustomSize,
+              attributes: item.attributes
             }))
           }
         },
@@ -410,7 +412,8 @@ export class PrismaOrderRepository implements OrderRepository {
       setupTime: item.setupTime,
       complexity: item.complexity,
       customSizeName: item.customSizeName,
-      isCustomSize: item.isCustomSize
+      isCustomSize: item.isCustomSize,
+      attributes: item.attributes ? (item.attributes as any) : undefined
     }));
 
     return new Order({

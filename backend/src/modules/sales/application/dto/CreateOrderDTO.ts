@@ -19,6 +19,7 @@ export interface CreateOrderItemDTO {
   // Tamanho personalizado
   customSizeName?: string;
   isCustomSize?: boolean;
+  attributes?: Record<string, any>;
 }
 
 export interface CreateOrderDTO {

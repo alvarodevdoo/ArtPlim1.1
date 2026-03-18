@@ -72,50 +72,38 @@ export class CreateOrderUseCase {
         throw new NotFoundError(`Produto ${itemData.productId}`);
       }
 
-      // Calcular preços usando o PricingEngine
+      const selectedOptions = itemData.attributes?.selectedOptions || {};
+      const selectedOptionIds = Object.values(selectedOptions).filter(id => !!id) as string[];
+
+      // Calcular preços usando o novo PricingEngine
       const pricing = await this.pricingEngine.execute({
-        product: {
-          id: product.id,
-          name: product.name,
-          pricingMode: product.pricingMode,
-          salePrice: product.salePrice ? Number(product.salePrice) : undefined,
-          minPrice: product.minPrice ? Number(product.minPrice) : undefined,
-          markup: product.markup,
-          components: product.components?.map((comp: any) => ({
-            material: {
-              name: comp.material.name,
-              costPerUnit: Number(comp.material.costPerUnit),
-              format: comp.material.format
-            },
-            consumptionMethod: comp.consumptionMethod,
-            wastePercentage: comp.wastePercentage
-          })),
-          operations: product.operations?.map((op: any) => ({
-            name: op.name,
-            costPerMinute: Number(op.costPerMinute),
-            setupTime: op.setupTime
-          }))
-        } as any,
+        productId: product.id,
         width: itemData.width,
         height: itemData.height,
         quantity: itemData.quantity,
-        organizationSettings: settings ? {
-          enableEngineering: settings.enableEngineering,
-          defaultMarkup: settings.defaultMarkup
-        } : undefined
+        variables: itemData.attributes || {}, // Injetar escopo dinâmico
+        selectedOptionIds,
+        organizationId: customer.organizationId
       });
 
       // Usar preço customizado se fornecido, senão usar o calculado
       const unitPrice = itemData.unitPrice || pricing.unitPrice;
+
+      // Unificar atributos e adicionar o snapshot histórico
+      const attributes = {
+        ...(itemData.attributes || {}),
+        insumos_snapshot: pricing.insumos // SNAPSHOT HISTÓRICO
+      };
 
       const orderItem = new OrderItem({
         productId: itemData.productId,
         dimensions: new Dimensions(itemData.width, itemData.height),
         quantity: itemData.quantity,
         costPrice: new Money(pricing.costPrice),
-        calculatedPrice: new Money(pricing.calculatedPrice),
+        calculatedPrice: new Money(pricing.unitPrice),
         unitPrice: new Money(unitPrice),
         notes: itemData.notes,
+        attributes, // Salvar snapshot
 
         // Campos específicos por tipo
         area: itemData.area,

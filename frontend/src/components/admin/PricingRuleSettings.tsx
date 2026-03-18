@@ -4,8 +4,7 @@ import { Edit2, Trash2, Plus, Download, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import PricingRuleEditorModal, { PricingFormulaRule } from './pricing/PricingRuleEditorModal';
 
-// Em ambiente real, chamaria a API. Por enquanto, no front, simulamos o armazenamento.
-const MOCK_STORAGE_KEY = 'artplim_pricing_rules';
+import api from '@/lib/api';
 
 const PricingRuleSettings: React.FC = () => {
     const [rules, setRules] = useState<PricingFormulaRule[]>([]);
@@ -15,45 +14,44 @@ const PricingRuleSettings: React.FC = () => {
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [editingRule, setEditingRule] = useState<PricingFormulaRule | null>(null);
 
-    useEffect(() => {
-        loadRules();
-    }, []);
-
-    const loadRules = () => {
+    const loadRules = async () => {
         setLoading(true);
         try {
-            const saved = localStorage.getItem(MOCK_STORAGE_KEY);
-            if (saved) {
-                setRules(JSON.parse(saved));
-            } else {
-                // Mock inicial
-                const initialMocks: PricingFormulaRule[] = [
-                    {
-                        id: 'rule_1',
-                        internalName: 'Lona Promocional por M²',
-                        formulaString: '(largura * altura) * preco_m2 + acabamento',
-                        active: true,
-                        variables: [
-                            { id: 'largura', name: 'Largura', type: 'INPUT', unit: 'm', lockedUnit: true },
-                            { id: 'altura', name: 'Altura', type: 'INPUT', unit: 'm', lockedUnit: true },
-                            { id: 'preco_m2', name: 'Preço Custo M²', type: 'FIXED', unit: 'moeda', lockedUnit: true, fixedValue: 25.50 },
-                            { id: 'acabamento', name: 'Taxa de Acabamento', type: 'FIXED', unit: 'moeda', lockedUnit: true, fixedValue: 15.00 }
-                        ]
+            const response = await api.get('/api/catalog/pricing-rules');
+            const data = response.data.data;
+            
+            // Adaptar campos do backend (name -> internalName) e parse da formula se necessário
+            const adaptedRules = data.map((r: any) => {
+                let formulaData = r.formula;
+                if (typeof formulaData === 'string') {
+                    try {
+                        formulaData = JSON.parse(formulaData);
+                    } catch (e) {
+                        formulaData = { formulaString: r.formula, variables: [] };
                     }
-                ];
-                setRules(initialMocks);
-                localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(initialMocks));
-            }
+                }
+                
+                return {
+                    id: r.id,
+                    internalName: r.name,
+                    formulaString: formulaData?.formulaString || '',
+                    costFormulaString: formulaData?.costFormulaString || '',
+                    variables: (formulaData?.variables || r.variables || []).map((v: any) => ({
+                        ...v,
+                        baseUnit: v.baseUnit || '',
+                        allowedUnits: v.allowedUnits || [],
+                        role: v.role || 'NONE'
+                    })),
+                    active: r.active
+                };
+            });
+            
+            setRules(adaptedRules);
         } catch (error) {
-            toast.error('Erro ao carregar regras de precificação locais');
+            toast.error('Erro ao carregar regras de precificação');
         } finally {
             setLoading(false);
         }
-    };
-
-    const saveRulesToStorage = (newRules: PricingFormulaRule[]) => {
-        setRules(newRules);
-        localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(newRules));
     };
 
     // --- AÇÕES DO CRUD ---
@@ -67,33 +65,56 @@ const PricingRuleSettings: React.FC = () => {
         setIsEditorOpen(true);
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = async (id: string) => {
         if (!confirm('Tem certeza que deseja excluir esta regra de cálculo?')) return;
-        const newRules = rules.filter(r => r.id !== id);
-        saveRulesToStorage(newRules);
-        toast.success('Regra removida com sucesso!');
-    };
-
-    const handleSaveRule = (ruleData: PricingFormulaRule) => {
-        let updatedList = [...rules];
-
-        if (ruleData.id) {
-            // Update
-            const index = updatedList.findIndex(r => r.id === ruleData.id);
-            if (index >= 0) {
-                updatedList[index] = ruleData;
-            }
-        } else {
-            // Create
-            ruleData.id = `rule_${Date.now()}`;
-            updatedList.push(ruleData);
+        setLoading(true);
+        try {
+            await api.delete(`/api/catalog/pricing-rules/${id}`);
+            toast.success('Regra removida com sucesso!');
+            loadRules();
+        } catch (error) {
+            toast.error('Erro ao excluir regra');
+        } finally {
+            setLoading(false);
         }
-
-        saveRulesToStorage(updatedList);
-        setIsEditorOpen(false);
-        setEditingRule(null);
-        toast.success('Regra salva com sucesso!');
     };
+
+    const handleSaveRule = async (ruleData: PricingFormulaRule) => {
+        setLoading(true);
+        try {
+            // Preparar payload para o backend
+            const payload = {
+                name: ruleData.internalName,
+                type: 'UNIT', // Fallback ou derivar do conteúdo
+                formula: {
+                    formulaString: ruleData.formulaString,
+                    costFormulaString: ruleData.costFormulaString,
+                    variables: ruleData.variables
+                },
+                active: ruleData.active
+            };
+
+            if (ruleData.id) {
+                await api.put(`/api/catalog/pricing-rules/${ruleData.id}`, payload);
+                toast.success('Regra atualizada com sucesso!');
+            } else {
+                await api.post('/api/catalog/pricing-rules', payload);
+                toast.success('Regra criada com sucesso!');
+            }
+            
+            setIsEditorOpen(false);
+            setEditingRule(null);
+            loadRules(); // Recarregar lista
+        } catch (error) {
+            toast.error('Erro ao salvar regra');
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    useEffect(() => {
+        loadRules();
+    }, []);
 
     // --- IMPORT / EXPORT (JSON) ---
     const handleExportJSON = () => {
@@ -122,8 +143,8 @@ const PricingRuleSettings: React.FC = () => {
                     const isValid = importedRules.every(r => r.internalName && r.formulaString && Array.isArray(r.variables));
 
                     if (isValid) {
-                        saveRulesToStorage(importedRules);
-                        toast.success(`Importados com sucesso ${importedRules.length} regras.`);
+                        toast.info('A importação em lote será implementada em breve.');
+                        // TODO: Implementar upload em massa para API
                     } else {
                         toast.error('O arquivo JSON não segue a estrutura válida do ArtPlim.');
                     }
@@ -190,7 +211,7 @@ const PricingRuleSettings: React.FC = () => {
                                     {rule.variables.map(v => (
                                         <div key={v.id} className={`text-xs px-2 py-1 rounded flex items-center gap-1 border ${v.type === 'INPUT' ? 'bg-sky-50 border-sky-100 text-sky-700' : 'bg-emerald-50 border-emerald-100 text-emerald-700'}`}>
                                             <span className="font-semibold">{v.name}</span>
-                                            <span className="opacity-60">({v.unit})</span>
+                                            <span className="opacity-60">({v.baseUnit || 'un'})</span>
                                         </div>
                                     ))}
                                 </div>
