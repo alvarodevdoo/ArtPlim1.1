@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import CurrencyInput from '@/components/ui/CurrencyInput';
@@ -51,40 +51,48 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
     const [configuracoes, setConfiguracoes] = useState<any[]>([]);
     const [opcoesSelecionadas, setOpcoesSelecionadas] = useState<Record<string, string>>({});
 
-    // 1. Carregar dados iniciais (Edição ou Novo)
+    // 1. OTIMIZAÇÃO: Parsing e Memoização da Fórmula (Evita JSON.parse a cada render)
+    const parsedFormulaData = useMemo(() => {
+        const rule = produto?.pricingRule;
+        if (!rule?.formula) return null;
+        if (typeof rule.formula === 'string') {
+            try { return JSON.parse(rule.formula); } catch { return null; }
+        }
+        return rule.formula;
+    }, [produto?.pricingRule]);
+
+    // OTIMIZAÇÃO: Filtra variáveis de entrada apenas quando a regra muda
+    const inputVars = useMemo(() => {
+        return parsedFormulaData?.variables?.filter((v: any) => v.visible !== false && (v.type === 'INPUT' || !v.type)) || [];
+    }, [parsedFormulaData]);
+
+    // 2. Carregar dados iniciais
     useEffect(() => {
+        let isMounted = true;
+
         const carregarDadosIniciais = async () => {
             if (editingData) {
                 setQuantity(editingData.quantity || 1);
                 setUnitPrice(editingData.unitPrice || 0);
                 setNotes(editingData.notes || '');
-                
-                if (editingData.attributes?.insumos) {
-                    setMateriaisSelecionados(editingData.attributes.insumos);
-                }
 
-                if (editingData.attributes?.selectedOptions) {
-                    setOpcoesSelecionadas(editingData.attributes.selectedOptions);
-                }
+                if (editingData.attributes?.insumos) setMateriaisSelecionados(editingData.attributes.insumos);
+                if (editingData.attributes?.selectedOptions) setOpcoesSelecionadas(editingData.attributes.selectedOptions);
 
-                // Carregar e Normalizar Variáveis (Suporte a migração de formato legado)
                 if (editingData.attributes?.dynamicVariables) {
                     const saved = editingData.attributes.dynamicVariables;
                     const normalized: Record<string, { value: any; unit: string | null }> = {};
                     Object.entries(saved).forEach(([key, val]: [string, any]) => {
-                        if (val && typeof val === 'object' && 'value' in val) {
-                            normalized[key] = val;
-                        } else {
-                            normalized[key] = { value: val, unit: null };
-                        }
+                        normalized[key] = (val && typeof val === 'object' && 'value' in val)
+                            ? val
+                            : { value: val, unit: null };
                     });
                     setDynamicVariables(normalized);
                 }
             } else if (produto?.id) {
-                // Novo item: carregar ficha técnica base e inicializar variáveis
                 try {
                     const response = await api.get(`/api/catalog/products/${produto.id}/ficha-tecnica`);
-                    if (response.data.success && response.data.data) {
+                    if (isMounted && response.data.success && response.data.data) {
                         const fichaBase = response.data.data.map((item: any) => ({
                             insumoId: item.insumoId,
                             nome: item.insumo.nome,
@@ -95,18 +103,12 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                         setMateriaisSelecionados(fichaBase);
                     }
 
-                    // Inicializar variáveis dinâmicas com valores fixos da regra
-                    if (produto.pricingRule) {
-                        let formulaData = produto.pricingRule.formula;
-                        if (typeof formulaData === 'string') {
-                            try { formulaData = JSON.parse(formulaData); } catch (e) {}
-                        }
-                        
+                    if (isMounted && parsedFormulaData?.variables) {
                         const initialVars: any = {};
-                        formulaData?.variables?.forEach((v: any) => {
-                            initialVars[v.id] = { 
-                                value: v.fixedValue ?? 0, 
-                                unit: v.unit || v.baseUnit || null 
+                        parsedFormulaData.variables.forEach((v: any) => {
+                            initialVars[v.id] = {
+                                value: v.fixedValue ?? 0,
+                                unit: v.unit || v.baseUnit || null
                             };
                         });
                         setDynamicVariables(initialVars);
@@ -116,39 +118,25 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 }
             }
 
-            // Inicializar variáveis da regra (se não for edição ou se vierem do cadastro do produto)
-            const rule = produto?.pricingRule;
-            if (rule && !editingData?.attributes?.dynamicVariables) {
-                let formulaData = rule.formula;
-                if (typeof formulaData === 'string') {
-                    try { formulaData = JSON.parse(formulaData); } catch (e) {}
-                }
+            if (!editingData?.attributes?.dynamicVariables && parsedFormulaData?.variables) {
+                const initialVars: Record<string, { value: any; unit: string | null }> = {};
+                parsedFormulaData.variables.forEach((v: any) => {
+                    let val: any = 0;
+                    if (produto?.formulaData?.[v.id] !== undefined) val = produto.formulaData[v.id];
+                    else if (v.type === 'FIXED') val = v.fixedValue ?? 0;
 
-                if (formulaData?.variables) {
-                    const initialVars: Record<string, { value: any; unit: string | null }> = {};
-                    formulaData.variables.forEach((v: any) => {
-                        // Prioridade: Valor no cadastro do produto (fixed) ou 0
-                        let val: any = 0;
-                        if (produto.formulaData?.[v.id] !== undefined) {
-                            val = produto.formulaData[v.id];
-                        } else if (v.type === 'FIXED') {
-                            val = v.fixedValue ?? 0;
-                        }
-                        
-                        initialVars[v.id] = { 
-                            value: val, 
-                            unit: v.defaultUnit || v.unit || null 
-                        };
-                    });
-                    setDynamicVariables(initialVars);
-                }
+                    initialVars[v.id] = {
+                        value: val,
+                        unit: v.defaultUnit || v.unit || null
+                    };
+                });
+                if (isMounted) setDynamicVariables(initialVars);
             }
 
-            // Carregar configurações dinâmicas do produto
             if (produto?.id) {
                 try {
                     const response = await api.get(`/api/catalog/products/${produto.id}/configurations`);
-                    if (response.data.success) {
+                    if (isMounted && response.data.success) {
                         setConfiguracoes(response.data.data || []);
                     }
                 } catch (error) {
@@ -158,49 +146,49 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
         };
 
         carregarDadosIniciais();
-    }, [editingData, produto?.id]);
+        return () => { isMounted = false; };
+    }, [editingData, produto?.id, parsedFormulaData]);
 
-    // 2. Lógica de Simulação Reativa
+    // 3. Simulação Reativa com cálculo local otimizado
     useEffect(() => {
         const handler = setTimeout(() => {
-            if (quantity > 0) simularPreco();
-            else setUnitPrice(0);
-        }, 500);
+            if (quantity <= 0) {
+                setUnitPrice(0);
+                return;
+            }
+
+            if (!parsedFormulaData) {
+                setUnitPrice(produto?.salePrice || 0);
+                return;
+            }
+
+            const inputs: Record<string, any> = {};
+            Object.entries(dynamicVariables).forEach(([id, data]) => {
+                inputs[id] = data.value;
+                inputs[`${id}_unit`] = data.unit;
+            });
+
+            inputs['CUSTO_MATERIAIS'] = materiaisSelecionados.reduce((acc, m) => acc + (m.quantidadeUtilizada * m.precoBase), 0);
+            inputs['QUANTIDADE'] = quantity;
+
+            const result = calculatePricingResult(parsedFormulaData.formulaString, parsedFormulaData.variables, inputs);
+
+            setUnitPrice(result.value);
+            setSimulatingPrice(false);
+        }, 300); // Reduzido para 300ms. Como o mathjs tá cacheado, pode ser mais rápido.
+
         return () => clearTimeout(handler);
-    }, [quantity, materiaisSelecionados, dynamicVariables, opcoesSelecionadas]);
+    }, [quantity, materiaisSelecionados, dynamicVariables, opcoesSelecionadas, parsedFormulaData, produto?.salePrice]);
 
-    const simularPreco = async () => {
-        // Agora o cálculo é feito LOCAMENTE usando o motor unificado para garantir simetria total
-        const rule = produto?.pricingRule;
-        let formulaData = rule?.formula;
-        if (typeof formulaData === 'string') {
-            try { formulaData = JSON.parse(formulaData); } catch (e) {}
-        }
-        
-        if (!formulaData) {
-            setUnitPrice(produto.salePrice || 0);
-            return;
-        }
+    // 4. Handlers de UI otimizados com useCallback
+    const handleDynamicVarChange = useCallback((id: string, field: 'value' | 'unit', val: any) => {
+        setDynamicVariables(prev => ({
+            ...prev,
+            [id]: { ...prev[id], [field]: val }
+        }));
+    }, []);
 
-        // Preparar os valores de entrada para o motor (achatar o objeto de unidades)
-        const inputs: Record<string, any> = {};
-        Object.entries(dynamicVariables).forEach(([id, data]) => {
-            inputs[id] = data.value;
-            inputs[`${id}_unit`] = data.unit;
-        });
-
-        // Adicionar variáveis automáticas do sistema
-        inputs['CUSTO_MATERIAIS'] = materiaisSelecionados.reduce((acc, m) => acc + (m.quantidadeUtilizada * m.precoBase), 0);
-        inputs['QUANTIDADE'] = quantity;
-
-        const result = calculatePricingResult(formulaData.formulaString, formulaData.variables, inputs);
-        
-        setUnitPrice(result.value);
-        setSimulatingPrice(false);
-    };
-
-    // 3. Handlers de UI
-    const handleOptionChange = async (configId: string, optionId: string) => {
+    const handleOptionChange = useCallback(async (configId: string, optionId: string) => {
         if (opcoesSelecionadas[configId] === optionId) return;
         setOpcoesSelecionadas(prev => ({ ...prev, [configId]: optionId }));
 
@@ -229,9 +217,9 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
         } catch (error) {
             console.error("Erro ao carregar ficha da opção:", error);
         }
-    };
+    }, [opcoesSelecionadas]);
 
-    const handleSubmit = () => {
+    const handleSubmit = useCallback(() => {
         if (quantity <= 0 || unitPrice <= 0) {
             toast.error('Preencha os campos e aguarde o cálculo');
             return;
@@ -252,14 +240,11 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
             }
         };
         onSubmit(itemData);
-    };
+    }, [produto, quantity, unitPrice, notes, dynamicVariables, materiaisSelecionados, opcoesSelecionadas, onSubmit]);
 
     return (
         <div className="space-y-6">
-            {/* Bloco de Inputs Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-slate-50/50 rounded-xl border border-slate-200">
-
-
                 {configuracoes.map(config => (
                     <div key={config.id} className="space-y-1.5">
                         <label className="text-sm font-semibold text-slate-700">{config.name} {config.required && '*'}</label>
@@ -276,70 +261,50 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                     </div>
                 ))}
 
-                {/* Variáveis Dinâmicas */}
-                {(() => {
-                    const rule = produto?.pricingRule;
-                    let formulaData = rule?.formula;
-                    if (typeof formulaData === 'string') {
-                        try { formulaData = JSON.parse(formulaData); } catch (e) {}
-                    }
-                    const inputVars = formulaData?.variables?.filter((v: any) => v.visible !== false && (v.type === 'INPUT' || !v.type)) || [];
-                    
-                    return inputVars.map((v: any) => {
-                        const isLocked = produto.formulaData?.[`${v.id}_locked`] === true;
-                        const hasUnits = v.allowedUnits && v.allowedUnits.length > 0;
-                        
-                        return (
-                            <div key={v.id} className="space-y-1.5">
-                                <label className="text-sm font-semibold text-slate-700 flex items-center gap-1">
-                                    {v.name}
-                                    {isLocked && <Lock className="w-3 h-3 text-slate-400" />}
-                                </label>
-                                <div className="flex gap-1">
-                                    {v.defaultUnit === 'moeda' || v.role === 'MONETARY' ? (
-                                        <CurrencyInput
-                                            value={dynamicVariables[v.id]?.value || 0}
-                                            onValueChange={(val) => setDynamicVariables(prev => ({
-                                                ...prev,
-                                                [v.id]: { ...prev[v.id], value: val || 0 }
-                                            }))}
-                                            disabled={isLocked}
-                                            className="flex-1"
-                                        />
-                                    ) : (
-                                        <Input
-                                            type="text"
-                                            value={dynamicVariables[v.id]?.value ?? ''}
-                                            onChange={(e) => setDynamicVariables(prev => ({
-                                                ...prev,
-                                                [v.id]: { ...prev[v.id], value: e.target.value }
-                                            }))}
-                                            className="h-10 border-slate-200 bg-white flex-1 font-mono text-center"
-                                            disabled={isLocked}
-                                        />
-                                    )}
-                                    {hasUnits && (
-                                        <select
-                                            value={dynamicVariables[v.id]?.unit || v.defaultUnit || v.unit || ''}
-                                            onChange={(e) => setDynamicVariables(prev => ({
-                                                ...prev,
-                                                [v.id]: { ...prev[v.id], unit: e.target.value }
-                                            }))}
-                                            disabled={isLocked}
-                                            className="w-20 h-10 px-1 border border-slate-200 rounded-md bg-white text-xs"
-                                        >
-                                            {(v.allowedUnits || []).map((u: string) => (
-                                                <option key={u} value={u}>{u}</option>
-                                            ))}
-                                        </select>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    });
-                })()}
+                {inputVars.map((v: any) => {
+                    const isLocked = produto.formulaData?.[`${v.id}_locked`] === true;
+                    const hasUnits = v.allowedUnits && v.allowedUnits.length > 0;
 
-                {/* Quantidade agora vem por último na grid principal */}
+                    return (
+                        <div key={v.id} className="space-y-1.5">
+                            <label className="text-sm font-semibold text-slate-700 flex items-center gap-1">
+                                {v.name}
+                                {isLocked && <Lock className="w-3 h-3 text-slate-400" />}
+                            </label>
+                            <div className="flex gap-1">
+                                {v.defaultUnit === 'moeda' || v.role === 'MONETARY' ? (
+                                    <CurrencyInput
+                                        value={dynamicVariables[v.id]?.value || 0}
+                                        onValueChange={(val) => handleDynamicVarChange(v.id, 'value', val || 0)}
+                                        disabled={isLocked}
+                                        className="flex-1"
+                                    />
+                                ) : (
+                                    <Input
+                                        type="text"
+                                        value={dynamicVariables[v.id]?.value ?? ''}
+                                        onChange={(e) => handleDynamicVarChange(v.id, 'value', e.target.value)}
+                                        className="h-10 border-slate-200 bg-white flex-1 font-mono text-center"
+                                        disabled={isLocked}
+                                    />
+                                )}
+                                {hasUnits && (
+                                    <select
+                                        value={dynamicVariables[v.id]?.unit || v.defaultUnit || v.unit || ''}
+                                        onChange={(e) => handleDynamicVarChange(v.id, 'unit', e.target.value)}
+                                        disabled={isLocked}
+                                        className="w-20 h-10 px-1 border border-slate-200 rounded-md bg-white text-xs"
+                                    >
+                                        {(v.allowedUnits || []).map((u: string) => (
+                                            <option key={u} value={u}>{u}</option>
+                                        ))}
+                                    </select>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+
                 <div className="space-y-1.5">
                     <label className="text-sm font-semibold text-slate-700">Quantidade</label>
                     <Input
@@ -353,7 +318,6 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 </div>
             </div>
 
-            {/* Rodapé de Totais */}
             <div className="flex flex-col sm:flex-row items-end sm:items-center justify-between gap-4 p-4 bg-emerald-50 rounded-xl border border-emerald-100 shadow-sm">
                 <div className="flex flex-col">
                     <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Preço Unitário</span>
@@ -372,11 +336,10 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 </div>
             </div>
 
-            {/* Debug Logs (Opcional) */}
             {calculationLogs.length > 0 && (
                 <div className="px-1">
-                    <button 
-                        onClick={() => setShowLogs(!showLogs)} 
+                    <button
+                        onClick={() => setShowLogs(!showLogs)}
                         className="text-[10px] text-slate-400 hover:text-slate-600 underline uppercase tracking-tight"
                     >
                         {showLogs ? 'Ocultar Detalhes do Cálculo' : 'Ver Detalhes do Cálculo'}
@@ -391,7 +354,6 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 </div>
             )}
 
-            {/* Ficha Técnica */}
             <div className="pt-2">
                 <SeletorInsumos
                     insumos={insumos}
@@ -400,7 +362,6 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 />
             </div>
 
-            {/* Observações */}
             <div>
                 <label className="text-sm font-medium">Observações</label>
                 <textarea

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Wand2, Calculator, Info, X, Plus, Eye, EyeOff, Star, ListChecks } from 'lucide-react';
@@ -19,17 +19,16 @@ export type FormulaVariableRole =
     | 'PERCENT' | 'COST_RATE' | 'NONE';
 
 export interface FormulaVariable {
-    id: string; // ex: largura_placa
-    name: string; // ex: Largura da Placa
+    id: string;
+    name: string;
     type: FormulaVariableType;
-    allowedUnits: string[]; // Unidades permitidas no frontend
-    role: FormulaVariableRole; // Papel da variável para cálculo de BOM
-    visible: boolean; // Se a variável aparece no modal de venda
-    fixedValue?: number | string; // Usado apenas quando type === 'FIXED'
-    defaultUnit?: string; // Unidade padrão ao abrir OS
+    allowedUnits: string[];
+    role: FormulaVariableRole;
+    visible: boolean;
+    fixedValue?: number | string;
+    defaultUnit?: string;
 }
 
-// Sugestões de unidades por tipo
 const UNIT_SUGGESTIONS: Record<string, string[]> = {
     LENGTH: ['mm', 'cm', 'm'],
     AREA: ['mm²', 'cm²', 'm²'],
@@ -43,13 +42,12 @@ const UNIT_SUGGESTIONS: Record<string, string[]> = {
     NONE: []
 };
 
-// Helper para tratar inputs numéricos que podem vir com vírgula do usuário (Brasil)
 export interface PricingFormulaRule {
     id?: string;
     internalName: string;
-    productCategory?: string; // Opcional para não quebrar regras antigas caso ainda exista em storage
+    productCategory?: string;
     formulaString: string;
-    costFormulaString?: string; // Nova fórmula opcional para cálculo de custo
+    costFormulaString?: string;
     variables: FormulaVariable[];
     active: boolean;
 }
@@ -61,7 +59,6 @@ interface Props {
 }
 
 const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
-    // Estado principal do form
     const [formData, setFormData] = useState<PricingFormulaRule>({
         internalName: '',
         formulaString: '',
@@ -71,35 +68,11 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
     });
 
     const formulaTextareaRef = useRef<HTMLTextAreaElement>(null);
-
-    // Erros de sintaxe da fórmula live
-    const [formulaError, setFormulaError] = useState<string | null>(null);
-    const [costFormulaError, setCostFormulaError] = useState<string | null>(null);
-
-    // Aba ativa no editor: 'venda' ou 'custo'
     const [activeTab, setActiveTab] = useState<'venda' | 'custo'>('venda');
-
-    // Estado para o Simulador
     const [simulationValues, setSimulationValues] = useState<Record<string, any>>({});
-
-    // Sincroniza valores fixos com o simulador quando a regra carrega ou variáveis fixas mudam
-    useEffect(() => {
-        const newValues = { ...simulationValues };
-        let hasChanges = false;
-        formData.variables.forEach(v => {
-            // Se for fixo e ainda não estiver no simulador, ou se o valor fixo mudou e não houve override manual ainda
-            // Para simplificar, vamos sempre garantir que fixos tenham um valor inicial no simulador
-            if (v.type === 'FIXED' && v.fixedValue !== undefined && simulationValues[v.id] === undefined) {
-                newValues[v.id] = v.fixedValue;
-                hasChanges = true;
-            }
-        });
-        if (hasChanges) setSimulationValues(newValues);
-    }, [formData.variables]);
-
-    // Estado temporário para digitação do ID sem quebrar a regex
     const [tempVarIds, setTempVarIds] = useState<Record<number, string>>({});
 
+    // OTIMIZAÇÃO 1: Remover `useEffect` para inicialização complexa. Inicializamos direto se `rule` mudar.
     useEffect(() => {
         if (rule) {
             setFormData({
@@ -107,58 +80,59 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                 costFormulaString: rule.costFormulaString || ''
             });
 
-            // Inicializar simulador com 0 para os inputs
             const initialSim: Record<string, any> = {};
             rule.variables.forEach(v => {
                 if (v.type === 'INPUT') {
                     initialSim[v.id] = 0;
                     initialSim[`${v.id}_unit`] = v.defaultUnit || null;
+                } else if (v.type === 'FIXED' && v.fixedValue !== undefined) {
+                    initialSim[v.id] = v.fixedValue;
                 }
             });
             setSimulationValues(initialSim);
         }
     }, [rule]);
 
-    // Validação em tempo real da fórmula
-    useEffect(() => {
-        const validation = validateFormulaSyntax(formData.formulaString);
-        setFormulaError(validation === true ? null : validation);
+    // OTIMIZAÇÃO 2: Estados derivados não precisam de useState + useEffect (Evita Render Waterfall)
+    const formulaError = useMemo(() => {
+        const val = validateFormulaSyntax(formData.formulaString);
+        return val === true ? null : val;
+    }, [formData.formulaString]);
 
-        if (formData.costFormulaString) {
-            const costValidation = validateFormulaSyntax(formData.costFormulaString);
-            setCostFormulaError(costValidation === true ? null : costValidation);
-        } else {
-            setCostFormulaError(null);
-        }
-    }, [formData.formulaString, formData.costFormulaString]);
+    const costFormulaError = useMemo(() => {
+        if (!formData.costFormulaString) return null;
+        const val = validateFormulaSyntax(formData.costFormulaString);
+        return val === true ? null : val;
+    }, [formData.costFormulaString]);
 
-    // Calculo do resultado do simulador live
+    // OTIMIZAÇÃO 3: Cálculo da simulação limpo e dependendo apenas do necessário
     const simulation = useMemo(() => {
         const res = { venda: 0 as number | string, custo: 0 as number | string, breakdown: [] as any[] };
         if (formulaError || costFormulaError) return res;
 
-        // USA O MOTOR UNIFICADO PARA TUDO
-        const inputs = { ...simulationValues, QUANTIDADE: 1 }; // No simulador, quantidade default é 1
-        const calcSale = calculatePricingResult(formData.formulaString, formData.variables, inputs);
-        const calcCost = calculatePricingResult(formData.costFormulaString, formData.variables, inputs);
+        const inputs = { ...simulationValues, QUANTIDADE: 1 };
 
-        res.venda = calcSale.value;
-        res.custo = calcCost.value;
-        res.breakdown = calcCost.breakdown;
+        // Só calcula se a string existir (ganho de CPU)
+        if (formData.formulaString) {
+            res.venda = calculatePricingResult(formData.formulaString, formData.variables, inputs).value;
+        }
+        if (formData.costFormulaString) {
+            const costCalc = calculatePricingResult(formData.costFormulaString, formData.variables, inputs);
+            res.custo = costCalc.value;
+            res.breakdown = costCalc.breakdown;
+        }
 
         return res;
     }, [formData.formulaString, formData.costFormulaString, formData.variables, simulationValues, formulaError, costFormulaError]);
 
-
-    // Handlers
-    const handleExtractVariables = () => {
+    // OTIMIZAÇÃO 4: Funções pesadas usando useCallback para não serem recriadas
+    const handleExtractVariables = useCallback(() => {
         const formulaToExtract = activeTab === 'venda' ? formData.formulaString : (formData.costFormulaString || '');
         const extracted = extractVariables(formulaToExtract);
         const currentVars = [...formData.variables];
 
         let newAdded = 0;
         extracted.forEach(varId => {
-            // Se já não houver uma variável na lista com esse ID tecnico, adiciona
             if (!currentVars.some(v => v.id === varId)) {
                 currentVars.push({
                     id: varId,
@@ -178,68 +152,107 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
         } else {
             toast.info('Nenhuma variável nova encontrada na fórmula.');
         }
-    };
+    }, [activeTab, formData.formulaString, formData.costFormulaString, formData.variables]);
 
-    const handleVariableChange = (index: number, field: keyof FormulaVariable, value: any) => {
-        const updatedVars = [...formData.variables];
-        updatedVars[index] = { ...updatedVars[index], [field]: value };
+    const handleVariableChange = useCallback((index: number, field: keyof FormulaVariable, value: any) => {
+        setFormData(prev => {
+            const updatedVars = [...prev.variables];
+            updatedVars[index] = { ...updatedVars[index], [field]: value };
+            return { ...prev, variables: updatedVars };
+        });
 
-        // Se mudou para FIXO, limpamos o valor do simulador para evitar conflito de visualização
-        if (field === 'type' && value === 'FIXED') {
-            const varId = updatedVars[index].id;
+        if (field === 'type') {
             setSimulationValues(prev => {
                 const next = { ...prev };
-                delete next[varId];
+                const varObj = formData.variables[index];
+                if (value === 'FIXED') {
+                    // Garante que o valor fixo vai pro simulador
+                    next[varObj.id] = varObj.fixedValue ?? 0;
+                } else {
+                    // Input limpa o fixo
+                    next[varObj.id] = 0;
+                }
                 return next;
             });
         }
+    }, [formData.variables]);
 
-        setFormData(prev => ({ ...prev, variables: updatedVars }));
-    };
+    const handleVariableIdRename = useCallback((index: number, oldId: string, newId: string) => {
+        if (oldId === newId) return;
 
-    const handleVariableIdRename = (index: number, oldId: string, newId: string) => {
-        if (oldId === newId) return; // Nao houve mudança
-
-        // Verifica duplicata
         if (formData.variables.some((v, i) => i !== index && v.id === newId)) {
             toast.error('Já existe uma variável com esse ID!');
             return;
         }
 
-        // Renomear na String da fórmula
-        const newFormulaStr = renameVariableInFormula(formData.formulaString, oldId, newId);
-        const newCostFormulaStr = formData.costFormulaString ? renameVariableInFormula(formData.costFormulaString, oldId, newId) : '';
+        setFormData(prev => {
+            const newFormulaStr = renameVariableInFormula(prev.formulaString, oldId, newId);
+            const newCostFormulaStr = prev.costFormulaString ? renameVariableInFormula(prev.costFormulaString, oldId, newId) : '';
+            const updatedVars = [...prev.variables];
+            updatedVars[index] = { ...updatedVars[index], id: newId };
 
-        // Atualiza a variável e a fórmula num só ciclo
-        const updatedVars = [...formData.variables];
-        updatedVars[index] = { ...updatedVars[index], id: newId };
+            return {
+                ...prev,
+                formulaString: newFormulaStr,
+                costFormulaString: newCostFormulaStr,
+                variables: updatedVars
+            };
+        });
 
-        setFormData(prev => ({
-            ...prev,
-            formulaString: newFormulaStr,
-            costFormulaString: newCostFormulaStr,
-            variables: updatedVars
-        }));
+        // Atualiza a chave no simulador
+        setSimulationValues(prev => {
+            const next = { ...prev };
+            if (next[oldId] !== undefined) {
+                next[newId] = next[oldId];
+                delete next[oldId];
+            }
+            if (next[`${oldId}_unit`] !== undefined) {
+                next[`${newId}_unit`] = next[`${oldId}_unit`];
+                delete next[`${oldId}_unit`];
+            }
+            return next;
+        });
 
-        toast.success(`Variável renomeada de '${oldId}' para '${newId}' com segurança.`);
-    };
+        toast.success(`Variável renomeada de '${oldId}' para '${newId}'.`);
+    }, [formData.variables]);
 
-    const removeVariable = (index: number) => {
-        const updatedVars = [...formData.variables];
-        const varToRemove = updatedVars[index];
-        updatedVars.splice(index, 1);
+    const removeVariable = useCallback((index: number) => {
+        setFormData(prev => {
+            const updatedVars = [...prev.variables];
+            const varToRemove = updatedVars[index];
+            updatedVars.splice(index, 1);
 
-        // Remove da lista e da String da matemática ao mesmo tempo (com os operadores)
-        const newFormula = removeVariableFromFormula(formData.formulaString, varToRemove.id);
-        const newCostFormula = formData.costFormulaString ? removeVariableFromFormula(formData.costFormulaString, varToRemove.id) : '';
+            return {
+                ...prev,
+                variables: updatedVars,
+                formulaString: removeVariableFromFormula(prev.formulaString, varToRemove.id),
+                costFormulaString: prev.costFormulaString ? removeVariableFromFormula(prev.costFormulaString, varToRemove.id) : ''
+            };
+        });
+    }, []);
 
-        setFormData(prev => ({
-            ...prev,
-            variables: updatedVars,
-            formulaString: newFormula,
-            costFormulaString: newCostFormula
-        }));
-    };
+    const appendToFormula = useCallback((str: string) => {
+        setFormData(prev => {
+            const textarea = formulaTextareaRef.current;
+            const targetField = activeTab === 'venda' ? 'formulaString' : 'costFormulaString';
+            const currentText = prev[targetField] || '';
+
+            if (textarea) {
+                const start = textarea.selectionStart;
+                const end = textarea.selectionEnd;
+                const newText = currentText.substring(0, start) + str + currentText.substring(end);
+
+                setTimeout(() => {
+                    textarea.focus();
+                    const newCursorPos = start + str.length;
+                    textarea.setSelectionRange(newCursorPos, newCursorPos);
+                }, 0);
+
+                return { ...prev, [targetField]: newText };
+            }
+            return { ...prev, [targetField]: currentText + str };
+        });
+    }, [activeTab]);
 
     const addManualVariable = () => {
         const uniqueId = `var_${Math.floor(Math.random() * 1000)}`;
@@ -250,37 +263,6 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                 { id: uniqueId, name: 'Nova Variável', type: 'INPUT', allowedUnits: [], role: 'NONE', visible: true }
             ]
         }));
-    };
-
-    const appendToFormula = (str: string) => {
-        const textarea = formulaTextareaRef.current;
-        if (textarea) {
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-            const text = activeTab === 'venda' ? formData.formulaString : (formData.costFormulaString || '');
-            const before = text.substring(0, start);
-            const after = text.substring(end);
-
-            const newText = before + str + after;
-
-            setFormData(prev => ({
-                ...prev,
-                [activeTab === 'venda' ? 'formulaString' : 'costFormulaString']: newText
-            }));
-
-            // Re-focar e posicionar o cursor após o render
-            setTimeout(() => {
-                textarea.focus();
-                const newCursorPos = start + str.length;
-                textarea.setSelectionRange(newCursorPos, newCursorPos);
-            }, 0);
-        } else {
-            // Fallback caso o ref não esteja disponível
-            setFormData(prev => ({
-                ...prev,
-                [activeTab === 'venda' ? 'formulaString' : 'costFormulaString']: (activeTab === 'venda' ? prev.formulaString : (prev.costFormulaString || '')) + str
-            }));
-        }
     };
 
     const handleSaveConfirm = () => {
@@ -408,14 +390,16 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                                                                     onChange={e => {
                                                                         const newRole = e.target.value as FormulaVariableRole;
                                                                         const suggestions = UNIT_SUGGESTIONS[newRole] || [];
-                                                                        const updatedVars = [...formData.variables];
-                                                                        updatedVars[idx] = {
-                                                                            ...updatedVars[idx],
-                                                                            role: newRole,
-                                                                            allowedUnits: suggestions,
-                                                                            defaultUnit: suggestions.length > 0 ? suggestions[0] : ''
-                                                                        };
-                                                                        setFormData({ ...formData, variables: updatedVars });
+                                                                        setFormData(prev => {
+                                                                            const updatedVars = [...prev.variables];
+                                                                            updatedVars[idx] = {
+                                                                                ...updatedVars[idx],
+                                                                                role: newRole,
+                                                                                allowedUnits: suggestions,
+                                                                                defaultUnit: suggestions.length > 0 ? suggestions[0] : ''
+                                                                            };
+                                                                            return { ...prev, variables: updatedVars };
+                                                                        });
                                                                     }}
                                                                     className="w-full h-8 px-2 border border-slate-300 rounded text-xs bg-slate-50 font-medium"
                                                                 >
@@ -536,7 +520,10 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                                                                         <Input
                                                                             type="text"
                                                                             value={varItem.fixedValue ?? ''}
-                                                                            onChange={e => handleVariableChange(idx, 'fixedValue', e.target.value)}
+                                                                            onChange={e => {
+                                                                                handleVariableChange(idx, 'fixedValue', e.target.value);
+                                                                                setSimulationValues(p => ({ ...p, [varItem.id]: e.target.value }));
+                                                                            }}
                                                                             placeholder="0.00"
                                                                             className="h-8 text-xs text-right font-mono font-bold"
                                                                         />
@@ -804,7 +791,7 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                                 </div>
                             </div>
 
-                            {/* NOVO: Detalhamento Visível (Igual à imagem) */}
+                            {/* Detalhamento Visível */}
                             {simulation.breakdown.length > 0 && (
                                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
                                     <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
