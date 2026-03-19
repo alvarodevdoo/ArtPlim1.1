@@ -10,7 +10,7 @@ import api from '@/lib/api';
 import { toast } from 'sonner';
 import { ProductComponentManager } from '@/components/catalog/ProductComponentManager';
 import { ProductConfigurationManager } from '@/components/catalog/ProductConfigurationManager';
-import { evaluateFormula, validateFormulaSyntax } from '@/lib/pricing/formulaUtils';
+import { evaluateFormula, validateFormulaSyntax, calculatePricingResult } from '@/lib/pricing/formulaUtils';
 import { SeletorInsumos } from '@/features/insumos/SeletorInsumos';
 import { useInsumos } from '@/features/insumos/useInsumos';
 import { InsumoMaterialSelecionado } from '@/features/insumos/types';
@@ -127,47 +127,10 @@ const Produtos: React.FC = () => {
   }, [formData.pricingSource, formData.pricingRuleId, formData.localFormulaId, formData.customFormula, globalRules, localFormulas]);
 
   const calculatedPrices = useMemo(() => {
-    if (!formulaObj) return { sale: formData.salePrice, cost: formData.costPrice };
+    const sale = calculatePricingResult(formulaObj?.formulaString, formulaObj?.variables, formData.formulaVarValues);
+    const cost = calculatePricingResult(formulaObj?.costFormulaString, formulaObj?.variables, formData.formulaVarValues);
 
-    const scope: Record<string, number> = {};
-    (formulaObj.variables || []).forEach((v: any) => {
-      if (v.type === 'FIXED') {
-        scope[v.id] = v.fixedValue ?? 0;
-      } else {
-        const raw = String(formData.formulaVarValues[v.id] || '').replace(',', '.');
-        const num = parseFloat(raw);
-
-        // Unidade atual selecionada
-        const currentUnit = formData.formulaVarValues[`${v.id}_unit`] || v.unit || v.baseUnit;
-        (scope as any)[`${v.id}_unit`] = currentUnit;
-
-        if (isNaN(num) || num <= 0) {
-          // Fallback inteligente para preço de vitrine (1 metro ou 1 unidade) baseada na unidade selecionada
-          const normUnit = String(currentUnit).toLowerCase();
-          if (normUnit === 'cm') scope[v.id] = 100;
-          else if (normUnit === 'mm') scope[v.id] = 1000;
-          else scope[v.id] = 1.0;
-        } else {
-          scope[v.id] = num;
-        }
-      }
-    });
-
-    let sale = 0;
-    try {
-      const res = evaluateFormula(formulaObj.formulaString, scope, formulaObj.variables);
-      sale = typeof res === 'number' ? res : 0;
-    } catch (e) { }
-
-    let cost = 0;
-    try {
-      if (formulaObj.costFormulaString) {
-        const res = evaluateFormula(formulaObj.costFormulaString, scope, formulaObj.variables);
-        cost = typeof res === 'number' ? res : 0;
-      }
-    } catch (e) { }
-
-    return { sale, cost };
+    return { sale: sale.value, cost: cost.value };
   }, [formulaObj, formData.formulaVarValues, formData.salePrice, formData.costPrice]);
 
   const loadGlobalRules = async () => {
@@ -352,7 +315,7 @@ const Produtos: React.FC = () => {
             if (initVars[v.id] === undefined) initVars[v.id] = '';
             // Inicializar unidade se não existir
             if (!initVars[`${v.id}_unit`]) {
-              initVars[`${v.id}_unit`] = v.unit || v.baseUnit || 'm';
+              initVars[`${v.id}_unit`] = v.defaultUnit || v.unit || 'm';
             }
           }
         });
@@ -675,7 +638,7 @@ const Produtos: React.FC = () => {
                                   />
                                   {v.allowedUnits && v.allowedUnits.length > 0 ? (
                                     <select
-                                      value={String(formData.formulaVarValues[`${v.id}_unit`] || v.unit || v.baseUnit)}
+                                      value={String(formData.formulaVarValues[`${v.id}_unit`] || v.defaultUnit || v.unit || '')}
                                       onChange={(e) => handleVarChange(`${v.id}_unit`, e.target.value)}
                                       className="h-9 px-1 bg-muted border-y border-r rounded-r text-[10px] font-bold uppercase focus:ring-0 focus:outline-none min-w-[45px] appearance-none text-center cursor-pointer hover:bg-slate-200 transition-colors"
                                     >

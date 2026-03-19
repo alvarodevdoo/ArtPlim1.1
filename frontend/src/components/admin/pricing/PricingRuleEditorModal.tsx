@@ -3,29 +3,29 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Wand2, Calculator, Info, X, Plus, Eye, EyeOff, Star, ListChecks } from 'lucide-react';
 import {
+    evaluateFormula,
+    validateFormulaSyntax,
     extractVariables,
     renameVariableInFormula,
-    validateFormulaSyntax,
-    evaluateFormula,
-    removeVariableFromFormula
+    removeVariableFromFormula,
+    calculatePricingResult
 } from '@/lib/pricing/formulaUtils';
 import { toast } from 'sonner';
 
 export type FormulaVariableType = 'INPUT' | 'FIXED';
-export type FormulaVariableRole = 
-    | 'LENGTH' | 'AREA' | 'TIME' | 'WEIGHT' 
-    | 'ENERGY' | 'POWER' | 'VOLUME' 
+export type FormulaVariableRole =
+    | 'LENGTH' | 'AREA' | 'TIME' | 'WEIGHT'
+    | 'ENERGY' | 'POWER' | 'VOLUME'
     | 'PERCENT' | 'COST_RATE' | 'NONE';
 
 export interface FormulaVariable {
     id: string; // ex: largura_placa
     name: string; // ex: Largura da Placa
     type: FormulaVariableType;
-    baseUnit: string | null; // Unidade usada na fórmula
     allowedUnits: string[]; // Unidades permitidas no frontend
     role: FormulaVariableRole; // Papel da variável para cálculo de BOM
     visible: boolean; // Se a variável aparece no modal de venda
-    fixedValue?: number; // Usado apenas quando type === 'FIXED'
+    fixedValue?: number | string; // Usado apenas quando type === 'FIXED'
     defaultUnit?: string; // Unidade padrão ao abrir OS
 }
 
@@ -44,13 +44,6 @@ const UNIT_SUGGESTIONS: Record<string, string[]> = {
 };
 
 // Helper para tratar inputs numéricos que podem vir com vírgula do usuário (Brasil)
-const parseSafeFloat = (val: string | number): number => {
-    if (val === undefined || val === null || val === '') return 0;
-    if (typeof val === 'number') return val;
-    const normalized = val.toString().replace(',', '.');
-    return parseFloat(normalized) || 0;
-};
-
 export interface PricingFormulaRule {
     id?: string;
     internalName: string;
@@ -119,7 +112,7 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
             rule.variables.forEach(v => {
                 if (v.type === 'INPUT') {
                     initialSim[v.id] = 0;
-                    initialSim[`${v.id}_unit`] = v.baseUnit || null;
+                    initialSim[`${v.id}_unit`] = v.defaultUnit || null;
                 }
             });
             setSimulationValues(initialSim);
@@ -144,42 +137,14 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
         const res = { venda: 0 as number | string, custo: 0 as number | string, breakdown: [] as any[] };
         if (formulaError || costFormulaError) return res;
 
-        const scope: Record<string, any> = { ...simulationValues };
-        formData.variables.forEach(v => {
-            if (v.type === 'FIXED') {
-                scope[v.id] = v.fixedValue ?? 0;
-            } else {
-                scope[v.id] = simulationValues[v.id] ?? 0;
-            }
+        // USA O MOTOR UNIFICADO PARA TUDO
+        const inputs = { ...simulationValues, QUANTIDADE: 1 }; // No simulador, quantidade default é 1
+        const calcSale = calculatePricingResult(formData.formulaString, formData.variables, inputs);
+        const calcCost = calculatePricingResult(formData.costFormulaString, formData.variables, inputs);
 
-            // Injetar unidade padrão se não houver escolha manual no simulador
-            const unitKey = `${v.id}_unit`;
-            if (v.defaultUnit && !simulationValues[unitKey]) {
-                scope[unitKey] = v.defaultUnit;
-            }
-        });
-
-        const saleRes = evaluateFormula(formData.formulaString, scope, formData.variables);
-        res.venda = typeof saleRes === 'number' ? saleRes : 0;
-
-        // Se o resultado for um objeto com breakdown (futuro), ou se extrairmos manualmente
-        // Por enquanto evaluateFormula retorna number, vamos ajustar para opcionalmente retornar breakdown
-        if (formData.costFormulaString) {
-            const costRes = evaluateFormula(formData.costFormulaString, scope, formData.variables);
-            res.custo = typeof costRes === 'number' ? costRes : 0;
-            
-            // Lógica de extração de breakdown manual para a UI
-            const breakdown: any[] = [];
-            const breakdownRegex = /\(([^)]+)\)#([a-zA-ZáàâãééêíïóôõõúüçÁÀÂÃÉÈÊÍÏÓÔÕÖÚÜÇ_0-9]+)/g;
-            let match;
-            while ((match = breakdownRegex.exec(formData.costFormulaString)) !== null) {
-                try {
-                    const subRes = evaluateFormula(match[1], scope, formData.variables);
-                    breakdown.push({ label: match[2], value: subRes });
-                } catch(e){}
-            }
-            res.breakdown = breakdown;
-        }
+        res.venda = calcSale.value;
+        res.custo = calcCost.value;
+        res.breakdown = calcCost.breakdown;
 
         return res;
     }, [formData.formulaString, formData.costFormulaString, formData.variables, simulationValues, formulaError, costFormulaError]);
@@ -199,8 +164,7 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                     id: varId,
                     name: varId.charAt(0).toUpperCase() + varId.slice(1).replace(/_/g, ' '),
                     type: 'INPUT',
-                    baseUnit: '',
-                    allowedUnits: [],
+                    allowedUnits: ['mm', 'cm', 'm'],
                     role: 'NONE',
                     visible: true
                 });
@@ -219,6 +183,17 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
     const handleVariableChange = (index: number, field: keyof FormulaVariable, value: any) => {
         const updatedVars = [...formData.variables];
         updatedVars[index] = { ...updatedVars[index], [field]: value };
+
+        // Se mudou para FIXO, limpamos o valor do simulador para evitar conflito de visualização
+        if (field === 'type' && value === 'FIXED') {
+            const varId = updatedVars[index].id;
+            setSimulationValues(prev => {
+                const next = { ...prev };
+                delete next[varId];
+                return next;
+            });
+        }
+
         setFormData(prev => ({ ...prev, variables: updatedVars }));
     };
 
@@ -272,7 +247,7 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
             ...prev,
             variables: [
                 ...prev.variables,
-                { id: uniqueId, name: 'Nova Variável', type: 'INPUT', baseUnit: 'un', allowedUnits: [], role: 'NONE', visible: true }
+                { id: uniqueId, name: 'Nova Variável', type: 'INPUT', allowedUnits: [], role: 'NONE', visible: true }
             ]
         }));
     };
@@ -424,133 +399,149 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                                                         </div>
                                                     </div>
 
-                                                     <div className="flex flex-col gap-3">
-                                                         <div className="flex gap-2">
-                                                             <div className="flex-1">
-                                                                 <label className="text-[10px] uppercase font-bold text-slate-500 mb-0.5 block">Tipo da Variável</label>
-                                                                 <select
-                                                                     value={varItem.role || 'NONE'}
-                                                                     onChange={e => {
-                                                                         const newRole = e.target.value as FormulaVariableRole;
-                                                                         const suggestions = UNIT_SUGGESTIONS[newRole] || [];
-                                                                         const updatedVars = [...formData.variables];
-                                                                         updatedVars[idx] = { 
-                                                                             ...updatedVars[idx], 
-                                                                             role: newRole,
-                                                                             allowedUnits: suggestions,
-                                                                             defaultUnit: suggestions.length > 0 ? suggestions[0] : ''
-                                                                         };
-                                                                         setFormData({ ...formData, variables: updatedVars });
-                                                                     }}
-                                                                     className="w-full h-8 px-2 border border-slate-300 rounded text-xs bg-slate-50 font-medium"
-                                                                 >
-                                                                     <option value="NONE">Valor (Financeiro)</option>
-                                                                     <option value="LENGTH">Medida (Comprimento)</option>
-                                                                     <option value="AREA">Área (Espaço)</option>
-                                                                     <option value="VOLUME">Volume (Capacidade)</option>
-                                                                     <option value="TIME">Tempo (Duração)</option>
-                                                                     <option value="WEIGHT">Peso (Massa)</option>
-                                                                     <option value="ENERGY">Energia (Consumo)</option>
-                                                                     <option value="POWER">Potência (Capacidade)</option>
-                                                                     <option value="PERCENT">Percentual (%)</option>
-                                                                     <option value="COST_RATE">Taxa de Custo (Ex: R$/kWh)</option>
-                                                                 </select>
-                                                             </div>
-                                                         </div>
+                                                    <div className="flex flex-col gap-3">
+                                                        <div className="flex gap-2">
+                                                            <div className="flex-1">
+                                                                <label className="text-[10px] uppercase font-bold text-slate-500 mb-0.5 block">Tipo da Variável</label>
+                                                                <select
+                                                                    value={varItem.role || 'NONE'}
+                                                                    onChange={e => {
+                                                                        const newRole = e.target.value as FormulaVariableRole;
+                                                                        const suggestions = UNIT_SUGGESTIONS[newRole] || [];
+                                                                        const updatedVars = [...formData.variables];
+                                                                        updatedVars[idx] = {
+                                                                            ...updatedVars[idx],
+                                                                            role: newRole,
+                                                                            allowedUnits: suggestions,
+                                                                            defaultUnit: suggestions.length > 0 ? suggestions[0] : ''
+                                                                        };
+                                                                        setFormData({ ...formData, variables: updatedVars });
+                                                                    }}
+                                                                    className="w-full h-8 px-2 border border-slate-300 rounded text-xs bg-slate-50 font-medium"
+                                                                >
+                                                                    <option value="NONE">Valor (Financeiro)</option>
+                                                                    <option value="LENGTH">Medida (Comprimento)</option>
+                                                                    <option value="AREA">Área (Espaço)</option>
+                                                                    <option value="VOLUME">Volume (Capacidade)</option>
+                                                                    <option value="TIME">Tempo (Duração)</option>
+                                                                    <option value="WEIGHT">Peso (Massa)</option>
+                                                                    <option value="ENERGY">Energia (Consumo)</option>
+                                                                    <option value="POWER">Potência (Capacidade)</option>
+                                                                    <option value="PERCENT">Percentual (%)</option>
+                                                                    <option value="COST_RATE">Taxa de Custo (Ex: R$/kWh)</option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
 
-                                                         {/* Gestão de Unidades como Tags */}
-                                                         {varItem.role !== 'NONE' && (
-                                                             <div className="bg-slate-50 p-2 rounded-md border border-slate-200">
-                                                                 <label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5 block flex justify-between">
-                                                                     Configuração de Unidades 
-                                                                     <span className="text-[9px] lowercase italic font-normal">Estrela = Padrão PDV</span>
-                                                                 </label>
-                                                                 <div className="flex flex-wrap gap-1.5 mb-2">
-                                                                     {(varItem.allowedUnits || []).map(unit => (
-                                                                         <div 
-                                                                             key={unit} 
-                                                                             className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border transition-all ${varItem.defaultUnit === unit ? 'bg-amber-50 border-amber-300 text-amber-700 shadow-sm' : 'bg-white border-slate-200 text-slate-600'}`}
-                                                                         >
-                                                                             <button 
-                                                                                 onClick={() => handleVariableChange(idx, 'defaultUnit', unit)}
-                                                                                 className={`hover:scale-110 transition-transform ${varItem.defaultUnit === unit ? 'text-amber-500' : 'text-slate-300 hover:text-amber-400'}`}
-                                                                             >
-                                                                                 <Star className={`w-3 h-3 ${varItem.defaultUnit === unit ? 'fill-amber-500' : ''}`} />
-                                                                             </button>
-                                                                             <span>{unit}</span>
-                                                                             <button 
-                                                                                 onClick={() => {
-                                                                                     const newList = (varItem.allowedUnits || []).filter(u => u !== unit);
-                                                                                     handleVariableChange(idx, 'allowedUnits', newList);
-                                                                                     if (varItem.defaultUnit === unit) {
-                                                                                         handleVariableChange(idx, 'defaultUnit', newList[0] || '');
-                                                                                     }
-                                                                                 }}
-                                                                                 className="hover:text-red-500 text-slate-400"
-                                                                             >
-                                                                                 <X className="w-2.5 h-2.5" />
-                                                                             </button>
-                                                                         </div>
-                                                                     ))}
-                                                                     
-                                                                     {/* Seletor de adição de unidades sugeridas */}
-                                                                     {varItem.role && UNIT_SUGGESTIONS[varItem.role] && (
-                                                                         <div className="flex items-center ml-1">
-                                                                             <select
-                                                                                 className="h-6 text-[10px] px-1 border border-dashed border-slate-300 rounded bg-white text-slate-400 hover:text-slate-600 cursor-pointer outline-none"
-                                                                                 value=""
-                                                                                 onChange={(e) => {
-                                                                                     const val = e.target.value;
-                                                                                     if (val === 'CUSTOM') {
-                                                                                         const custom = prompt('Digite a sigla da unidade:');
-                                                                                         if (custom) {
-                                                                                             const newList = [...(varItem.allowedUnits || []), custom.trim()];
-                                                                                             handleVariableChange(idx, 'allowedUnits', newList);
-                                                                                         }
-                                                                                     } else if (val && !(varItem.allowedUnits || []).includes(val)) {
-                                                                                         const newList = [...(varItem.allowedUnits || []), val];
-                                                                                         handleVariableChange(idx, 'allowedUnits', newList);
-                                                                                         if (!varItem.defaultUnit) handleVariableChange(idx, 'defaultUnit', val);
-                                                                                     }
-                                                                                 }}
-                                                                             >
-                                                                                 <option value="">+ add</option>
-                                                                                 {(UNIT_SUGGESTIONS[varItem.role] || [])
-                                                                                     .filter(u => !(varItem.allowedUnits || []).includes(u))
-                                                                                     .map(u => (
-                                                                                         <option key={u} value={u}>{u}</option>
-                                                                                     ))
-                                                                                 }
-                                                                                 <option value="CUSTOM">Outra...</option>
-                                                                             </select>
-                                                                         </div>
-                                                                     )}
-                                                                 </div>
-                                                             </div>
-                                                         )}
+                                                        {/* Gestão de Unidades como Tags (Apenas para Entradas) */}
+                                                        {varItem.role !== 'NONE' && varItem.type !== 'FIXED' && (
+                                                            <div className="bg-slate-50 p-2 rounded-md border border-slate-200">
+                                                                <label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5 block flex justify-between">
+                                                                    Configuração de Unidades
+                                                                    <span className="text-[9px] lowercase italic font-normal">Estrela = Padrão PDV</span>
+                                                                </label>
+                                                                <div className="flex flex-wrap gap-1.5 mb-2">
+                                                                    {(varItem.allowedUnits || []).map(unit => (
+                                                                        <div
+                                                                            key={unit}
+                                                                            className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border transition-all ${varItem.defaultUnit === unit ? 'bg-amber-50 border-amber-300 text-amber-700 shadow-sm' : 'bg-white border-slate-200 text-slate-600'}`}
+                                                                        >
+                                                                            <button
+                                                                                onClick={() => handleVariableChange(idx, 'defaultUnit', unit)}
+                                                                                className={`hover:scale-110 transition-transform ${varItem.defaultUnit === unit ? 'text-amber-500' : 'text-slate-300 hover:text-amber-400'}`}
+                                                                            >
+                                                                                <Star className={`w-3 h-3 ${varItem.defaultUnit === unit ? 'fill-amber-500' : ''}`} />
+                                                                            </button>
+                                                                            <span>{unit}</span>
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    const newList = (varItem.allowedUnits || []).filter(u => u !== unit);
+                                                                                    handleVariableChange(idx, 'allowedUnits', newList);
+                                                                                    if (varItem.defaultUnit === unit) {
+                                                                                        handleVariableChange(idx, 'defaultUnit', newList[0] || '');
+                                                                                    }
+                                                                                }}
+                                                                                className="hover:text-red-500 text-slate-400"
+                                                                            >
+                                                                                <X className="w-2.5 h-2.5" />
+                                                                            </button>
+                                                                        </div>
+                                                                    ))}
+
+                                                                    {/* Seletor de adição de unidades sugeridas */}
+                                                                    {varItem.role && UNIT_SUGGESTIONS[varItem.role] && (
+                                                                        <div className="flex items-center ml-1">
+                                                                            <select
+                                                                                className="h-6 text-[10px] px-1 border border-dashed border-slate-300 rounded bg-white text-slate-400 hover:text-slate-600 cursor-pointer outline-none"
+                                                                                value=""
+                                                                                onChange={(e) => {
+                                                                                    const val = e.target.value;
+                                                                                    if (val === 'CUSTOM') {
+                                                                                        const custom = prompt('Digite a sigla da unidade:');
+                                                                                        if (custom) {
+                                                                                            const newList = [...(varItem.allowedUnits || []), custom.trim()];
+                                                                                            handleVariableChange(idx, 'allowedUnits', newList);
+                                                                                        }
+                                                                                    } else if (val && !(varItem.allowedUnits || []).includes(val)) {
+                                                                                        const newList = [...(varItem.allowedUnits || []), val];
+                                                                                        handleVariableChange(idx, 'allowedUnits', newList);
+                                                                                        if (!varItem.defaultUnit) handleVariableChange(idx, 'defaultUnit', val);
+                                                                                    }
+                                                                                }}
+                                                                            >
+                                                                                <option value="">+ add</option>
+                                                                                {(UNIT_SUGGESTIONS[varItem.role] || [])
+                                                                                    .filter(u => !(varItem.allowedUnits || []).includes(u))
+                                                                                    .map(u => (
+                                                                                        <option key={u} value={u}>{u}</option>
+                                                                                    ))
+                                                                                }
+                                                                                <option value="CUSTOM">Outra...</option>
+                                                                            </select>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        )}
 
                                                         <div className="flex gap-2 items-center">
                                                             <div className="w-1/3">
+                                                                <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block leading-none">Origem</label>
                                                                 <select
                                                                     value={varItem.type || 'INPUT'}
                                                                     onChange={e => handleVariableChange(idx, 'type', e.target.value)}
-                                                                    className="w-full h-8 px-2 border border-slate-300 rounded text-xs bg-slate-50"
+                                                                    className="w-full h-8 px-2 border border-slate-300 rounded text-xs bg-slate-50 font-bold"
                                                                 >
-                                                                    <option value="INPUT">Entrada</option>
+                                                                    <option value="INPUT">Variável</option>
                                                                     <option value="FIXED">Fixo</option>
                                                                 </select>
                                                             </div>
 
                                                             {varItem.type === 'FIXED' ? (
-                                                                <div className="flex-1">
-                                                                    <Input
-                                                                        type="text"
-                                                                        value={varItem.fixedValue ?? ''}
-                                                                        onChange={e => handleVariableChange(idx, 'fixedValue', parseSafeFloat(e.target.value))}
-                                                                        placeholder="Valor constante"
-                                                                        className="h-8 text-xs text-right"
-                                                                    />
-                                                                </div>
+                                                                <>
+                                                                    <div className="w-1/4">
+                                                                        <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block leading-none">Unidade</label>
+                                                                        <Input
+                                                                            value={varItem.defaultUnit || ''}
+                                                                            onChange={e => {
+                                                                                handleVariableChange(idx, 'defaultUnit', e.target.value);
+                                                                                handleVariableChange(idx, 'allowedUnits', [e.target.value]);
+                                                                            }}
+                                                                            placeholder="un"
+                                                                            className="h-8 text-[10px] font-mono uppercase"
+                                                                        />
+                                                                    </div>
+                                                                    <div className="flex-1">
+                                                                        <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block text-right font-mono leading-none">Valor Fixo</label>
+                                                                        <Input
+                                                                            type="text"
+                                                                            value={varItem.fixedValue ?? ''}
+                                                                            onChange={e => handleVariableChange(idx, 'fixedValue', e.target.value)}
+                                                                            placeholder="0.00"
+                                                                            className="h-8 text-xs text-right font-mono font-bold"
+                                                                        />
+                                                                    </div>
+                                                                </>
                                                             ) : (
                                                                 <div className="flex-1 flex gap-2 justify-end">
                                                                     <button
@@ -663,8 +654,8 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                                         [activeTab === 'venda' ? 'formulaString' : 'costFormulaString']: e.target.value
                                     }))}
                                     className={`flex-1 w-full p-4 font-mono text-lg rounded-lg border-2 ring-0 transition-colors ${activeTab === 'venda'
-                                            ? (formulaError ? 'border-red-300 focus:border-red-500 bg-red-50/20' : 'border-slate-200 focus:border-indigo-400 bg-slate-50 focus:bg-white')
-                                            : (costFormulaError ? 'border-red-300 focus:border-red-500 bg-red-50/20' : 'border-slate-200 focus:border-orange-400 bg-orange-50/10 focus:bg-white')
+                                        ? (formulaError ? 'border-red-300 focus:border-red-500 bg-red-50/20' : 'border-slate-200 focus:border-indigo-400 bg-slate-50 focus:bg-white')
+                                        : (costFormulaError ? 'border-red-300 focus:border-red-500 bg-red-50/20' : 'border-slate-200 focus:border-orange-400 bg-orange-50/10 focus:bg-white')
                                         } resize-none`}
                                     placeholder={activeTab === 'venda' ? "Digite a lógica de VENDA... ex: custo * 2" : "Digite a lógica de CUSTO... ex: g * preco_g"}
                                 />
@@ -703,23 +694,26 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                                                     className="w-full bg-transparent h-9 px-2 text-white outline-none text-right font-mono min-w-[60px]"
                                                     placeholder="0.00"
                                                     value={simulationValues[v.id] ?? ''}
-                                                    onChange={e => setSimulationValues(p => ({ ...p, [v.id]: parseSafeFloat(e.target.value) }))}
+                                                    onChange={e => setSimulationValues(p => ({ ...p, [v.id]: e.target.value }))}
                                                 />
                                                 {(!v.allowedUnits || v.allowedUnits.length === 0) ? (
                                                     <div className="h-9 px-2 flex items-center justify-center bg-slate-900 text-slate-500 text-xs font-mono border-l border-slate-700 uppercase">
-                                                        {v.baseUnit || '-'}
+                                                        {v.defaultUnit || '-'}
                                                     </div>
                                                 ) : (
                                                     <select
-                                                        value={simulationValues[`${v.id}_unit`] || v.baseUnit || ''}
+                                                        value={simulationValues[`${v.id}_unit`] || (v.allowedUnits?.[0] || '')}
                                                         onChange={(e) => {
                                                             setSimulationValues(p => ({ ...p, [`${v.id}_unit`]: e.target.value }));
                                                         }}
                                                         className="h-9 px-1 bg-slate-800 text-slate-400 text-xs font-mono border-l border-slate-700 outline-none cursor-pointer hover:bg-slate-700 uppercase"
                                                     >
-                                                        {((v.allowedUnits && v.allowedUnits.length > 0) ? v.allowedUnits : [v.baseUnit || 'un']).filter((u, i, arr) => u && arr.indexOf(u) === i).map(u => (
-                                                            <option key={u} value={u!}>{u}</option>
-                                                        ))}
+                                                        {(v.allowedUnits || [])
+                                                            .filter((u, i, arr) => u && arr.indexOf(u) === i)
+                                                            .map(u => (
+                                                                <option key={u} value={u}>{u}</option>
+                                                            ))
+                                                        }
                                                     </select>
                                                 )}
                                             </div>
@@ -738,8 +732,8 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                                                         <input
                                                             type="text"
                                                             className="w-full bg-slate-900/50 h-8 px-2 text-emerald-300 outline-none text-right font-mono text-sm"
-                                                            value={simulationValues[v.id] ?? (v.fixedValue || 0)}
-                                                            onChange={e => setSimulationValues(p => ({ ...p, [v.id]: parseSafeFloat(e.target.value) }))}
+                                                            value={v.type === 'FIXED' ? (v.fixedValue ?? 0) : (simulationValues[v.id] ?? '')}
+                                                            onChange={e => setSimulationValues(p => ({ ...p, [v.id]: e.target.value }))}
                                                         />
                                                     </div>
                                                 </div>
@@ -756,12 +750,12 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                                 <div className="bg-indigo-600 rounded-xl p-3 min-w-[140px] border border-indigo-500 shadow-lg flex flex-col justify-center items-center">
                                     <span className="text-indigo-200 text-[10px] font-bold uppercase mb-1">Venda Preview</span>
                                     <div className={`text-xl font-bold font-mono text-center px-1 ${formulaError || typeof simulation.venda === 'string' ? 'text-red-300 text-sm' : 'text-white'}`}>
-                                        {formulaError 
-                                            ? 'Erro Sintaxe' 
-                                            : (typeof simulation.venda === 'string' 
-                                                ? simulation.venda 
+                                        {formulaError
+                                            ? 'Erro Sintaxe'
+                                            : (typeof simulation.venda === 'string'
+                                                ? simulation.venda
                                                 : `R$ ${simulation.venda.toFixed(2)}`
-                                              )
+                                            )
                                         }
                                     </div>
                                 </div>
@@ -771,12 +765,12 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                                         Custo Estimado <Info className="w-2.5 h-2.5" />
                                     </span>
                                     <div className={`text-xl font-bold font-mono text-center px-1 ${costFormulaError || typeof simulation.custo === 'string' ? 'text-red-300 text-sm' : 'text-white'}`}>
-                                        {costFormulaError 
-                                            ? 'Erro Sintaxe' 
-                                            : (typeof simulation.custo === 'string' 
-                                                ? simulation.custo 
+                                        {costFormulaError
+                                            ? 'Erro Sintaxe'
+                                            : (typeof simulation.custo === 'string'
+                                                ? simulation.custo
                                                 : `R$ ${simulation.custo.toFixed(2)}`
-                                              )
+                                            )
                                         }
                                     </div>
 
@@ -789,8 +783,8 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                                                     <div key={i} className="flex justify-between items-center text-xs">
                                                         <span className="text-slate-300 truncate mr-2">{item.label}</span>
                                                         <span className="text-white font-mono font-bold whitespace-nowrap">
-                                                            {typeof item.value === 'number' 
-                                                                ? `R$ ${item.value.toFixed(2)}` 
+                                                            {typeof item.value === 'number'
+                                                                ? `R$ ${item.value.toFixed(2)}`
                                                                 : item.value}
                                                         </span>
                                                     </div>
@@ -821,8 +815,8 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                                             <div key={i} className="flex justify-between items-center text-sm">
                                                 <span className="text-slate-600 font-medium">{item.label.replace(/_/g, ' ')}:</span>
                                                 <span className="text-slate-900 font-bold">
-                                                    {typeof item.value === 'number' 
-                                                        ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.value) 
+                                                    {typeof item.value === 'number'
+                                                        ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.value)
                                                         : item.value}
                                                 </span>
                                             </div>

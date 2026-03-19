@@ -9,6 +9,7 @@ import api from '@/lib/api';
 import { useInsumos } from '@/features/insumos/useInsumos';
 import { SeletorInsumos } from '@/features/insumos/SeletorInsumos';
 import { InsumoMaterialSelecionado } from '@/features/insumos/types';
+import { calculatePricingResult } from '@/lib/pricing/formulaUtils';
 
 interface Produto {
     id: string;
@@ -126,15 +127,17 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 if (formulaData?.variables) {
                     const initialVars: Record<string, { value: any; unit: string | null }> = {};
                     formulaData.variables.forEach((v: any) => {
-                        // Prioridade: Valor no cadastro do produto > 0
-                        let val = 0;
+                        // Prioridade: Valor no cadastro do produto (fixed) ou 0
+                        let val: any = 0;
                         if (produto.formulaData?.[v.id] !== undefined) {
-                            val = Number(produto.formulaData[v.id]);
+                            val = produto.formulaData[v.id];
+                        } else if (v.type === 'FIXED') {
+                            val = v.fixedValue ?? 0;
                         }
                         
                         initialVars[v.id] = { 
                             value: val, 
-                            unit: v.baseUnit || null 
+                            unit: v.defaultUnit || v.unit || null 
                         };
                     });
                     setDynamicVariables(initialVars);
@@ -167,27 +170,33 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
     }, [quantity, materiaisSelecionados, dynamicVariables, opcoesSelecionadas]);
 
     const simularPreco = async () => {
-        setSimulatingPrice(true);
-        try {
-            const payload = {
-                productId: produto.id,
-                quantity,
-                variables: dynamicVariables,
-                selectedOptionIds: Object.values(opcoesSelecionadas).filter(id => !!id)
-            };
-
-            const response = await api.post('/api/sales/simulate', payload);
-            if (response.data.success) {
-                setUnitPrice(response.data.data.unitPrice);
-                setCalculationLogs(response.data.data.details || []);
-            }
-        } catch (error: any) {
-            console.error("Erro na simulação:", error);
-            const msg = error.response?.data?.message || "Erro ao calcular preço";
-            toast.error(msg);
-        } finally {
-            setSimulatingPrice(false);
+        // Agora o cálculo é feito LOCAMENTE usando o motor unificado para garantir simetria total
+        const rule = produto?.pricingRule;
+        let formulaData = rule?.formula;
+        if (typeof formulaData === 'string') {
+            try { formulaData = JSON.parse(formulaData); } catch (e) {}
         }
+        
+        if (!formulaData) {
+            setUnitPrice(produto.salePrice || 0);
+            return;
+        }
+
+        // Preparar os valores de entrada para o motor (achatar o objeto de unidades)
+        const inputs: Record<string, any> = {};
+        Object.entries(dynamicVariables).forEach(([id, data]) => {
+            inputs[id] = data.value;
+            inputs[`${id}_unit`] = data.unit;
+        });
+
+        // Adicionar variáveis automáticas do sistema
+        inputs['CUSTO_MATERIAIS'] = materiaisSelecionados.reduce((acc, m) => acc + (m.quantidadeUtilizada * m.precoBase), 0);
+        inputs['QUANTIDADE'] = quantity;
+
+        const result = calculatePricingResult(formulaData.formulaString, formulaData.variables, inputs);
+        
+        setUnitPrice(result.value);
+        setSimulatingPrice(false);
     };
 
     // 3. Handlers de UI
@@ -287,7 +296,7 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                                     {isLocked && <Lock className="w-3 h-3 text-slate-400" />}
                                 </label>
                                 <div className="flex gap-1">
-                                    {v.baseUnit === 'moeda' ? (
+                                    {v.defaultUnit === 'moeda' || v.role === 'MONETARY' ? (
                                         <CurrencyInput
                                             value={dynamicVariables[v.id]?.value || 0}
                                             onValueChange={(val) => setDynamicVariables(prev => ({
@@ -299,19 +308,19 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                                         />
                                     ) : (
                                         <Input
-                                            type="number"
+                                            type="text"
                                             value={dynamicVariables[v.id]?.value ?? ''}
                                             onChange={(e) => setDynamicVariables(prev => ({
                                                 ...prev,
-                                                [v.id]: { ...prev[v.id], value: e.target.value === '' ? '' : Number(e.target.value) }
+                                                [v.id]: { ...prev[v.id], value: e.target.value }
                                             }))}
-                                            className="h-10 border-slate-200 bg-white flex-1"
+                                            className="h-10 border-slate-200 bg-white flex-1 font-mono text-center"
                                             disabled={isLocked}
                                         />
                                     )}
                                     {hasUnits && (
                                         <select
-                                            value={dynamicVariables[v.id]?.unit || v.baseUnit}
+                                            value={dynamicVariables[v.id]?.unit || v.defaultUnit || v.unit || ''}
                                             onChange={(e) => setDynamicVariables(prev => ({
                                                 ...prev,
                                                 [v.id]: { ...prev[v.id], unit: e.target.value }
