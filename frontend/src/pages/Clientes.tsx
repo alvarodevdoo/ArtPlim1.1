@@ -162,7 +162,10 @@ const Clientes: React.FC = () => {
         c.phone?.replace(/\D/g, '') === cleanPhone && c.id !== editingCliente?.id
       );
       return existing;
-    } catch (error) {
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        return null;
+      }
       return null;
     }
   };

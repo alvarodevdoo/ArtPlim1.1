@@ -2,16 +2,15 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/badge';
 import { DatasOrcamento } from '@/components/ui/DatasOrcamento';
 import { MaterialCalculator } from '@/components/ui/MaterialCalculator';
 import { OrderAutomation } from '@/components/ui/OrderAutomation';
 import {
   Plus, Search, Eye, Edit, Package, Clock, CheckCircle, XCircle, Download,
-  Calendar, DollarSign, User, BarChart3, Kanban, List, FileText, Printer,
-  MessageSquare, AlertTriangle, TrendingUp, TrendingDown, Target, Activity,
-  Calculator, Bell, Send, Phone
+  Calendar, DollarSign, List, Printer, AlertTriangle, TrendingUp, TrendingDown,
+  Activity, Bell, Phone, Kanban, BarChart3
 } from 'lucide-react';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import { sendOrderWhatsApp, WhatsAppService } from '@/lib/whatsapp';
@@ -27,6 +26,11 @@ import {
   SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+
+// --- Modais Extra\u00eddos ---
+import OrderDetailsModal from '@/components/pedidos/modals/OrderDetailsModal';
+import CancelOrderModal from '@/components/pedidos/modals/CancelOrderModal';
+import WhatsAppModal from '@/components/pedidos/modals/WhatsAppModal';
 
 // --- Interfaces ---
 interface ProcessStatus {
@@ -176,12 +180,8 @@ const Pedidos: React.FC = () => {
   const [showMaterialCalculator, setShowMaterialCalculator] = useState(false);
   const [calculatorItem, setCalculatorItem] = useState<any>(null);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
-  const [whatsAppMessage, setWhatsAppMessage] = useState('');
   const [showAutomation, setShowAutomation] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
-  const [cancelReason, setCancelReason] = useState('');
-  const [paymentAction, setPaymentAction] = useState('NONE');
-  const [refundAmount, setRefundAmount] = useState<number>(0);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -770,7 +770,7 @@ const Pedidos: React.FC = () => {
 
                                   if (isCancelled) {
                                     setSelectedPedido(pedido);
-                                    setCancelReason(''); setPaymentAction('NONE'); setRefundAmount(Number(pedido?.total || 0)); setShowCancelModal(true);
+                                    setShowCancelModal(true);
                                   } else {
                                     handleStatusChange(pedido.id, newStatus);
                                   }
@@ -839,230 +839,44 @@ const Pedidos: React.FC = () => {
         </div>
       )}
 
-      {/* MODAIS INLINE (Mantidos integralmente para não quebrar a UI) */}
+      {/* MODAIS COMPONENTIZADOS */}
+      <OrderDetailsModal 
+        pedido={selectedPedido}
+        isOpen={!!selectedPedido && !showCancelModal && !showWhatsAppModal && !showMaterialCalculator}
+        onClose={() => setSelectedPedido(null)}
+        onStatusChange={handleStatusChange}
+        onCancelRequest={() => {
+          setShowCancelModal(true);
+        }}
+        onWhatsAppRequest={() => {
+          setShowWhatsAppModal(true);
+        }}
+        onMaterialRequest={(item) => {
+          setCalculatorItem(item);
+          setShowMaterialCalculator(true);
+        }}
+      />
 
-      {/* Modal de Detalhes do Pedido */}
-      {selectedPedido && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-6xl max-h-[90vh] overflow-y-auto">
-            <CardHeader>
-              <div className="flex justify-between items-start">
-                <div>
-                  <CardTitle className="flex items-center space-x-2">
-                    <span>{selectedPedido.orderNumber}</span>
-                    {(() => {
-                      const statusDisplay = getStatusDisplay(selectedPedido);
-                      return <span className={`px-2 py-1 rounded text-sm ${(statusDisplay as any)?.color}`}>{statusDisplay.label}</span>;
-                    })()}
-                  </CardTitle>
-                  <CardDescription>Cliente: {selectedPedido?.customer?.name}</CardDescription>
-                </div>
-                <div className="flex space-x-2">
-                  <Button variant="outline" size="sm"><Printer className="w-4 h-4 mr-2" /> Imprimir</Button>
-                  <Button variant="outline" size="sm"><FileText className="w-4 h-4 mr-2" /> PDF</Button>
-                  <Button variant="outline" onClick={() => setSelectedPedido(null)}>Fechar</Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 space-y-6">
-                  <Card>
-                    <CardHeader><CardTitle className="text-lg flex items-center space-x-2"><User className="w-5 h-5" /><span>Informações do Cliente</span></CardTitle></CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <p><span className="font-medium">Nome:</span> {selectedPedido?.customer?.name}</p>
-                          {selectedPedido?.customer?.email && <p><span className="font-medium">Email:</span> {selectedPedido.customer.email}</p>}
-                          {selectedPedido?.customer?.phone && <p><span className="font-medium">Telefone:</span> {selectedPedido.customer.phone}</p>}
-                        </div>
-                        <div className="flex space-x-2">
-                          {selectedPedido?.customer?.phone && (
-                            <>
-                              <Button size="sm" variant="outline" onClick={() => sendOrderWhatsApp({ customerName: selectedPedido.customer.name, customerPhone: selectedPedido.customer.phone!, orderNumber: selectedPedido.orderNumber, total: selectedPedido.total, status: selectedPedido.status, validUntil: selectedPedido.validUntil })}>
-                                <MessageSquare className="w-4 h-4 mr-2" /> Status WhatsApp
-                              </Button>
-                              <Button size="sm" variant="outline" onClick={() => { setWhatsAppMessage(''); setShowWhatsAppModal(true); }}>
-                                <Send className="w-4 h-4 mr-2" /> Mensagem
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+      <CancelOrderModal 
+        pedido={selectedPedido}
+        isOpen={showCancelModal}
+        onClose={() => setShowCancelModal(false)}
+        onConfirm={(id, reason, paymentAction, refundAmount) => {
+          handleStatusChange(id, 'CANCELLED', { reason, paymentAction, refundAmount });
+          setShowCancelModal(false);
+        }}
+      />
 
-                  {selectedPedido?.status === 'DRAFT' && selectedPedido?.validUntil && (
-                    <Card>
-                      <CardHeader><CardTitle className="text-lg flex items-center space-x-2"><Calendar className="w-5 h-5" /><span>Validade do Orçamento</span></CardTitle></CardHeader>
-                      <CardContent><DatasOrcamento criadoEm={selectedPedido.createdAt} validadeEm={selectedPedido.validUntil} /></CardContent>
-                    </Card>
-                  )}
-
-                  <Card>
-                    <CardHeader><CardTitle className="text-lg flex items-center space-x-2"><Package className="w-5 h-5" /><span>Itens do Pedido</span></CardTitle></CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        {(selectedPedido?.items || []).map((item, index) => (
-                          <div key={item.id} className="border border-border rounded-lg p-4">
-                            <div className="flex justify-between items-start">
-                              <div className="flex-1">
-                                <div className="flex items-center space-x-2">
-                                  <span className="bg-muted text-muted-foreground px-2 py-1 rounded text-sm">#{index + 1}</span>
-                                  <h5 className="font-medium">{item?.product?.name}</h5>
-                                </div>
-                                <div className="mt-2 grid grid-cols-2 gap-4 text-sm">
-                                  {shouldShowDimensions(item as any, settings?.enableEngineering) && <p><span className="font-medium">Dimensões:</span> {item.width} × {item.height} mm</p>}
-                                  <p><span className="font-medium">Quantidade:</span> {item.quantity} unidade(s)</p>
-                                </div>
-                              </div>
-                              <div className="text-right ml-4">
-                                <p className="font-medium">{formatCurrency(item?.unitPrice || 0)}{item?.product?.pricingMode === 'SIMPLE_AREA' ? '/m²' : '/un'}</p>
-                                <p className="text-lg font-bold">{formatCurrency(item?.totalPrice || 0)}</p>
-                                {hasFinancialAccess() && <Button size="sm" variant="outline" className="mt-2" onClick={() => { setCalculatorItem(item); setShowMaterialCalculator(true); }}><Calculator className="w-3 h-3 mr-1" /> Material</Button>}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {selectedPedido?.status !== 'DRAFT' && selectedPedido?.status !== 'CANCELLED' && (
-                    <Card>
-                      <CardHeader><CardTitle className="text-lg flex items-center space-x-2"><Activity className="w-5 h-5" /><span>Timeline de Produção</span></CardTitle></CardHeader>
-                      <CardContent>
-                        <div className="space-y-4">
-                          {[
-                            { status: 'APPROVED', label: 'Pedido Aprovado', icon: CheckCircle },
-                            { status: 'IN_PRODUCTION', label: 'Em Produção', icon: Package },
-                            { status: 'FINISHED', label: 'Produção Finalizada', icon: CheckCircle },
-                            { status: 'DELIVERED', label: 'Entregue', icon: CheckCircle }
-                          ].map((step) => {
-                            const isCompleted = Object.keys(statusConfig).indexOf(selectedPedido.status) >= Object.keys(statusConfig).indexOf(step.status);
-                            const isCurrent = selectedPedido.status === step.status;
-                            const StepIcon = step.icon;
-                            return (
-                              <div key={step.status} className="flex items-center space-x-3">
-                                <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${isCompleted ? 'bg-green-100' : isCurrent ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                                  <StepIcon className={`w-4 h-4 ${isCompleted ? 'text-green-600' : isCurrent ? 'text-blue-600' : 'text-gray-400'}`} />
-                                </div>
-                                <div className="flex-1">
-                                  <p className={`font-medium ${isCompleted ? 'text-green-600' : isCurrent ? 'text-blue-600' : 'text-gray-400'}`}>{step.label}</p>
-                                  {isCurrent && <p className="text-sm text-muted-foreground mt-0.5 italic">Em andamento...</p>}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {hasFinancialAccess() && (
-                    <Card>
-                      <CardHeader><CardTitle className="text-lg flex items-center space-x-2"><Target className="w-5 h-5" /><span>Análise Financeira</span></CardTitle></CardHeader>
-                      <CardContent>
-                        <div className="space-y-4">
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div><span className="font-medium">Subtotal:</span><p className="text-lg font-bold">{formatCurrency(selectedPedido?.total || 0)}</p></div>
-                            <div><span className="font-medium">Custo Estimado:</span><p className="text-lg font-bold text-red-600">{formatCurrency(Number(selectedPedido?.total || 0) * 0.6)}</p></div>
-                            <div><span className="font-medium">Margem Bruta:</span><p className="text-lg font-bold text-green-600">{formatCurrency(Number(selectedPedido?.total || 0) * 0.4)}</p></div>
-                            <div><span className="font-medium">Margem %:</span><p className="text-lg font-bold text-green-600">40%</p></div>
-                          </div>
-                          <div className="border-t pt-4">
-                            <div className="flex justify-between items-center"><span className="font-medium">Total do Pedido:</span><span className="text-2xl font-bold">{formatCurrency(selectedPedido?.total || 0)}</span></div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-                </div>
-
-                <div className="space-y-4">
-                  <Card>
-                    <CardHeader><CardTitle className="text-lg">Ações</CardTitle></CardHeader>
-                    <CardContent className="space-y-3">
-                      {selectedPedido?.status === 'DRAFT' && <Button className="w-full" onClick={() => handleStatusChange(selectedPedido.id, 'APPROVED')}><CheckCircle className="w-4 h-4 mr-2" /> Aprovar Pedido</Button>}
-                      {selectedPedido?.status === 'APPROVED' && <Button className="w-full" onClick={() => handleStatusChange(selectedPedido.id, 'IN_PRODUCTION')}><Package className="w-4 h-4 mr-2" /> Iniciar Produção</Button>}
-                      {selectedPedido?.status === 'IN_PRODUCTION' && <Button className="w-full" onClick={() => handleStatusChange(selectedPedido.id, 'FINISHED')}><CheckCircle className="w-4 h-4 mr-2" /> Finalizar Produção</Button>}
-                      {selectedPedido?.status === 'FINISHED' && <Button className="w-full" onClick={() => handleStatusChange(selectedPedido.id, 'DELIVERED')}><CheckCircle className="w-4 h-4 mr-2" /> Marcar como Entregue</Button>}
-                      {!['DELIVERED', 'CANCELLED'].includes(selectedPedido?.status || '') && (
-                        <Button variant="outline" className="w-full text-red-600 border-red-200 hover:bg-red-50" onClick={() => { setCancelReason(''); setPaymentAction('NONE'); setRefundAmount(Number(selectedPedido?.total || 0)); setShowCancelModal(true); }}>
-                          <XCircle className="w-4 h-4 mr-2" /> Cancelar Pedido
-                        </Button>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Modal de Cancelamento */}
-      {showCancelModal && selectedPedido && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle className="text-red-600 flex items-center"><XCircle className="w-5 h-5 mr-2" /> Confirmar Cancelamento</CardTitle>
-              <CardDescription>Pedido #{selectedPedido.orderNumber} - {selectedPedido?.customer?.name}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Motivo do Cancelamento:</label>
-                <textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Explique o motivo do cancelamento..." className="w-full h-24 p-2 border border-input rounded-md resize-none" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Ação Financeira:</label>
-                <select value={paymentAction} onChange={(e) => setPaymentAction(e.target.value)} className="w-full p-2 border border-input rounded-md bg-transparent">
-                  <option value="NONE">Nenhuma (Apenas cancelar)</option>
-                  <option value="REFUND">Solicitar Estorno/Devolução</option>
-                  <option value="CREDIT">Converter em Crédito para o Cliente</option>
-                </select>
-              </div>
-              {paymentAction !== 'NONE' && (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Valor a Estornar/Creditar (R$):</label>
-                  <Input type="number" step="0.01" value={refundAmount} onChange={(e) => setRefundAmount(Math.min(Number(e.target.value), Number(selectedPedido.total)))} max={Number(selectedPedido.total)} className="w-full" />
-                </div>
-              )}
-            </CardContent>
-            <CardFooter className="flex space-x-2">
-              <Button variant="destructive" className="flex-1" disabled={!cancelReason.trim()} onClick={() => { handleStatusChange(selectedPedido.id, 'CANCELLED', { reason: cancelReason, paymentAction, refundAmount }); setShowCancelModal(false); }}>Confirmar Cancelamento</Button>
-              <Button variant="outline" className="flex-1" onClick={() => setShowCancelModal(false)}>Voltar</Button>
-            </CardFooter>
-          </Card>
-        </div>
-      )}
-
-      {/* Modal WhatsApp Customizado */}
-      {showWhatsAppModal && selectedPedido && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <div className="flex justify-between items-start">
-                <div>
-                  <CardTitle className="flex items-center space-x-2"><MessageSquare className="w-5 h-5" /><span>Enviar WhatsApp</span></CardTitle>
-                  <CardDescription>Para: {selectedPedido?.customer?.name}</CardDescription>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => setShowWhatsAppModal(false)}>Fechar</Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">Mensagem:</label>
-                <textarea value={whatsAppMessage} onChange={(e) => setWhatsAppMessage(e.target.value)} placeholder="Digite sua mensagem personalizada..." className="w-full h-32 p-3 border border-input rounded-md resize-none mt-1" />
-              </div>
-              <div className="flex space-x-2">
-                <Button onClick={() => { if (selectedPedido?.customer?.phone && whatsAppMessage.trim()) { WhatsAppService.sendCustomMessage(selectedPedido.customer.phone, selectedPedido.customer.name, whatsAppMessage); setShowWhatsAppModal(false); toast.success('Mensagem enviada!'); } }} disabled={!whatsAppMessage.trim()} className="flex-1"><Send className="w-4 h-4 mr-2" /> Enviar</Button>
-                <Button variant="outline" onClick={() => setShowWhatsAppModal(false)}>Cancelar</Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      <WhatsAppModal 
+        pedido={selectedPedido}
+        isOpen={showWhatsAppModal}
+        onClose={() => setShowWhatsAppModal(false)}
+        onSend={(phone, name, message) => {
+          WhatsAppService.sendCustomMessage(phone, name, message);
+          setShowWhatsAppModal(false);
+          toast.success('Mensagem enviada!');
+        }}
+      />
 
       {/* Modal da Calculadora */}
       {showMaterialCalculator && calculatorItem && hasFinancialAccess() && (
