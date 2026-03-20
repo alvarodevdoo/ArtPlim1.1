@@ -84,6 +84,7 @@ model User {
   reviewedChanges    PendingChanges[]    @relation("ReviewedBy")
   profile            Profile?
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  statusHistory      OrderStatusHistory[]
 
   @@unique([organizationId, email])
   @@map("users")
@@ -395,9 +396,27 @@ model Order {
   productionQueue           ProductionQueue[]
   productionWastes          ProductionWaste[]
   transactions              Transaction[]
+  statusHistory             OrderStatusHistory[]
 
   @@unique([organizationId, orderNumber])
   @@map("orders")
+}
+
+model OrderStatusHistory {
+  id                  String         @id @default(uuid())
+  orderId             String
+  fromStatus          OrderStatus?
+  toStatus            OrderStatus
+  fromProcessStatusId String?
+  toProcessStatusId   String?
+  notes               String?
+  userId              String?
+  createdAt           DateTime       @default(now())
+  
+  order               Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user                User?          @relation(fields: [userId], references: [id])
+
+  @@map("order_status_history")
 }
 
 model OrderItem {

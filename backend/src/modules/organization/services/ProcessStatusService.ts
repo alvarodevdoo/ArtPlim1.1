@@ -62,9 +62,24 @@ export class ProcessStatusService {
             throw new Error('Status não encontrado.');
         }
 
+        // Extrai apenas os campos editáveis, ignorando campos de sistema
+        // que o frontend pode enviar de volta (id, children, parent, createdAt, etc.)
+        const { name, color, icon, parentId, scope, mappedBehavior, allowEdition, displayOrder, active } = data as any;
+
+        const cleanData: UpdateProcessStatusInput = {};
+        if (name !== undefined)          cleanData.name = name;
+        if (color !== undefined)         cleanData.color = color;
+        if (icon !== undefined)          cleanData.icon = icon;
+        if (parentId !== undefined)      cleanData.parentId = parentId || undefined;
+        if (scope !== undefined)         cleanData.scope = scope;
+        if (mappedBehavior !== undefined) cleanData.mappedBehavior = mappedBehavior;
+        if (allowEdition !== undefined)  cleanData.allowEdition = allowEdition;
+        if (displayOrder !== undefined)  cleanData.displayOrder = displayOrder;
+        if (active !== undefined)        cleanData.active = active;
+
         return prisma.processStatus.update({
             where: { id },
-            data,
+            data: cleanData,
             include: { children: true, parent: true }
         });
     }

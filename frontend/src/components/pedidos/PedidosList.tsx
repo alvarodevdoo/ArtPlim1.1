@@ -2,10 +2,12 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Eye, Edit, Package, Phone, Plus, Printer } from 'lucide-react';
+import { Eye, Edit, Package, Phone, Plus, Printer, RotateCcw, Clock, CheckCircle2, AlertCircle, User as UserIcon, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { DatasOrcamento } from '@/components/ui/DatasOrcamento';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import { Pedido, ProcessStatus, statusConfig, shouldShowDimensions } from '@/types/pedidos';
+
+import { api } from '@/lib/api';
 
 interface PedidosListProps {
   filteredPedidos: Pedido[];
@@ -29,6 +31,29 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
   settings, debouncedSearch, statusFilter,
 }) => {
   const navigate = useNavigate();
+  const [historyPedidoId, setHistoryPedidoId] = React.useState<string | null>(null);
+  const [historyData, setHistoryData] = React.useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = React.useState(false);
+  const [expandedPedidos, setExpandedPedidos] = React.useState<Record<string, boolean>>({});
+
+  const toggleExpand = (id: string) => {
+    setExpandedPedidos(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const fetchHistory = async (pedidoId: string) => {
+    setLoadingHistory(true);
+    setHistoryPedidoId(pedidoId);
+    try {
+      const response = await api.get(`/api/sales/orders/${pedidoId}/history`);
+      if (response.data.success) {
+        setHistoryData(response.data.data);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar histórico:', error);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -45,15 +70,24 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
       </div>
 
       {filteredPedidos.map((pedido) => {
-        const statusInfo = statusConfig[pedido?.status as keyof typeof statusConfig];
+        const config = statusConfig[pedido?.status as keyof typeof statusConfig];
+        const statusColor = pedido?.processStatus?.color || (config as any)?.hex || '#cbd5e1';
         const isOverdue = pedido?.status === 'DRAFT' && pedido?.validUntil && new Date(pedido.validUntil) < new Date();
 
         return (
           <Card
             key={pedido.id}
-            className={`transition-all duration-200 shadow-sm hover:shadow-md border-l-[4px] ${(statusInfo as any)?.border || 'border-l-muted'} ${isOverdue ? 'bg-red-50/50 border-red-200' : 'bg-card hover:border-slate-300'}`}
+            className={`transition-all duration-300 shadow-sm hover:shadow-lg border-l-[6px] relative group overflow-hidden ${isOverdue ? 'bg-red-50/50 border-red-200' : 'bg-card'}`}
+            style={{
+              borderLeftColor: statusColor,
+              '--status-color': statusColor
+            } as any}
           >
-            <CardContent className="p-6">
+            <div
+              className="absolute inset-0 opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300 pointer-events-none"
+              style={{ backgroundColor: statusColor }}
+            />
+            <CardContent className="p-6 relative z-10">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
                   <input
@@ -95,7 +129,18 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
                         </span>
                       );
                     })()}
-                    <p className="text-xs text-muted-foreground mt-1">{(pedido?.items || []).length} item(s)</p>
+                    <Button 
+                      variant="link" 
+                      size="sm" 
+                      className="h-auto p-0 text-muted-foreground hover:text-primary flex items-center justify-end w-full"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpand(pedido.id);
+                      }}
+                    >
+                      {(pedido?.items || []).length} item(s)
+                      {expandedPedidos[pedido.id] ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />}
+                    </Button>
                   </div>
 
                   <div className="flex items-center space-x-2">
@@ -154,39 +199,94 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
                     })()}
                   </div>
 
-                  <div className="flex space-x-1">
+                  <div className="flex items-center space-x-1">
+                    {/* Botão de Histórico / Rastreio */}
+                    <Button 
+                      size="icon" 
+                      variant="ghost" 
+                      title="Histórico de Movimentações"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        fetchHistory(pedido.id);
+                      }}
+                    >
+                      <Clock className="w-4 h-4 text-muted-foreground hover:text-primary transition-colors" />
+                    </Button>
+
                     <Button size="icon" variant="ghost" onClick={() => setSelectedPedido(pedido)} title="Visualizar"><Eye className="w-4 h-4" /></Button>
-                    {pedido?.status === 'DRAFT' && (
-                      <Button size="icon" variant="ghost" onClick={() => navigate(`/pedidos/criar?edit=${pedido.id}`)} title="Editar"><Edit className="w-4 h-4" /></Button>
-                    )}
+                    {(() => {
+                      const isCancelled = pedido?.status === 'CANCELLED';
+                      if (isCancelled) return null;
+
+                      // Se tem processStatus dinâmico, respeitar allowEdition do Fluxo de Status
+                      // Caso contrário, comportamento legado: apenas DRAFT permite edição
+                      const canEdit = pedido?.processStatus
+                        ? pedido.processStatus.allowEdition
+                        : pedido?.status === 'DRAFT';
+
+                      if (canEdit) {
+                        return (
+                          <Button size="icon" variant="ghost" onClick={() => navigate(`/pedidos/criar?edit=${pedido.id}`)} title="Editar">
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                        );
+                      }
+
+                      // Pedido bloqueado → botão Reabrir
+                      // Prioridade: Volta para o status de 'Produção' (Na Bancada)
+                      const sortedStatuses = [...processStatuses].sort((a, b) => (a.displayOrder ?? 99) - (b.displayOrder ?? 99));
+                      const reopenStatus = sortedStatuses.find(s => s.mappedBehavior === 'IN_PRODUCTION')
+                        ?? sortedStatuses.find(s => s.mappedBehavior === 'APPROVED')
+                        ?? sortedStatuses.find(s => s.mappedBehavior === 'DRAFT')
+                        ?? sortedStatuses[0];
+
+                      if (!reopenStatus) return null;
+
+                      return (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const reason = window.prompt("Justificativa para reabrir o pedido:");
+                            if (reason) {
+                              handleStatusChange(pedido.id, reopenStatus.id, { notes: reason });
+                            }
+                          }}
+                          title="Reabrir pedido"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </Button>
+                      );
+                    })()}
                     <Button size="icon" variant="ghost" title="Imprimir"><Printer className="w-4 h-4" /></Button>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-4 pt-4 border-t">
-                {pedido?.status === 'DRAFT' && pedido?.validUntil && (
-                  <div className="mb-4"><DatasOrcamento criadoEm={pedido.createdAt} validadeEm={pedido.validUntil} className="p-3 bg-muted rounded-lg" /></div>
-                )}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {(pedido?.items || []).slice(0, 3).map((item) => (
-                    <div key={item.id} className="text-sm bg-muted p-2 rounded">
-                      <p className="font-medium">{item?.product?.name}</p>
-                      <p className="text-muted-foreground">
-                        {shouldShowDimensions(item as any, settings?.enableEngineering)
-                          ? `${item?.width} × ${item?.height}mm • ${item?.quantity}un`
-                          : `${item?.quantity}un`}
-                      </p>
-                      <p className="font-medium">{formatCurrency(item?.totalPrice || 0)}</p>
-                    </div>
-                  ))}
-                  {(pedido?.items || []).length > 3 && (
-                    <div className="text-sm bg-muted p-2 rounded flex items-center justify-center">
-                      <span className="text-muted-foreground">+{pedido.items.length - 3} item(s)</span>
-                    </div>
+              {expandedPedidos[pedido.id] && (
+                <div className="mt-4 pt-4 border-t animate-in fade-in slide-in-from-top-2 duration-300">
+                  {pedido?.status === 'DRAFT' && pedido?.validUntil && (
+                    <div className="mb-4"><DatasOrcamento criadoEm={pedido.createdAt} validadeEm={pedido.validUntil} className="p-3 bg-muted rounded-lg" /></div>
                   )}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {(pedido?.items || []).map((item) => (
+                      <div key={item.id} className="text-sm bg-muted p-3 rounded-xl border border-slate-200/50 hover:bg-slate-100 transition-colors">
+                        <div className="flex justify-between items-start mb-1">
+                          <p className="font-bold text-slate-800">{item?.product?.name}</p>
+                        </div>
+                        <p className="text-muted-foreground text-xs">
+                          {shouldShowDimensions(item as any, settings?.enableEngineering)
+                            ? `${item?.width} × ${item?.height}mm • ${item?.quantity}un`
+                            : `${item?.quantity}un`}
+                        </p>
+                        <p className="font-bold text-primary mt-1">{formatCurrency(item?.totalPrice || 0)}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </CardContent>
           </Card>
         );
@@ -203,6 +303,91 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
             )}
           </CardContent>
         </Card>
+      )}
+
+      {/* Drawer de Histórico Customizado */}
+      {historyPedidoId && (
+        <div className="fixed inset-0 z-[100] flex justify-end">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity" onClick={() => setHistoryPedidoId(null)} />
+          <div className="relative w-full max-w-md bg-white shadow-2xl h-full flex flex-col animate-in slide-in-from-right duration-300">
+            <div className="p-6 border-b flex items-center justify-between bg-slate-50">
+              <div>
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-primary" />
+                  Rastreamento do Pedido
+                </h3>
+                <p className="text-xs text-muted-foreground">Histórico de movimentações e justificativas</p>
+              </div>
+              <Button size="icon" variant="ghost" onClick={() => setHistoryPedidoId(null)}>
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              {loadingHistory ? (
+                <div className="flex flex-col items-center justify-center h-40 space-y-3">
+                  <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                  <p className="text-sm text-muted-foreground">Carregando histórico...</p>
+                </div>
+              ) : historyData.length > 0 ? (
+                <div className="relative pl-6 space-y-8 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-200">
+                  {historyData.map((event, idx) => {
+                    const toStatusInfo = statusConfig[event.toStatus as keyof typeof statusConfig];
+                    return (
+                      <div key={idx} className="relative">
+                        <div className="absolute -left-[31px] top-1 w-6 h-6 rounded-full bg-white border-2 border-primary flex items-center justify-center z-10 shadow-sm">
+                          {idx === 0 ? <CheckCircle2 className="w-3 h-3 text-primary" /> : <Clock className="w-3 h-3 text-slate-400" />}
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase">{formatDateTime(event.createdAt)}</p>
+                            <div className="flex items-center gap-1 text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                              <UserIcon className="w-3 h-3" />
+                              {event.user?.name || 'Sistema'}
+                            </div>
+                          </div>
+                          
+                          <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-sm transition-hover hover:bg-white hover:shadow-md">
+                            <div className="flex items-center gap-2 mb-1">
+                               {event.fromStatus && (
+                                 <>
+                                   <span className="text-[11px] text-muted-foreground line-through">
+                                      {statusConfig[event.fromStatus as keyof typeof statusConfig]?.label || event.fromStatus}
+                                   </span>
+                                   <span className="text-muted-foreground">→</span>
+                                 </>
+                               )}
+                               <h4 className="font-bold text-sm text-slate-800">
+                                  {toStatusInfo?.label || event.toStatus}
+                               </h4>
+                            </div>
+                            {event.notes && (
+                              <div className="mt-2 flex gap-2 text-sm p-3 bg-white rounded-lg border border-slate-200">
+                                <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                                <p className="text-slate-700 italic text-xs leading-relaxed">{event.notes}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-20 text-muted-foreground">
+                   <Clock className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                   <p>Nenhuma movimentação registrada.</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="p-6 bg-slate-50 border-t text-center">
+              <Button className="w-full" variant="outline" onClick={() => setHistoryPedidoId(null)}>
+                Fechar Histórico
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

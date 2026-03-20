@@ -7,7 +7,13 @@ export interface ProcessStatus {
   icon?: string;
   mappedBehavior: string;
   scope?: 'ORDER' | 'ITEM' | 'BOTH';
+  allowEdition: boolean;
+  displayOrder?: number;
+  active?: boolean;
+  parentId?: string;
+  children?: ProcessStatus[];
 }
+
 
 export interface Pedido {
   id: string;
@@ -47,12 +53,12 @@ export interface PedidoStats {
 }
 
 export const statusConfig = {
-  DRAFT: { label: 'Pedido Criado', color: 'bg-gray-100 text-gray-800', icon: Edit, border: 'border-l-gray-400' },
-  APPROVED: { label: 'Aguardando Aprovação', color: 'bg-blue-100 text-blue-800', icon: CheckCircle, border: 'border-l-blue-500' },
-  IN_PRODUCTION: { label: 'Em Produção', color: 'bg-yellow-100 text-yellow-800', icon: Package, border: 'border-l-yellow-500' },
-  FINISHED: { label: 'Aguardando Retirada', color: 'bg-green-100 text-green-800', icon: CheckCircle, border: 'border-l-green-500' },
-  DELIVERED: { label: 'Entregue', color: 'bg-green-100 text-green-800', icon: CheckCircle, border: 'border-l-green-600' },
-  CANCELLED: { label: 'Cancelado', color: 'bg-red-100 text-red-800', icon: XCircle, border: 'border-l-red-500' },
+  DRAFT: { label: 'Pedido Criado', color: 'bg-gray-100 text-gray-800', hex: '#94a3b8', icon: Edit, border: 'border-l-gray-400' },
+  APPROVED: { label: 'Aguardando Aprovação', color: 'bg-blue-100 text-blue-800', hex: '#3b82f6', icon: CheckCircle, border: 'border-l-blue-500' },
+  IN_PRODUCTION: { label: 'Em Produção', color: 'bg-green-50 text-green-700', hex: '#22c55e', icon: Package, border: 'border-l-green-500' },
+  FINISHED: { label: 'Aguardando Retirada', color: 'bg-green-100 text-green-800', hex: '#10b981', icon: CheckCircle, border: 'border-l-green-500' },
+  DELIVERED: { label: 'Entregue', color: 'bg-green-100 text-green-800', hex: '#059669', icon: CheckCircle, border: 'border-l-green-600' },
+  CANCELLED: { label: 'Cancelado', color: 'bg-red-100 text-red-800', hex: '#ef4444', icon: XCircle, border: 'border-l-red-500' },
 };
 
 export const shouldShowDimensions = (item: any, enableEngineering?: boolean): boolean => {

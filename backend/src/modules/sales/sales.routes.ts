@@ -1,7 +1,8 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { QueryOptimizer } from '../../shared/infrastructure/database/QueryOptimizer';
-import { getTenantClient } from '../../shared/infrastructure/database/tenant';
+import { getTenantClient, prisma } from '../../shared/infrastructure/database/tenant';
+import { OrderStatus } from '@prisma/client';
 import { PricingEngine } from '../../shared/application/pricing/PricingEngine';
 
 const listQuerySchema = z.object({
@@ -261,7 +262,7 @@ export async function salesRoutes(fastify: FastifyInstance) {
       orderBy: { displayOrder: 'asc' }
     });
 
-    const order = await prisma.order.create({
+    const order = await (prisma as any).order.create({
       data: {
         organizationId: request.user!.organizationId,
         customerId: body.customerId,
@@ -285,6 +286,14 @@ export async function salesRoutes(fastify: FastifyInstance) {
             costPrice: item.costPrice || 0,
             calculatedPrice: item.calculatedPrice || item.unitPrice
           }))
+        },
+        statusHistory: {
+          create: {
+            toStatus: defaultStatus?.mappedBehavior || 'DRAFT',
+            toProcessStatusId: defaultStatus?.id,
+            notes: 'Pedido registrado no sistema.',
+            userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub
+          }
         }
       },
       include: {
@@ -356,6 +365,24 @@ export async function salesRoutes(fastify: FastifyInstance) {
     }
 
     return reply.send({ success: true, data: order });
+  });
+
+  // Buscar histórico de status do pedido
+  fastify.get('/orders/:id/history', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const prisma = getTenantClient(request.user!.organizationId);
+
+    const history = await (prisma as any).orderStatusHistory.findMany({
+      where: { orderId: id },
+      include: {
+        user: { select: { name: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return reply.send({ success: true, data: history });
   });
 
   // Simular preço
@@ -445,7 +472,7 @@ export async function salesRoutes(fastify: FastifyInstance) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const { status, processStatusId } = request.body as any;
+    const { status, processStatusId, notes } = request.body as any;
     const prisma = getTenantClient(request.user!.organizationId);
 
     const existingOrder = await prisma.order.findFirst({
@@ -470,10 +497,42 @@ export async function salesRoutes(fastify: FastifyInstance) {
       updateData.processStatusId = null;
     }
 
-    const order = await prisma.order.update({
+    if (notes) {
+      const existing = await (prisma as any).order.findUnique({ where: { id }, select: { notes: true } });
+      const separator = existing?.notes ? '\n\n' : '';
+      updateData.notes = (existing?.notes || '') + separator + `[${new Date().toLocaleDateString('pt-BR')}] MOTIVO: ` + notes;
+    }
+
+    if (updateData.status === 'APPROVED') updateData.approvedAt = new Date();
+    if (updateData.status === 'IN_PRODUCTION') updateData.inProductionAt = new Date();
+    if (updateData.status === 'FINISHED') updateData.finishedAt = new Date();
+    if (updateData.status === 'DELIVERED') updateData.deliveredAt = new Date();
+    if (updateData.status === 'CANCELLED') updateData.cancelledAt = new Date();
+
+    const updatedResult = await prisma.order.update({
       where: { id },
-      data: updateData
+      data: updateData,
+      include: {
+         processStatus: true
+      }
     });
+
+    // Registrar no histórico estruturado
+    try {
+      await (prisma as any).orderStatusHistory.create({
+        data: {
+          orderId: id,
+          fromStatus: existingOrder.status,
+          toStatus: updatedResult.status,
+          fromProcessStatusId: existingOrder.processStatusId,
+          toProcessStatusId: updatedResult.processStatusId,
+          notes: notes || null,
+          userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub
+        }
+      });
+    } catch (err) {
+      console.error('Erro ao gravar histórico:', err);
+    }
 
     if (updateData.status) {
       await prisma.orderItem.updateMany({
@@ -482,7 +541,18 @@ export async function salesRoutes(fastify: FastifyInstance) {
       });
     }
 
-    return reply.send({ success: true, data: order });
+    // Buscar pedido completo com processStatus para o frontend atualizar corretamente
+    const finalOrder = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        customer: true,
+        processStatus: true,
+        items: { include: { product: true } },
+        transactions: { include: { paymentMethod: true } }
+      }
+    });
+
+    return reply.send({ success: true, data: finalOrder });
   });
 
   // Atualizar status de item específico (O que estava faltando)
@@ -501,16 +571,16 @@ export async function salesRoutes(fastify: FastifyInstance) {
       return reply.code(404).send({ success: false, message: 'Item não encontrado' });
     }
 
-    await prisma.orderItem.update({
+    await (prisma as any).orderItem.update({
       where: { id: itemId },
-      data: { status }
+      data: { status: status as OrderStatus }
     });
 
     // Sincronizar o status do pedido pai baseado em todos os itens
     await syncParentOrderStatus(item.orderId, prisma);
 
     // Buscar o pedido atualizado completo para retornar ao frontend
-    const updatedOrder = await prisma.order.findUnique({
+    const fullUpdatedOrder = await prisma.order.findUnique({
       where: { id: item.orderId },
       include: {
         customer: true,
@@ -520,6 +590,66 @@ export async function salesRoutes(fastify: FastifyInstance) {
       }
     });
 
-    return reply.send({ success: true, data: updatedOrder });
+    return reply.send({ success: true, data: fullUpdatedOrder });
   });
+}
+
+/**
+ * Função utilitária para sincronizar o status do pedido pai baseado no status de seus itens
+ */
+async function syncParentOrderStatus(orderId: string, prisma: any) {
+  const items = await prisma.orderItem.findMany({
+    where: { orderId }
+  });
+
+  if (items.length === 0) return;
+
+  const statuses = items.map((i: any) => i.status);
+  
+  let newStatus: OrderStatus = 'DRAFT';
+
+  // Se TODOS estiverem entregues
+  if (statuses.every((s: string) => s === 'DELIVERED')) {
+    newStatus = 'DELIVERED';
+  }
+  // Se TODOS estiverem finalizados ou entregues
+  else if (statuses.every((s: string) => s === 'FINISHED' || s === 'DELIVERED')) {
+    newStatus = 'FINISHED';
+  }
+  // Se QUALQUER UM estiver em produção ou finalizado
+  else if (statuses.some((s: string) => s === 'IN_PRODUCTION' || s === 'FINISHED')) {
+    newStatus = 'IN_PRODUCTION';
+  }
+  // Se pelo menos um foi aprovado mas não entrou na bancada ainda
+  else if (statuses.some((s: string) => s === 'APPROVED')) {
+    newStatus = 'APPROVED';
+  }
+  // Caso contrário, volta para DRAFT (Pedido Criado)
+  else {
+    newStatus = 'DRAFT';
+  }
+
+  // Se o status mudou, atualizar o pedido pai
+  const order = await prisma.order.findUnique({ where: { id: orderId } });
+  if (order && order.status !== newStatus) {
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { status: newStatus }
+    });
+    
+    // Opcional: Registrar no histórico essa mudança automática
+    try {
+      await prisma.orderStatusHistory.create({
+        data: {
+          orderId,
+          fromStatus: order.status,
+          toStatus: newStatus,
+          notes: 'Sincronização automática baseada nos itens do pedido.',
+          userId: null // Indica que foi automático pelo sistema
+        }
+      });
+    } catch (e) {
+      console.error('Erro ao gravar histórico automático:', e);
+    }
+  }
 }

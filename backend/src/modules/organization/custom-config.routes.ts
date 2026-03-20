@@ -9,7 +9,15 @@ export async function customConfigRoutes(fastify: FastifyInstance) {
     fastify.get('/process-statuses/tree', {
         preHandler: [fastify.authenticate]
     }, async (request, reply) => {
-        const tree = await statusService.getTree(request.user!.organizationId);
+        const orgId = request.user!.organizationId;
+        let tree = await statusService.getTree(orgId);
+
+        // Se não há status cadastrados, inicializa com os padrões automaticamente
+        if (tree.length === 0) {
+            await statusService.ensureDefaultStatuses(orgId);
+            tree = await statusService.getTree(orgId);
+        }
+
         return reply.send({ success: true, data: tree });
     });
 

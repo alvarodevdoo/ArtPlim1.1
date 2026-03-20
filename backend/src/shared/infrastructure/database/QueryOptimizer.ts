@@ -76,7 +76,8 @@ export class QueryOptimizer {
             name: true,
             color: true,
             icon: true,
-            mappedBehavior: true
+            mappedBehavior: true,
+            allowEdition: true
           }
         },
         approvedAt: true,
