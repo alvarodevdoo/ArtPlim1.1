@@ -415,6 +415,8 @@ model OrderStatusHistory {
   
   order               Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
   user                User?          @relation(fields: [userId], references: [id])
+  fromProcessStatus   ProcessStatus? @relation("FromPS", fields: [fromProcessStatusId], references: [id])
+  toProcessStatus     ProcessStatus? @relation("ToPS", fields: [toProcessStatusId], references: [id])
 
   @@map("order_status_history")
 }
@@ -817,6 +819,8 @@ model ProcessStatus {
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   parent         ProcessStatus?  @relation("StatusHierarchy", fields: [parentId], references: [id])
   children       ProcessStatus[] @relation("StatusHierarchy")
+  fromHistory    OrderStatusHistory[] @relation("FromPS")
+  toHistory      OrderStatusHistory[] @relation("ToPS")
 
   @@map("process_statuses")
 }

@@ -139,6 +139,22 @@ export class QueryOptimizer {
               }
             }
           }
+        },
+        statusHistory: {
+          select: {
+            id: true,
+            fromStatus: true,
+            toStatus: true,
+            fromProcessStatusId: true,
+            toProcessStatusId: true,
+            toProcessStatus: {
+              select: { name: true, color: true }
+            },
+            notes: true,
+            createdAt: true,
+            user: { select: { name: true } }
+          },
+          orderBy: { createdAt: 'desc' }
         }
       },
       orderBy: { createdAt: 'desc' },

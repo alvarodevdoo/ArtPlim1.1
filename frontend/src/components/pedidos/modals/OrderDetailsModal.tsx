@@ -4,89 +4,23 @@ import { Button } from '@/components/ui/Button';
 import { DatasOrcamento } from '@/components/ui/DatasOrcamento';
 import { 
   Printer, FileText, User, MessageSquare, Send, Calendar, 
-  Package, Activity, CheckCircle, Target, XCircle, Calculator
+  Package, Activity, CheckCircle, Target, XCircle, Calculator, ChevronRight
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { sendOrderWhatsApp } from '@/lib/whatsapp';
 import { useAuth } from '@/contexts/AuthContext';
-
-export interface ProcessStatus {
-  id: string;
-  name: string;
-  color: string;
-  icon?: string;
-  mappedBehavior: string;
-  scope?: 'ORDER' | 'ITEM' | 'BOTH';
-}
-
-export interface ItemProduct {
-  id: string;
-  name: string;
-  productType?: string;
-  pricingMode?: string;
-}
-
-export interface PedidoItem {
-  id: string;
-  product?: ItemProduct;
-  width?: number;
-  height?: number;
-  quantity: number;
-  unitPrice: number;
-  totalPrice: number;
-  itemType?: string;
-  isCustomSize?: boolean;
-  paperType?: string;
-  printColors?: string;
-}
-
-export interface PedidoCustomer {
-  id: string;
-  name: string;
-  email?: string;
-  phone?: string;
-}
-
-export interface Pedido {
-  id: string;
-  orderNumber: string;
-  status: 'DRAFT' | 'APPROVED' | 'IN_PRODUCTION' | 'FINISHED' | 'DELIVERED' | 'CANCELLED';
-  processStatusId?: string;
-  processStatus?: ProcessStatus;
-  total: number;
-  createdAt: string;
-  validUntil?: string;
-  deliveryDate?: string;
-  notes?: string;
-  updatedAt: string;
-  customer: PedidoCustomer;
-  items: PedidoItem[];
-  transactions?: any[];
-  approvedAt?: string;
-  inProductionAt?: string;
-  finishedAt?: string;
-  deliveredAt?: string;
-  cancelledAt?: string;
-}
+import { Pedido, ProcessStatus, statusConfig } from '@/types/pedidos';
 
 interface OrderDetailsModalProps {
   pedido: Pedido | null;
   isOpen: boolean;
   onClose: () => void;
-  onStatusChange: (id: string, newStatus: string) => void;
+  onStatusChange: (id: string, newStatus: string, processStatusId?: string) => void;
   onCancelRequest: () => void;
   onWhatsAppRequest: () => void;
-  onMaterialRequest?: (item: PedidoItem) => void;
+  onMaterialRequest?: (item: any) => void;
+  processStatuses?: ProcessStatus[];
 }
-
-const statusConfig = {
-  DRAFT: { label: 'Pedido Criado', color: 'bg-gray-100 text-gray-800' },
-  APPROVED: { label: 'Aguardando Aprovação', color: 'bg-blue-100 text-blue-800' },
-  IN_PRODUCTION: { label: 'Em Produção', color: 'bg-yellow-100 text-yellow-800' },
-  FINISHED: { label: 'Aguardando Retirada', color: 'bg-green-100 text-green-800' },
-  DELIVERED: { label: 'Entregue', color: 'bg-green-100 text-green-800' },
-  CANCELLED: { label: 'Cancelado', color: 'bg-red-100 text-red-800' }
-};
 
 const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   pedido,
@@ -95,7 +29,8 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   onStatusChange,
   onCancelRequest,
   onWhatsAppRequest,
-  onMaterialRequest
+  onMaterialRequest,
+  processStatuses = []
 }) => {
   const { settings, hasPermission } = useAuth();
 
@@ -108,8 +43,10 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   };
 
   const statusDisplay = getStatusDisplay(pedido.status);
+  const finalStatusLabel = (pedido as any).processStatus?.name || statusDisplay.label || pedido.status;
+  const finalStatusColor = (pedido as any).processStatus?.color || statusDisplay.color;
 
-  const shouldShowDimensions = (item: PedidoItem) => {
+  const shouldShowDimensions = (item: any) => {
     const width = Number(item.width || 0);
     const height = Number(item.height || 0);
     if (width <= 0 || height <= 0) return false;
@@ -126,8 +63,8 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
             <div>
               <CardTitle className="flex items-center space-x-2">
                 <span>{pedido.orderNumber}</span>
-                <span className={`px-2 py-1 rounded text-sm ${statusDisplay.color}`}>
-                  {statusDisplay.label}
+                <span className={`px-2 py-1 rounded text-sm ${finalStatusColor}`}>
+                  {finalStatusLabel}
                 </span>
               </CardTitle>
               <CardDescription>Cliente: {pedido.customer?.name}</CardDescription>
@@ -273,52 +210,52 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                 </CardContent>
               </Card>
 
-              {/* Timeline de Produção */}
-              {pedido.status !== 'DRAFT' && pedido.status !== 'CANCELLED' && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center space-x-2">
-                      <Activity className="w-5 h-5" />
-                      <span>Timeline de Produção</span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {[
-                        { status: 'APPROVED', label: 'Pedido Aprovado', icon: CheckCircle },
-                        { status: 'IN_PRODUCTION', label: 'Em Produção', icon: Package },
-                        { status: 'FINISHED', label: 'Produção Finalizada', icon: CheckCircle },
-                        { status: 'DELIVERED', label: 'Entregue', icon: CheckCircle }
-                      ].map((step) => {
-                        const statusKeys = Object.keys(statusConfig);
-                        const isCompleted = statusKeys.indexOf(pedido.status) >= statusKeys.indexOf(step.status);
-                        const isCurrent = pedido.status === step.status;
-                        const StepIcon = step.icon;
-                        
-                        return (
-                          <div key={step.status} className="flex items-center space-x-3">
-                            <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                              isCompleted ? 'bg-green-100' : isCurrent ? 'bg-blue-100' : 'bg-gray-100'
-                            }`}>
-                              <StepIcon className={`w-4 h-4 ${
-                                isCompleted ? 'text-green-600' : isCurrent ? 'text-blue-600' : 'text-gray-400'
-                              }`} />
-                            </div>
-                            <div className="flex-1">
-                              <p className={`font-medium ${
-                                isCompleted ? 'text-green-600' : isCurrent ? 'text-blue-600' : 'text-gray-400'
-                              }`}>
-                                {step.label}
-                              </p>
-                              {isCurrent && <p className="text-sm text-muted-foreground mt-0.5 italic">Em andamento...</p>}
-                            </div>
+              {/* Timeline de Produção Estilizada */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center space-x-2">
+                    <Activity className="w-5 h-5" />
+                    <span>Progresso do Pedido</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-6">
+                    {pedido.statusHistory && pedido.statusHistory.length > 0 ? (
+                      pedido.statusHistory.map((step, idx) => (
+                        <div key={idx} className="relative pl-6 pb-6 last:pb-0">
+                          {idx !== pedido.statusHistory!.length - 1 && (
+                            <div className="absolute left-[11px] top-6 bottom-0 w-0.5 bg-gray-100"></div>
+                          )}
+                          <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-blue-50 flex items-center justify-center border border-blue-200">
+                            <Activity className="w-3 h-3 text-blue-500" />
                           </div>
-                        );
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+                          <div>
+                            <p className="font-semibold text-sm text-gray-900">
+                              {step.toProcessStatus?.name || (statusConfig[step.toStatus as keyof typeof statusConfig]?.label || step.toStatus)}
+                            </p>
+                            <div className="flex items-center mt-1 text-xs text-gray-500 space-x-2">
+                              <span className="flex items-center">
+                                <User className="w-3 h-3 mr-1" /> {step.user?.name || 'Sistema'}
+                              </span>
+                              <span>•</span>
+                              <span>{new Date(step.createdAt).toLocaleString('pt-BR')}</span>
+                            </div>
+                            {step.notes && (
+                              <p className="mt-2 text-xs bg-gray-50 p-2 rounded border border-gray-100 italic">
+                                "{step.notes}"
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-6 text-gray-400 italic text-sm">
+                        Nenhum registro de produção disponível.
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
 
               {/* Análise Financeira */}
               {hasFinancialAccess() && (
@@ -368,35 +305,38 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                   <CardTitle className="text-lg">Ações</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {pedido.status === 'DRAFT' && (
-                    <Button className="w-full" onClick={() => onStatusChange(pedido.id, 'APPROVED')}>
-                      <CheckCircle className="w-4 h-4 mr-2" /> Aprovar Pedido
-                    </Button>
-                  )}
-                  {pedido.status === 'APPROVED' && (
-                    <Button className="w-full" onClick={() => onStatusChange(pedido.id, 'IN_PRODUCTION')}>
-                      <Package className="w-4 h-4 mr-2" /> Iniciar Produção
-                    </Button>
-                  )}
-                  {pedido.status === 'IN_PRODUCTION' && (
-                    <Button className="w-full" onClick={() => onStatusChange(pedido.id, 'FINISHED')}>
-                      <CheckCircle className="w-4 h-4 mr-2" /> Finalizar Produção
-                    </Button>
-                  )}
-                  {pedido.status === 'FINISHED' && (
-                    <Button className="w-full" onClick={() => onStatusChange(pedido.id, 'DELIVERED')}>
-                      <CheckCircle className="w-4 h-4 mr-2" /> Marcar como Entregue
-                    </Button>
-                  )}
-                  {!['DELIVERED', 'CANCELLED'].includes(pedido.status) && (
-                    <Button 
-                      variant="outline" 
-                      className="w-full text-red-600 border-red-200 hover:bg-red-50" 
-                      onClick={onCancelRequest}
-                    >
-                      <XCircle className="w-4 h-4 mr-2" /> Cancelar Pedido
-                    </Button>
-                  )}
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Mover para etapa:</p>
+                    {processStatuses.length > 0 ? (
+                      processStatuses
+                        .filter(ps => ps.id !== pedido.processStatusId)
+                        .map(ps => (
+                        <Button 
+                          key={ps.id}
+                          className="w-full justify-start text-left" 
+                          variant="outline"
+                          onClick={() => onStatusChange(pedido.id, ps.mappedBehavior, ps.id)}
+                        >
+                          <ChevronRight className="w-4 h-4 mr-2 text-blue-500" />
+                          {ps.name}
+                        </Button>
+                      ))
+                    ) : (
+                      <p className="text-xs italic text-gray-400">Nenhuma etapa disponível no fluxo.</p>
+                    )}
+                  </div>
+                  
+                  <div className="pt-4 border-t mt-4">
+                    {!['DELIVERED', 'CANCELLED'].includes(pedido.status) && (
+                      <Button 
+                        variant="ghost" 
+                        className="w-full text-red-600 hover:bg-red-50 hover:text-red-700" 
+                        onClick={onCancelRequest}
+                      >
+                        <XCircle className="w-4 h-4 mr-2" /> Cancelar Pedido
+                      </Button>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </div>

@@ -40,6 +40,19 @@ export interface Pedido {
   cancellationRefundAmount?: number;
   items: Array<any>;
   transactions?: Array<any>;
+  statusHistory?: Array<{
+    id: string;
+    fromStatus: string;
+    toStatus: string;
+    fromProcessStatusId?: string;
+    toProcessStatusId?: string;
+    fromProcessStatus?: ProcessStatus;
+    toProcessStatus?: ProcessStatus;
+    userId: string;
+    user?: { name: string };
+    notes?: string;
+    createdAt: string;
+  }>;
 }
 
 export interface PedidoStats {
@@ -53,10 +66,10 @@ export interface PedidoStats {
 }
 
 export const statusConfig = {
-  DRAFT: { label: 'Pedido Criado', color: 'bg-gray-100 text-gray-800', hex: '#94a3b8', icon: Edit, border: 'border-l-gray-400' },
-  APPROVED: { label: 'Aguardando Aprovação', color: 'bg-blue-100 text-blue-800', hex: '#3b82f6', icon: CheckCircle, border: 'border-l-blue-500' },
+  DRAFT: { label: 'Pedido Recebido', color: 'bg-gray-100 text-gray-800', hex: '#94a3b8', icon: Edit, border: 'border-l-gray-400' },
+  APPROVED: { label: 'Aprovado', color: 'bg-blue-100 text-blue-800', hex: '#3b82f6', icon: CheckCircle, border: 'border-l-blue-500' },
   IN_PRODUCTION: { label: 'Em Produção', color: 'bg-green-50 text-green-700', hex: '#22c55e', icon: Package, border: 'border-l-green-500' },
-  FINISHED: { label: 'Aguardando Retirada', color: 'bg-green-100 text-green-800', hex: '#10b981', icon: CheckCircle, border: 'border-l-green-500' },
+  FINISHED: { label: 'Finalizado', color: 'bg-green-100 text-green-800', hex: '#10b981', icon: CheckCircle, border: 'border-l-green-500' },
   DELIVERED: { label: 'Entregue', color: 'bg-green-100 text-green-800', hex: '#059669', icon: CheckCircle, border: 'border-l-green-600' },
   CANCELLED: { label: 'Cancelado', color: 'bg-red-100 text-red-800', hex: '#ef4444', icon: XCircle, border: 'border-l-red-500' },
 };

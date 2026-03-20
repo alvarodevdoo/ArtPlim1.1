@@ -187,6 +187,7 @@ const Pedidos: React.FC = () => {
           setCalculatorItem(item);
           setShowMaterialCalculator(true);
         }}
+        processStatuses={processStatuses}
       />
 
       <CancelOrderModal

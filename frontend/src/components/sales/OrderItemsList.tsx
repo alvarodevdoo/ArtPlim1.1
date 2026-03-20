@@ -1,4 +1,5 @@
 import React from 'react';
+import { statusConfig } from '@/types/pedidos';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Plus, Edit, Trash2 } from 'lucide-react';
@@ -6,15 +7,7 @@ import { formatCurrency } from '@/lib/utils';
 import { ItemPedido, Produto } from '@/types/sales';
 import { ITEM_TYPE_CONFIGS } from '@/types/item-types';
 
-// Status configuration for badge styling
-const statusConfig = {
-    DRAFT: { label: 'Pedido Criado', color: 'bg-slate-100 text-slate-800 border-slate-200' },
-    APPROVED: { label: 'Aguardando Aprovação', color: 'bg-blue-100 text-blue-800 border-blue-200' },
-    IN_PRODUCTION: { label: 'Em Produção', color: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
-    FINISHED: { label: 'Aguardando Retirada', color: 'bg-green-100 text-green-800 border-green-200' },
-    DELIVERED: { label: 'Entregue', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
-    CANCELLED: { label: 'Cancelado', color: 'bg-red-100 text-red-800 border-red-200' }
-};
+
 
 interface OrderItemsListProps {
     items: ItemPedido[];
@@ -24,6 +17,7 @@ interface OrderItemsListProps {
     editingItemId?: string;
     produtos: Produto[]; // To resolve product details if missing in item
     onItemStatusChange?: (itemId: string, status: string) => void;
+    processStatuses?: any[];
 }
 
 export const OrderItemsList: React.FC<OrderItemsListProps> = ({
@@ -33,7 +27,8 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({
     onRemove,
     editingItemId,
     produtos,
-    onItemStatusChange
+    onItemStatusChange,
+    processStatuses = []
 }) => {
     const formatarUnidadePreco = (produto?: Produto) => {
         if (!produto) return '/un';
@@ -184,10 +179,19 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({
                                                 className={`px-3 py-1.5 rounded-full text-xs font-medium border cursor-pointer transition-colors ${statusConfig[(item as any).status as keyof typeof statusConfig]?.color || 'bg-gray-100 text-gray-800 border-gray-200'}`}
                                                 style={{ appearance: 'none', paddingRight: '28px', backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 12 12\'%3E%3Cpath fill=\'currentColor\' d=\'M6 9L1 4h10z\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center' }}
                                             >
-                                                <option value="DRAFT">Pedido Criado</option>
-                                                <option value="APPROVED">Aguardando Aprovação</option>
-                                                <option value="IN_PRODUCTION">Em Produção</option>
-                                                <option value="FINISHED">Aguardando Retirada</option>
+                                                {processStatuses.length > 0 ? (
+                                                    processStatuses.map(ps => (
+                                                        <option key={ps.id} value={ps.mappedBehavior}>
+                                                            {ps.name}
+                                                        </option>
+                                                    ))
+                                                ) : (
+                                                    Object.keys(statusConfig).map(key => (
+                                                        <option key={key} value={key}>
+                                                            {statusConfig[key as keyof typeof statusConfig].label}
+                                                        </option>
+                                                    ))
+                                                )}
                                             </select>
 
                                             {/* Delivery Button for FINISHED items */}

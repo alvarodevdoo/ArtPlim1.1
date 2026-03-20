@@ -43,6 +43,7 @@ const CriarPedido: React.FC = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [selectedOriginOrder, setSelectedOriginOrder] = useState<string>('');
+  const [processStatuses, setProcessStatuses] = useState<any[]>([]);
 
   // Edição de item
   const [editingItem, setEditingItem] = useState<ItemPedido | null>(null);
@@ -52,6 +53,7 @@ const CriarPedido: React.FC = () => {
   useEffect(() => {
     loadClientes();
     loadProdutos();
+    loadProcessStatuses();
 
     // Se estiver editando, carregar dados do pedido
     if (isEditing && editId) {
@@ -60,6 +62,15 @@ const CriarPedido: React.FC = () => {
       loadBudgetData(fromBudgetId);
     }
   }, [isEditing, editId, fromBudgetId]);
+
+  const loadProcessStatuses = async () => {
+    try {
+      const response = await api.get('/api/organization/config/process-statuses');
+      setProcessStatuses(response.data.data || []);
+    } catch (error) {
+      console.error('Erro ao carregar status de processo:', error);
+    }
+  };
 
   const loadClientes = async () => {
     setLoadingClientes(true);
@@ -168,7 +179,8 @@ const CriarPedido: React.FC = () => {
 
         // Status do item
         processStatusId: item.processStatusId,
-        processStatus: item.processStatus
+        processStatus: item.processStatus,
+        status: item.status
       }));
 
       setItens(itensCarregados);
@@ -558,7 +570,7 @@ const CriarPedido: React.FC = () => {
         <div className="flex space-x-2">
           <Button variant="outline" disabled={loading}>
             <FileText className="w-4 h-4 mr-2" />
-            Salvar Pedido Criado
+            Salvar Pedido
           </Button>
           <Button onClick={salvarPedido} disabled={loading || !clienteSelecionado || itens.length === 0}>
             <Save className="w-4 h-4 mr-2" />
@@ -588,6 +600,7 @@ const CriarPedido: React.FC = () => {
             editingItemId={editingItem?.id}
             produtos={produtos}
             onItemStatusChange={handleItemStatusChange}
+            processStatuses={processStatuses}
           />
 
           {/* Observações e Envio */}

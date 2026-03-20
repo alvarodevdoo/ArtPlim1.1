@@ -102,7 +102,7 @@ export const PendingChangesStatus: React.FC<PendingChangesStatusProps> = ({
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'PENDING':
-        return 'Aguardando Aprovação';
+        return 'Pendente de Revisão';
       case 'APPROVED':
         return 'Aprovada';
       case 'REJECTED':
@@ -249,7 +249,7 @@ export const PendingChangesStatus: React.FC<PendingChangesStatusProps> = ({
                 {change.status === 'PENDING' && (
                   <div className="flex items-center gap-2 text-sm text-blue-600">
                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-                    <span>Esta alteração está aguardando aprovação da produção</span>
+                    <span>Esta alteração está pendente de revisão pela produção</span>
                   </div>
                 )}
               </div>
