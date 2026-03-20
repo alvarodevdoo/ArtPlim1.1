@@ -8,6 +8,13 @@ import { ConfigurationValidationService } from './services/ConfigurationValidati
 import { FichaTecnicaService } from './services/FichaTecnicaService';
 import { PricingRuleService } from './services/PricingRuleService';
 import { getTenantClient } from '../../shared/infrastructure/database/tenant';
+import { QueryOptimizer } from '../../shared/infrastructure/database/QueryOptimizer';
+
+const listQuerySchema = z.object({
+  limit: z.string().transform(val => parseInt(val) || 50).optional(),
+  offset: z.string().transform(val => parseInt(val) || 0).optional(),
+  search: z.string().optional()
+});
 
 const createProductSchema = z.object({
   name: z.string().min(2),
@@ -112,24 +119,25 @@ export async function catalogRoutes(fastify: FastifyInstance) {
 
   // ========== PRODUTOS ==========
 
-  // Listar produtos (Movido para catalogRoutesOptimized)
-  /*
+  // Listar produtos
   fastify.get('/products', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const { include } = request.query as { include?: string };
+    const query = listQuerySchema.parse(request.query);
     const prisma = getTenantClient(request.user!.organizationId);
-    const productService = new ProductService(prisma);
-
-    const includeStandardSizes = include?.includes('standardSizes');
-    const products = await productService.list(includeStandardSizes);
-
+    const queryOptimizer = new QueryOptimizer(prisma);
+    
+    const products = await queryOptimizer.getOptimizedProducts(
+      request.user!.organizationId,
+      query.limit || 50,
+      query.offset || 0
+    );
+    
     return reply.send({
       success: true,
       data: products
     });
   });
-  */
 
   // Criar produto
   fastify.post('/products', {
@@ -188,14 +196,22 @@ export async function catalogRoutes(fastify: FastifyInstance) {
 
   // ========== MATERIAIS ==========
 
-  // Listar materiais (Movido para catalogRoutesOptimized)
-  /*
+  // Listar materiais
   fastify.get('/materials', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    ...
+    const prisma = getTenantClient(request.user!.organizationId);
+    const queryOptimizer = new QueryOptimizer(prisma);
+    
+    const materials = await queryOptimizer.getOptimizedMaterials(
+      request.user!.organizationId
+    );
+    
+    return reply.send({
+      success: true,
+      data: materials
+    });
   });
-  */
 
   // Criar material
   fastify.post('/materials', {

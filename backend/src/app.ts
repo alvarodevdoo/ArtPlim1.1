@@ -6,10 +6,9 @@ import { AppError } from './shared/infrastructure/errors/AppError';
 
 // Routes
 import { authRoutes } from './modules/auth/auth.routes';
-import { salesRoutesOptimized } from './modules/sales/sales.routes.optimized';
-import { catalogRoutesOptimized } from './modules/catalog/catalog.routes.optimized';
+import { salesRoutes } from './modules/sales/sales.routes';
 import { catalogRoutes } from './modules/catalog/catalog.routes';
-import { profilesRoutesOptimized } from './modules/profiles/profiles.routes.optimized';
+import { profilesRoutes } from './modules/profiles/profiles.routes';
 import { organizationRoutes } from './modules/organization/organization.routes';
 import { customConfigRoutes } from './modules/organization/custom-config.routes';
 import { wmsRoutes } from './modules/wms/wms.routes';
@@ -46,10 +45,9 @@ async function registerRoutes(fastify: FastifyInstance, options: { websocketServ
 
   await fastify.register(async function (api) {
     await api.register(authRoutes, { prefix: '/auth' });
-    await api.register(salesRoutesOptimized, { prefix: '/sales' });
+    await api.register(salesRoutes, { prefix: '/sales' });
     await api.register(catalogRoutes, { prefix: '/catalog' });
-    await api.register(catalogRoutesOptimized, { prefix: '/catalog' });
-    await api.register(profilesRoutesOptimized, { prefix: '/profiles' });
+    await api.register(profilesRoutes, { prefix: '/profiles' });
     await api.register(organizationRoutes, { prefix: '/organization' });
     await api.register(customConfigRoutes, { prefix: '/organization/config' });
     await api.register(wmsRoutes, { prefix: '/wms' });
