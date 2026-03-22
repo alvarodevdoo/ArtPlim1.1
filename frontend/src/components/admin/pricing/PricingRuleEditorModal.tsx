@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Wand2, Calculator, Info, X, Plus, Eye, EyeOff, Star, ListChecks } from 'lucide-react';
 import {
-    evaluateFormula,
     validateFormulaSyntax,
     extractVariables,
     renameVariableInFormula,
@@ -51,6 +50,8 @@ export interface PricingFormulaRule {
     variables: FormulaVariable[];
     active: boolean;
     usageCount?: number;
+    referenceValues?: Record<string, any>;
+    hideReferencePrice?: boolean;
 }
 
 interface Props {
@@ -65,7 +66,9 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
         formulaString: '',
         costFormulaString: '',
         variables: [],
-        active: true
+        active: true,
+        referenceValues: {},
+        hideReferencePrice: false
     });
 
     const formulaTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -78,14 +81,17 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
         if (rule) {
             setFormData({
                 ...rule,
-                costFormulaString: rule.costFormulaString || ''
+                costFormulaString: rule.costFormulaString || '',
+                referenceValues: rule.referenceValues || {},
+                hideReferencePrice: !!rule.hideReferencePrice
             });
 
             const initialSim: Record<string, any> = {};
             rule.variables.forEach(v => {
                 if (v.type === 'INPUT') {
-                    initialSim[v.id] = 0;
-                    initialSim[`${v.id}_unit`] = v.defaultUnit || null;
+                    // Tenta usar o valor de referência salvo, senão 0
+                    initialSim[v.id] = rule.referenceValues?.[v.id] ?? 0;
+                    initialSim[`${v.id}_unit`] = rule.referenceValues?.[`${v.id}_unit`] || v.defaultUnit || null;
                 } else if (v.type === 'FIXED' && v.fixedValue !== undefined) {
                     initialSim[v.id] = v.fixedValue;
                 }
@@ -278,7 +284,14 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
             toast.error("A fórmula possui erros matemáticos. Corrija antes de salvar.");
             return;
         }
-        onSave(formData);
+
+        // SALVAR VALORES DE REFERÊNCIA (P/ VITRINE)
+        const finalRule = {
+            ...formData,
+            referenceValues: { ...simulationValues }
+        };
+
+        onSave(finalRule);
     };
 
     return (
@@ -663,10 +676,15 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
 
                 {/* RODAPÉ: Simulador de Testes */}
                 <div className="bg-slate-900 text-slate-100 p-5 mt-auto">
-                    <h4 className="text-sm font-semibold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
-                        Painel de Simulação ao Vivo
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    </h4>
+                    <div className="flex justify-between items-center mb-4">
+                        <h4 className="text-sm font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                            Painel de Simulação (Valores de Referência p/ Vitrine)
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        </h4>
+                        <div className="text-[10px] text-slate-500 italic bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                            💡 Os valores abaixo serão usados para calcular o preço padrão no card do produto.
+                        </div>
+                    </div>
 
                     <div className="flex flex-col md:flex-row items-center gap-6">
                         {/* Area de Inputs do Simulador */}
@@ -823,6 +841,18 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
 
                         {/* Botões Finais */}
                         <div className="ml-auto pl-6 border-l border-slate-800 flex flex-col gap-2 min-w-[150px]">
+                             <div className="flex items-center gap-2 mb-2">
+                                <input
+                                    type="checkbox"
+                                    id="hideReferencePrice"
+                                    className="w-4 h-4 text-indigo-600 rounded border-slate-700 bg-slate-800"
+                                    checked={formData.hideReferencePrice}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, hideReferencePrice: e.target.checked }))}
+                                />
+                                <label htmlFor="hideReferencePrice" className="text-[11px] font-bold text-slate-400 uppercase cursor-pointer hover:text-white transition-colors">
+                                    Ocultar preço no catálogo
+                                </label>
+                            </div>
                             <Button variant="outline" className="text-white hover:text-black border-slate-700 bg-transparent h-10 w-full" onClick={onClose}>
                                 Cancelar
                             </Button>

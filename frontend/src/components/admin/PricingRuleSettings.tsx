@@ -38,6 +38,8 @@ const PricingRuleSettings: React.FC = () => {
                     internalName: r.name,
                     formulaString: formulaData?.formulaString || '',
                     costFormulaString: formulaData?.costFormulaString || '',
+                    referenceValues: formulaData?.referenceValues || {},
+                    hideReferencePrice: !!formulaData?.hideReferencePrice,
                     variables: (formulaData?.variables || r.variables || []).map((v: any) => ({
                         ...v,
                         defaultUnit: v.defaultUnit || v.baseUnit || '',
@@ -92,7 +94,9 @@ const PricingRuleSettings: React.FC = () => {
                 formula: {
                     formulaString: ruleData.formulaString,
                     costFormulaString: ruleData.costFormulaString,
-                    variables: ruleData.variables
+                    variables: ruleData.variables,
+                    referenceValues: ruleData.referenceValues,
+                    hideReferencePrice: ruleData.hideReferencePrice
                 },
                 active: ruleData.active
             };
