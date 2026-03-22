@@ -919,6 +919,7 @@ enum UserRole {
   MANAGER
   OPERATOR
   USER
+  CUSTOMER
 }
 
 enum ItemType {

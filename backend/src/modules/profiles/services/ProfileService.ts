@@ -1,4 +1,5 @@
 import { ProfileType } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 import { NotFoundError, ValidationError } from '../../../shared/infrastructure/errors/AppError';
 
 interface CreateProfileInput {
@@ -18,6 +19,8 @@ interface CreateProfileInput {
   organizationId?: string;
   creditLimit?: number;
   paymentTerms?: number;
+  password?: string;
+  role?: 'ADMIN' | 'MANAGER' | 'OPERATOR' | 'USER' | 'CUSTOMER';
 }
 
 interface ListFilters {
@@ -96,25 +99,66 @@ export class ProfileService {
       }
     }
 
-    const profile = await this.prisma.profile.create({
-      data: {
-        type: normalizedData.type,
-        name: normalizedData.name,
-        document: normalizedData.document,
-        email: normalizedData.email,
-        phone: normalizedData.phone,
-        address: normalizedData.address,
-        city: normalizedData.city,
-        state: normalizedData.state,
-        zipCode: normalizedData.zipCode,
-        isCustomer: normalizedData.isCustomer,
-        isSupplier: normalizedData.isSupplier,
-        isEmployee: normalizedData.isEmployee,
-        organizationId: normalizedData.organizationId,
-        addressNumber: normalizedData.addressNumber,
-        creditLimit: normalizedData.creditLimit,
-        paymentTerms: normalizedData.paymentTerms
+    // Usar transação se for funcionário e tiver senha (para criar o usuário)
+    const profile = await this.prisma.$transaction(async (tx: any) => {
+      let userId = null;
+
+      // Se for funcionário ou cliente e tiver senha, criar o usuário
+      if ((normalizedData.isEmployee || normalizedData.isCustomer) && normalizedData.password) {
+        // Verificar se já existe um usuário com este email
+        if (normalizedData.email) {
+          const existingUser = await tx.user.findFirst({
+            where: {
+              organizationId: normalizedData.organizationId,
+              email: normalizedData.email.toLowerCase()
+            }
+          });
+
+          if (existingUser) {
+            throw new ValidationError('Email já está sendo usado por outro usuário');
+          }
+
+          // Hash da senha
+          const hashedPassword = await bcrypt.hash(normalizedData.password, 10);
+
+          // Criar usuário
+          const user = await tx.user.create({
+            data: {
+              organizationId: normalizedData.organizationId,
+              name: normalizedData.name,
+              email: normalizedData.email.toLowerCase(),
+              password: hashedPassword,
+              role: normalizedData.role || 'USER'
+            }
+          });
+
+          userId = user.id;
+        }
       }
+
+      const createdProfile = await tx.profile.create({
+        data: {
+          type: normalizedData.type,
+          name: normalizedData.name,
+          document: normalizedData.document,
+          email: normalizedData.email ? normalizedData.email.toLowerCase() : null,
+          phone: normalizedData.phone,
+          address: normalizedData.address,
+          city: normalizedData.city,
+          state: normalizedData.state,
+          zipCode: normalizedData.zipCode,
+          isCustomer: normalizedData.isCustomer,
+          isSupplier: normalizedData.isSupplier,
+          isEmployee: normalizedData.isEmployee,
+          organizationId: normalizedData.organizationId,
+          addressNumber: normalizedData.addressNumber,
+          creditLimit: normalizedData.creditLimit,
+          paymentTerms: normalizedData.paymentTerms,
+          userId: userId
+        }
+      });
+
+      return createdProfile;
     });
 
     return profile;
@@ -271,12 +315,68 @@ export class ProfileService {
       }
     }
 
-    const profile = await this.prisma.profile.update({
-      where: { id },
-      data: {
-        ...normalizedData,
-        updatedAt: new Date()
+    const profile = await this.prisma.$transaction(async (tx: any) => {
+      // Atualizar ou criar usuário se for funcionário ou cliente
+      if ((normalizedData.isEmployee || normalizedData.isCustomer) && (normalizedData.password || normalizedData.role)) {
+        const existingProfileWithUser = await tx.profile.findUnique({
+          where: { id },
+          include: { user: true }
+        });
+
+        if (existingProfileWithUser?.userId) {
+          // Atualizar o usuário existente
+          const updateData: any = {
+            name: normalizedData.name || existingProfileWithUser.name,
+            role: normalizedData.role || existingProfileWithUser.user.role,
+            updatedAt: new Date()
+          };
+
+          if (normalizedData.email) {
+            updateData.email = normalizedData.email.toLowerCase();
+          }
+
+          if (normalizedData.password) {
+            updateData.password = await bcrypt.hash(normalizedData.password, 10);
+          }
+
+          await tx.user.update({
+            where: { id: existingProfileWithUser.userId },
+            data: updateData
+          });
+        } else if (normalizedData.password && normalizedData.email) {
+          // Criar novo usuário e vincular
+          const hashedPassword = await bcrypt.hash(normalizedData.password, 10);
+          const user = await tx.user.create({
+            data: {
+              organizationId: data.organizationId || existingProfileWithUser.organizationId,
+              name: normalizedData.name || existingProfileWithUser.name,
+              email: normalizedData.email.toLowerCase(),
+              password: hashedPassword,
+              role: normalizedData.role || 'USER'
+            }
+          });
+
+          // Vincular ao perfil nos dados de atualização do perfil
+          (normalizedData as any).userId = user.id;
+        }
       }
+
+      // Limpar campos que não pertencem ao Profile no Prisma
+      const profileData = { ...normalizedData };
+      delete (profileData as any).password;
+      delete (profileData as any).role;
+
+      if (profileData.email) {
+        profileData.email = profileData.email.toLowerCase();
+      }
+
+      return await tx.profile.update({
+        where: { id },
+        data: {
+          ...profileData,
+          updatedAt: new Date()
+        }
+      });
     });
 
     return profile;

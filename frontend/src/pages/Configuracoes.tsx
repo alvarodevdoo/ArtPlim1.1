@@ -246,6 +246,7 @@ const Configuracoes: React.FC = () => {
                         <option value="basic">Básico</option>
                         <option value="pro">Profissional</option>
                         <option value="enterprise">Enterprise</option>
+                        <option value="PREMIUM">Premium</option>
                       </select>
                     </div>
                   </div>

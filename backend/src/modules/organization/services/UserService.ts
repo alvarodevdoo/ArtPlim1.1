@@ -38,13 +38,14 @@ export class UserService {
     });
   }
 
-  async create(data: CreateUserInput) {
+  async create(data: CreateUserInput & { email: string }) {
+    const email = data.email.toLowerCase();
     // Verificar se email já existe na organização
     const existingUser = await this.prisma.user.findUnique({
       where: {
         organizationId_email: {
           organizationId: data.organizationId,
-          email: data.email
+          email
         }
       }
     });
@@ -60,7 +61,7 @@ export class UserService {
       data: {
         organizationId: data.organizationId,
         name: data.name,
-        email: data.email,
+        email: email,
         password: hashedPassword,
         role: data.role
       },
@@ -88,7 +89,8 @@ export class UserService {
     }
 
     // Se está alterando email, verificar se não existe outro usuário com o mesmo email
-    if (data.email && data.email !== existingUser.email) {
+    if (data.email && data.email.toLowerCase() !== existingUser.email) {
+      const email = data.email.toLowerCase();
       const emailExists = await this.prisma.user.findUnique({
         where: {
           organizationId_email: {
@@ -108,6 +110,10 @@ export class UserService {
       ...data,
       updatedAt: new Date()
     };
+
+    if (data.email) {
+      updateData.email = data.email.toLowerCase();
+    }
 
     // Se está alterando senha, fazer hash
     if (data.password) {

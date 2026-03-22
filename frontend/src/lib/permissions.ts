@@ -32,7 +32,8 @@ export const ROLE_PERMISSIONS: Record<string, PermissionType[]> = {
     ],
     USER: [
         'sales.view', 'sales.create', 'sales.edit'
-    ]
+    ],
+    CUSTOMER: []
 };
 
 export const MODULE_SETTINGS_MAP: Record<PermissionType, string> = {

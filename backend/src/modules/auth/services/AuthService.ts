@@ -18,7 +18,8 @@ interface RegisterData {
 
 export class AuthService {
 
-  async login({ email, password, organizationSlug }: LoginData) {
+  async login({ email: loginEmail, password, organizationSlug }: LoginData) {
+    const email = loginEmail.toLowerCase();
     // Buscar organização
     const organization = await prisma.organization.findUnique({
       where: { slug: organizationSlug }
@@ -38,7 +39,13 @@ export class AuthService {
       }
     });
 
-    if (!user || !user.active) {
+    if (!user) {
+      console.log(`[AuthService] Usuário não encontrado: ${email} na organização ${organization.slug} (ID: ${organization.id})`);
+      throw new ValidationError('Credenciais inválidas');
+    }
+
+    if (!user.active) {
+      console.log(`[AuthService] Usuário inativo: ${email}`);
       throw new ValidationError('Credenciais inválidas');
     }
 
@@ -71,7 +78,8 @@ export class AuthService {
     };
   }
 
-  async register({ name, email, password, organizationName, organizationSlug }: RegisterData) {
+  async register({ name, email: rawEmail, password, organizationName, organizationSlug }: RegisterData) {
+    const email = rawEmail.toLowerCase();
     // Verificar se a organização já existe
     const existingOrg = await prisma.organization.findUnique({
       where: { slug: organizationSlug }

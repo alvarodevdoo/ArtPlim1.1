@@ -8,7 +8,7 @@ import { requireRole } from '../../shared/infrastructure/auth/middleware';
 const updateOrganizationSchema = z.object({
   name: z.string().min(2).optional(),
   cnpj: z.string().optional(),
-  plan: z.enum(['basic', 'pro', 'enterprise']).optional()
+  plan: z.enum(['basic', 'pro', 'enterprise', 'PREMIUM']).optional()
 });
 
 const updateSettingsSchema = z.object({

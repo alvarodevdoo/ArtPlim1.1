@@ -499,7 +499,7 @@ const CriarPedido: React.FC = () => {
           justification: p.justification || undefined
         }))
       };
-      
+
       if (isEditing && editId) {
         // Atualizar pedido existente
         await api.put(`/api/sales/orders/${editId}`, pedidoData);
@@ -639,57 +639,59 @@ const CriarPedido: React.FC = () => {
           </div>
         </div>
 
-        {/* Resumo Lateral */}
+        {/* Resumo Lateral Fixo */}
         <div className="space-y-6">
-          <div className="bg-white p-6 rounded-lg border shadow-sm sticky top-6">
-            <h3 className="text-lg font-medium mb-4">Resumo do Pedido</h3>
+          <div className="sticky top-1 space-y-2">
+            <div className="bg-white p-6 rounded-lg border shadow-sm">
+              <h3 className="text-lg font-medium mb-4">Resumo do Pedido</h3>
 
-            <div className="space-y-3 mb-6">
-              <div className="flex justify-between text-sm text-gray-600">
-                <span>Itens ({itens.length})</span>
-                <span>{itens.reduce((sum, item) => sum + item.quantity, 0)} un</span>
+              <div className="space-y-3 mb-6">
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Itens ({itens.length})</span>
+                  <span>{itens.reduce((sum, item) => sum + item.quantity, 0)} un</span>
+                </div>
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Subtotal</span>
+                  <span>{formatCurrency(itens.reduce((total, item) => total + item.totalPrice, 0))}</span>
+                </div>
+                <div className="border-t pt-3 flex justify-between font-bold text-lg">
+                  <span>Total</span>
+                  <span>{formatCurrency(itens.reduce((total, item) => total + item.totalPrice, 0))}</span>
+                </div>
               </div>
-              <div className="flex justify-between text-sm text-gray-600">
-                <span>Subtotal</span>
-                <span>{formatCurrency(itens.reduce((total, item) => total + item.totalPrice, 0))}</span>
-              </div>
-              <div className="border-t pt-3 flex justify-between font-bold text-lg">
-                <span>Total</span>
-                <span>{formatCurrency(itens.reduce((total, item) => total + item.totalPrice, 0))}</span>
-              </div>
+
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={salvarPedido}
+                disabled={loading || !clienteSelecionado || itens.length === 0}
+              >
+                {loading ? 'Processando...' : (isEditing ? 'Atualizar Pedido' : 'Finalizar Pedido')}
+              </Button>
             </div>
 
-            <Button
-              className="w-full"
-              size="lg"
-              onClick={salvarPedido}
-              disabled={loading || !clienteSelecionado || itens.length === 0}
-            >
-              {loading ? 'Processando...' : (isEditing ? 'Atualizar Pedido' : 'Finalizar Pedido')}
-            </Button>
+            {/* Situação Financeira (Novo) */}
+            {itens.length > 0 && (
+              <OrderFinancialStatus
+                totalOrder={itens.reduce((total, item) => total + item.totalPrice, 0)}
+                paidAmount={payments.reduce((total, p) => total + p.amount, 0)}
+                payments={payments}
+                clientBalance={50.00}
+                balanceSourceOrder="PED-0042" // Mock de origem do saldo
+                onViewOrigin={(orderId) => {
+                  setSelectedOriginOrder(orderId);
+                  setShowHistoryModal(true);
+                }}
+                onAddPayment={() => {
+                  setEditingPayment(null);
+                  setEditingPaymentIndex(-1);
+                  setShowPaymentModal(true);
+                }}
+                onRemovePayment={handleRemovePayment}
+                onEditPayment={handleEditPayment}
+              />
+            )}
           </div>
-
-          {/* Situação Financeira (Novo) */}
-          {itens.length > 0 && (
-            <OrderFinancialStatus
-              totalOrder={itens.reduce((total, item) => total + item.totalPrice, 0)}
-              paidAmount={payments.reduce((total, p) => total + p.amount, 0)}
-              payments={payments}
-              clientBalance={50.00}
-              balanceSourceOrder="PED-0042" // Mock de origem do saldo
-              onViewOrigin={(orderId) => {
-                setSelectedOriginOrder(orderId);
-                setShowHistoryModal(true);
-              }}
-              onAddPayment={() => {
-                setEditingPayment(null);
-                setEditingPaymentIndex(-1);
-                setShowPaymentModal(true);
-              }}
-              onRemovePayment={handleRemovePayment}
-              onEditPayment={handleEditPayment}
-            />
-          )}
         </div>
       </div>
 
