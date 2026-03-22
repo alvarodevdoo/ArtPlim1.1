@@ -59,9 +59,16 @@ export class StatusEngine {
 
     // 4. Sincroniza todos os ITENS para o novo status do pai
     if (updateData.status) {
+      const itemUpdateData: any = { status: updateData.status };
+
+      // Se cancelou, propagar o processStatusId do cancelamento para os itens também
+      if (updateData.status === 'CANCELLED' && updateData.processStatusId) {
+        itemUpdateData.processStatusId = updateData.processStatusId;
+      }
+
       await this.prisma.orderItem.updateMany({
         where: { orderId },
-        data: { status: updateData.status }
+        data: itemUpdateData
       });
     }
 

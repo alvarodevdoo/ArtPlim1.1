@@ -15,11 +15,21 @@ interface PaymentMethod {
         maxInstallments: number;
         interestFreeInstallments: number;
     };
+    accountId?: string | null;
+    account?: { id: string; name: string };
     active: boolean;
+}
+
+interface Account {
+    id: string;
+    name: string;
+    type: string;
+    balance: string | number;
 }
 
 const PaymentMethodSettings: React.FC = () => {
     const [methods, setMethods] = useState<PaymentMethod[]>([]);
+    const [accounts, setAccounts] = useState<Account[]>([]);
     const [loading, setLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingMethod, setEditingMethod] = useState<PaymentMethod | null>(null);
@@ -27,21 +37,26 @@ const PaymentMethodSettings: React.FC = () => {
     // Form states
     const [name, setName] = useState('');
     const [type, setType] = useState('PIX');
+    const [accountId, setAccountId] = useState('');
     const [feePercentage, setFeePercentage] = useState('0');
     const [maxInstallments, setMaxInstallments] = useState('1');
     const [interestFreeInstallments, setInterestFreeInstallments] = useState('1');
 
     useEffect(() => {
-        loadMethods();
+        loadData();
     }, []);
 
-    const loadMethods = async () => {
+    const loadData = async () => {
         try {
             setLoading(true);
-            const response = await api.get('/api/payment-methods');
-            setMethods(response.data.data);
+            const [methodsRes, accountsRes] = await Promise.all([
+                api.get('/api/payment-methods'),
+                api.get('/api/finance/accounts')
+            ]);
+            setMethods(methodsRes.data.data);
+            setAccounts(accountsRes.data.data);
         } catch (error) {
-            toast.error('Erro ao carregar métodos de pagamento');
+            toast.error('Erro ao carregar dados');
             console.error(error);
         } finally {
             setLoading(false);
@@ -53,6 +68,7 @@ const PaymentMethodSettings: React.FC = () => {
             setEditingMethod(method);
             setName(method.name);
             setType(method.type);
+            setAccountId(method.accountId || '');
             setFeePercentage(String(method.feePercentage));
             setMaxInstallments(String(method.installmentRules?.maxInstallments || 1));
             setInterestFreeInstallments(String(method.installmentRules?.interestFreeInstallments || 1));
@@ -60,6 +76,7 @@ const PaymentMethodSettings: React.FC = () => {
             setEditingMethod(null);
             setName('');
             setType('PIX');
+            setAccountId('');
             setFeePercentage('0');
             setMaxInstallments('1');
             setInterestFreeInstallments('1');
@@ -73,6 +90,7 @@ const PaymentMethodSettings: React.FC = () => {
             const payload = {
                 name,
                 type,
+                accountId: accountId || null,
                 feePercentage: Number(feePercentage),
                 installmentRules: type === 'CARD' ? {
                     maxInstallments: Number(maxInstallments),
@@ -89,7 +107,7 @@ const PaymentMethodSettings: React.FC = () => {
             }
 
             setIsModalOpen(false);
-            loadMethods();
+            loadData();
         } catch (error) {
             toast.error('Erro ao salvar método de pagamento');
             console.error(error);
@@ -101,7 +119,7 @@ const PaymentMethodSettings: React.FC = () => {
         try {
             await api.delete(`/api/payment-methods/${id}`);
             toast.success('Método removido com sucesso');
-            loadMethods();
+            loadData();
         } catch (error) {
             toast.error('Erro ao remover método. Tente desativá-lo.');
         }
@@ -111,7 +129,7 @@ const PaymentMethodSettings: React.FC = () => {
         try {
             await api.patch(`/api/payment-methods/${id}/toggle-status`);
             toast.success('Status atualizado');
-            loadMethods();
+            loadData();
         } catch (error) {
             toast.error('Erro ao atualizar status');
         }
@@ -165,6 +183,7 @@ const PaymentMethodSettings: React.FC = () => {
                                             {method.type === 'CARD'
                                                 ? ` Até ${method.installmentRules?.maxInstallments}x`
                                                 : ' À vista'}
+                                            {method.account && ` • Conta: ${method.account.name}`}
                                         </p>
                                     </div>
                                 </div>
@@ -210,6 +229,19 @@ const PaymentMethodSettings: React.FC = () => {
                                             <option value="CASH">Dinheiro</option>
                                             <option value="TRANSFER">Transferência</option>
                                             <option value="OTHER">Outro</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">Conta de Destino</label>
+                                        <select
+                                            value={accountId}
+                                            onChange={e => setAccountId(e.target.value)}
+                                            className="w-full h-10 px-3 border rounded-md"
+                                        >
+                                            <option value="">Padrão (Primeira Conta Ativa)</option>
+                                            {accounts.map(acc => (
+                                                <option key={acc.id} value={acc.id}>{acc.name}</option>
+                                            ))}
                                         </select>
                                     </div>
                                     <div>

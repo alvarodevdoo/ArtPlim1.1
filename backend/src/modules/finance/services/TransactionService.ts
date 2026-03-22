@@ -2,6 +2,7 @@ import { NotFoundError } from '../../../shared/infrastructure/errors/AppError';
 import { AccountService } from './AccountService';
 
 interface CreateTransactionInput {
+  organizationId: string;
   accountId: string;
   type: 'INCOME' | 'EXPENSE' | 'TRANSFER';
   amount: number;
@@ -30,6 +31,7 @@ export class TransactionService {
   async create(data: CreateTransactionInput) {
     const transaction = await this.prisma.transaction.create({
       data: {
+        organizationId: data.organizationId,
         accountId: data.accountId,
         type: data.type,
         amount: data.amount,
@@ -66,8 +68,8 @@ export class TransactionService {
     return transaction;
   }
 
-  async list(filters: TransactionFilters = {}) {
-    const where: any = {};
+  async list(organizationId: string, filters: TransactionFilters = {}) {
+    const where: any = { organizationId };
 
     if (filters.accountId) {
       where.accountId = filters.accountId;
@@ -125,9 +127,9 @@ export class TransactionService {
     });
   }
 
-  async markAsPaid(id: string) {
-    const transaction = await this.prisma.transaction.findUnique({
-      where: { id }
+  async markAsPaid(id: string, organizationId: string) {
+    const transaction = await this.prisma.transaction.findFirst({
+      where: { id, organizationId }
     });
 
     if (!transaction) {
@@ -141,29 +143,31 @@ export class TransactionService {
     // Atualizar transação e saldo da conta em transação
     const result = await this.prisma.$transaction(async (tx: any) => {
       // Marcar como paga
-      const updatedTransaction = await tx.transaction.update({
-        where: { id },
+      const updatedTransaction = await tx.transaction.updateMany({
+        where: { id, organizationId },
         data: {
           status: 'PAID',
           paidAt: new Date()
-        },
-        include: {
-          account: true,
-          category: true
         }
       });
 
       // Atualizar saldo da conta
       const operation = transaction.type === 'INCOME' ? 'ADD' : 'SUBTRACT';
-      await this.accountService.updateBalance(transaction.accountId, Number(transaction.amount), operation);
+      await this.accountService.updateBalance(transaction.accountId, organizationId, Number(transaction.amount), operation);
 
-      return updatedTransaction;
+      return this.prisma.transaction.findFirst({
+        where: { id, organizationId },
+        include: {
+          account: true,
+          category: true
+        }
+      });
     });
 
     return result;
   }
 
-  async getDashboard(filters: { startDate?: string; endDate?: string; days?: number } = {}) {
+  async getDashboard(organizationId: string, filters: { startDate?: string; endDate?: string; days?: number } = {}) {
     // Calcular datas se 'days' for fornecido
     let startDate = filters.startDate;
     let endDate = filters.endDate;
@@ -174,6 +178,7 @@ export class TransactionService {
     }
 
     const where: any = {
+      organizationId,
       status: 'PAID'
     };
 
@@ -217,6 +222,7 @@ export class TransactionService {
       }),
       this.prisma.transaction.aggregate({
         where: {
+          organizationId,
           type: 'INCOME',
           status: 'PENDING'
         },
@@ -226,6 +232,7 @@ export class TransactionService {
       }),
       this.prisma.transaction.aggregate({
         where: {
+          organizationId,
           type: 'EXPENSE',
           status: 'PENDING'
         },
@@ -233,10 +240,10 @@ export class TransactionService {
           amount: true
         }
       }),
-      this.accountService.getAccountSummary(),
-      this.getCashFlowChart(startDate, endDate),
-      this.getCategoryStats(startDate, endDate),
-      this.getMonthlyComparison()
+      this.accountService.getAccountSummary(organizationId),
+      this.getCashFlowChart(organizationId, startDate, endDate),
+      this.getCategoryStats(organizationId, startDate, endDate),
+      this.getMonthlyComparison(organizationId)
     ]);
 
     const income = Number(totalIncome._sum.amount || 0);
@@ -265,8 +272,9 @@ export class TransactionService {
     };
   }
 
-  async getCashFlowChart(startDate?: string, endDate?: string) {
+  async getCashFlowChart(organizationId: string, startDate?: string, endDate?: string) {
     const where: any = {
+      organizationId,
       status: 'PAID'
     };
 
@@ -324,8 +332,9 @@ export class TransactionService {
       });
   }
 
-  async getCategoryStats(startDate?: string, endDate?: string) {
+  async getCategoryStats(organizationId: string, startDate?: string, endDate?: string) {
     const where: any = {
+      organizationId,
       status: 'PAID',
       categoryId: { not: null }
     };
@@ -377,15 +386,15 @@ export class TransactionService {
     });
   }
 
-  async getMonthlyComparison() {
+  async getMonthlyComparison(organizationId: string) {
     const now = new Date();
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
 
     const [currentMonth, previousMonth] = await Promise.all([
-      this.getMonthlyStats(currentMonthStart, now),
-      this.getMonthlyStats(previousMonthStart, previousMonthEnd)
+      this.getMonthlyStats(organizationId, currentMonthStart, now),
+      this.getMonthlyStats(organizationId, previousMonthStart, previousMonthEnd)
     ]);
 
     const calculateGrowth = (current: number, previous: number) => {
@@ -404,10 +413,11 @@ export class TransactionService {
     };
   }
 
-  async getMonthlyStats(startDate: Date, endDate: Date) {
+  async getMonthlyStats(organizationId: string, startDate: Date, endDate: Date) {
     const [income, expense] = await Promise.all([
       this.prisma.transaction.aggregate({
         where: {
+          organizationId,
           type: 'INCOME',
           status: 'PAID',
           paidAt: {
@@ -421,6 +431,7 @@ export class TransactionService {
       }),
       this.prisma.transaction.aggregate({
         where: {
+          organizationId,
           type: 'EXPENSE',
           status: 'PAID',
           paidAt: {
@@ -444,12 +455,13 @@ export class TransactionService {
     };
   }
 
-  async getCashFlow(filters: {
+  async getCashFlow(organizationId: string, filters: {
     startDate?: string;
     endDate?: string;
     accountId?: string;
   } = {}) {
     const where: any = {
+      organizationId,
       status: 'PAID'
     };
 
@@ -517,9 +529,10 @@ export class TransactionService {
     };
   }
 
-  async getReceivables() {
+  async getReceivables(organizationId: string) {
     return this.prisma.transaction.findMany({
       where: {
+        organizationId,
         type: 'INCOME',
         status: 'PENDING'
       },
@@ -556,9 +569,10 @@ export class TransactionService {
     });
   }
 
-  async getPayables() {
+  async getPayables(organizationId: string) {
     return this.prisma.transaction.findMany({
       where: {
+        organizationId,
         type: 'EXPENSE',
         status: 'PENDING'
       },
@@ -583,10 +597,10 @@ export class TransactionService {
     });
   }
 
-  async createFromOrder(orderId: string) {
+  async createFromOrder(orderId: string, organizationId: string) {
     // Buscar pedido
-    const order = await this.prisma.order.findUnique({
-      where: { id: orderId },
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, organizationId },
       include: {
         customer: {
           select: {
@@ -603,7 +617,7 @@ export class TransactionService {
 
     // Buscar conta padrão (primeira conta ativa)
     const defaultAccount = await this.prisma.account.findFirst({
-      where: { active: true }
+      where: { active: true, organizationId }
     });
 
     if (!defaultAccount) {
@@ -612,6 +626,7 @@ export class TransactionService {
 
     // Criar transação de receita
     const transaction = await this.create({
+      organizationId,
       accountId: defaultAccount.id,
       type: 'INCOME',
       amount: Number(order.total),

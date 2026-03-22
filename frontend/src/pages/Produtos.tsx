@@ -109,8 +109,19 @@ const Produtos: React.FC = () => {
   }, [formData.pricingRuleId, globalRules]);
 
   const calculatedPrices = useMemo(() => {
-    const sale = calculatePricingResult(formulaObj?.formulaString, formulaObj?.variables, formData.formulaVarValues);
-    const cost = calculatePricingResult(formulaObj?.costFormulaString, formulaObj?.variables, formData.formulaVarValues);
+    const activeValues: Record<string, any> = { QTDE: 1, QUANTIDADE: 1, ...(formulaObj?.referenceValues || {}) };
+    
+    if (formData.formulaVarValues) {
+      Object.keys(formData.formulaVarValues).forEach(k => {
+        const val = formData.formulaVarValues[k];
+        if (val !== '' && val !== null && val !== undefined) {
+          activeValues[k] = val;
+        }
+      });
+    }
+
+    const sale = calculatePricingResult(formulaObj?.formulaString, formulaObj?.variables, activeValues);
+    const cost = calculatePricingResult(formulaObj?.costFormulaString, formulaObj?.variables, activeValues);
 
     return { sale: sale.value, cost: cost.value };
   }, [formulaObj, formData.formulaVarValues, formData.salePrice, formData.costPrice]);

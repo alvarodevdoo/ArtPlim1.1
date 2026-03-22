@@ -270,7 +270,17 @@ export class Order {
       console.log(`[Order Domain] Campos setados: Reason=${this._cancellationReason}, Action=${this._cancellationPaymentAction}, Amount=${this._cancellationRefundAmount?.value}`);
     }
     this._cancelledAt = new Date();
-    console.log(`[Order Domain] CancelledAt setado para: ${this._cancelledAt}`);
+    
+    // Propagar cancelamento para todos os itens
+    this._items.forEach(item => {
+      if ((item as any).cancel) {
+        (item as any).cancel();
+      } else if ((item as any).status !== undefined) {
+        (item as any).status = OrderStatusEnum.CANCELLED;
+      }
+    });
+    
+    console.log(`[Order Domain] CancelledAt setado para: ${this._cancelledAt} e itens cancelados`);
   }
 
   updateDeliveryDate(date: Date): void {

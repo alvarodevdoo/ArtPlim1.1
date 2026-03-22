@@ -16,6 +16,7 @@ interface ProcessStatus {
     allowEdition: boolean;
     displayOrder: number;
     active: boolean;
+    hideFromFlow?: boolean;
     children?: ProcessStatus[];
 }
 
@@ -29,7 +30,8 @@ const ProcessStatusSettings: React.FC = () => {
         scope: 'ORDER',
         mappedBehavior: 'DRAFT',
         allowEdition: true,
-        displayOrder: 1
+        displayOrder: 1,
+        hideFromFlow: false
     });
     const [isCreating, setIsCreating] = useState(false);
 
@@ -57,6 +59,7 @@ const ProcessStatusSettings: React.FC = () => {
             mappedBehavior: 'DRAFT',
             allowEdition: true,
             displayOrder: 1,
+            hideFromFlow: false,
             parentId: parent || undefined
         });
         setIsCreating(true);
@@ -175,6 +178,16 @@ const ProcessStatusSettings: React.FC = () => {
                         />
                         <label htmlFor="allowEdition" className="text-sm font-medium">Permite Edição do Pedido?</label>
                     </div>
+                    <div className="flex items-center space-x-2 pt-6">
+                        <input
+                            type="checkbox"
+                            id="hideFromFlow"
+                            checked={formData.hideFromFlow}
+                            onChange={e => setFormData({ ...formData, hideFromFlow: e.target.checked })}
+                            className="rounded border-gray-300"
+                        />
+                        <label htmlFor="hideFromFlow" className="text-sm font-medium">Ocultar do Fluxo Padrão?</label>
+                    </div>
                     <div>
                         <label className="text-sm font-medium">Icone (Lucide Name)</label>
                         <Input
@@ -203,6 +216,7 @@ const ProcessStatusSettings: React.FC = () => {
                             <span className="text-xs px-2 py-0.5 bg-gray-100 rounded text-gray-600 border">{status.mappedBehavior}</span>
                             {status.scope === 'ITEM' && <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 rounded">Item</span>}
                             {!status.allowEdition && <span className="text-xs px-2 py-0.5 bg-red-50 text-red-600 rounded">Bloqueado</span>}
+                            {status.hideFromFlow && <span className="text-xs px-2 py-0.5 bg-orange-50 text-orange-600 rounded border border-orange-200">Oculto</span>}
                         </div>
                         {status.parentId && <div className="text-xs text-gray-400">Sub-status</div>}
                     </div>

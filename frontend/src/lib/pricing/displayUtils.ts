@@ -13,8 +13,8 @@ export interface DisplayInfo {
  * considerando regras de precificação dinâmica ou preços fixos.
  */
 export const getProductDisplayInfo = (produto: any): DisplayInfo => {
-  // 1. Prioridade: Preço Fixo (se definido e maior que zero)
-  if (produto.salePrice > 0) {
+  // 1. Prioridade: Preço Fixo (se definido, maior que zero e não for cálculo dinâmico)
+  if (produto.salePrice > 0 && produto.pricingMode !== 'DYNAMIC_ENGINEER') {
     return {
       price: formatCurrency(produto.salePrice),
       cost: produto.costPrice > 0 ? formatCurrency(produto.costPrice) : null,
@@ -27,9 +27,18 @@ export const getProductDisplayInfo = (produto: any): DisplayInfo => {
   const pricingRule = produto.pricingRule;
   if (pricingRule) {
     try {
-      const formula = typeof pricingRule.formula === 'string' 
-        ? JSON.parse(pricingRule.formula) 
-        : (pricingRule.formula || {});
+      let formula = (pricingRule.formula || {});
+      if (typeof pricingRule.formula === 'string') {
+        try {
+          if (pricingRule.formula.startsWith('{')) {
+            formula = JSON.parse(pricingRule.formula);
+          } else {
+            formula = { formulaString: pricingRule.formula };
+          }
+        } catch (e) {
+          formula = { formulaString: pricingRule.formula };
+        }
+      }
 
       // Se a regra estiver configurada para ocultar o preço de referência
       if (formula?.hideReferencePrice) {
@@ -40,8 +49,8 @@ export const getProductDisplayInfo = (produto: any): DisplayInfo => {
       const variables = formula.variables || [];
       const referenceValues = formula.referenceValues || {};
 
-      // Mesclar com overrides do produto
-      const activeValues = { ...referenceValues };
+      // Mesclar com overrides do produto e garantir quantidade padrão 1
+      const activeValues: Record<string, any> = { QTDE: 1, QUANTIDADE: 1, ...referenceValues };
       let hasProductOverride = false;
       if (produto.formulaData) {
         Object.keys(produto.formulaData).forEach(k => {

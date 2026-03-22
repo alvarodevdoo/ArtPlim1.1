@@ -137,6 +137,12 @@ export class ProductService {
   }
 
   async update(id: string, data: Partial<CreateProductInput>) {
+    // 1. Verificar se o produto existe
+    const existing = await this.prisma.product.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundError('Produto');
+    }
+
     // Se está tentando alterar o modo de precificação, validar
     if (data.pricingMode && data.organizationId) {
       await this.validateEngineeringMode(data.organizationId, data.pricingMode);

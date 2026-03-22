@@ -31,14 +31,18 @@ async function main() {
             enableEngineering: true,
             enableWMS: true,
             enableProduction: true,
-            enableFinance: true
+            enableFinance: true,
+            enableFinanceReports: true,
+            enableAutomation: true
         },
         create: {
             organizationId: organization.id,
             enableEngineering: true,
             enableWMS: true,
             enableProduction: true,
-            enableFinance: true
+            enableFinance: true,
+            enableFinanceReports: true,
+            enableAutomation: true
         }
     });
 
@@ -84,7 +88,6 @@ async function main() {
 
     const createdInsumos = [];
     for (const insumo of insumosIniciais) {
-        // Buscar se já existe por nome na organização
         let existing = await prisma.insumo.findFirst({
             where: { organizationId: organization.id, nome: insumo.nome }
         });
@@ -114,22 +117,201 @@ async function main() {
     console.log(`✅ ${createdInsumos.length} insumos garantidos`);
 
     // ── Regras de Precificação ──
-    console.log('📈 Criando regras de precificação...');
-    const regraPadrao = await prisma.pricingRule.upsert({
-        where: { id: 'regra-padrao-lonas' }, 
+    console.log('📈 Criando regras de precificação detalhadas...');
+    
+    // 1. Regra Unitária
+    const regraUnitario = await prisma.pricingRule.upsert({
+        where: { id: 'e248f50d-e74f-40d1-aa01-a48f99e1bb22' },
         update: {
-            formula: 'CUSTO_MATERIAIS * 2.5',
+            name: 'Unitário',
+            formula: {
+                formulaString: 'ValorVenda',
+                costFormulaString: 'ValorCusto',
+                referenceValues: {
+                  ValorCusto: 0,
+                  ValorVenda: 0
+                },
+                variables: [
+                    {
+                        id: 'ValorVenda',
+                        name: 'Venda',
+                        role: 'COST_RATE',
+                        type: 'INPUT',
+                        visible: true,
+                        defaultUnit: "",
+                        allowedUnits: []
+                    },
+                    {
+                        id: 'ValorCusto',
+                        name: 'Custo',
+                        role: 'COST_RATE',
+                        type: 'INPUT',
+                        visible: true,
+                        defaultUnit: "",
+                        allowedUnits: []
+                    }
+                ]
+            },
             active: true
         },
         create: {
-            id: 'regra-padrao-lonas',
-            name: 'Padrão Lonas (Markup 2.5x)',
+            id: 'e248f50d-e74f-40d1-aa01-a48f99e1bb22',
             organizationId: organization.id,
-            type: 'PRODUCT',
-            formula: 'CUSTO_MATERIAIS * 2.5',
+            name: 'Unitário',
+            type: 'UNIT',
+            formula: {
+                formulaString: 'ValorVenda',
+                costFormulaString: 'ValorCusto',
+                referenceValues: {
+                  ValorCusto: 0,
+                  ValorVenda: 0
+                },
+                variables: [
+                    {
+                        id: 'ValorVenda',
+                        name: 'Venda',
+                        role: 'COST_RATE',
+                        type: 'INPUT',
+                        visible: true,
+                        defaultUnit: "",
+                        allowedUnits: []
+                    },
+                    {
+                        id: 'ValorCusto',
+                        name: 'Custo',
+                        role: 'COST_RATE',
+                        type: 'INPUT',
+                        visible: true,
+                        defaultUnit: "",
+                        allowedUnits: []
+                    }
+                ]
+            },
             active: true
         }
     });
+
+    // 2. Regra de Área Detalhada com ReferenceValues robustos
+    const regraArea = await prisma.pricingRule.upsert({
+        where: { id: 'bd0cbeac-ba5d-4124-ab5b-3d0a77ef8804' },
+        update: {
+            name: 'Área',
+            formula: {
+                formulaString: '( altura * largura ) * ValorVenda',
+                costFormulaString: '( altura * largura ) * ValorCusto',
+                referenceValues: {
+                    altura: "100",
+                    altura_unit: "cm",
+                    largura: "100",
+                    largura_unit: "cm",
+                    ValorVenda: 0,
+                    ValorVenda_unit: "R$/m²",
+                    ValorCusto: 0,
+                    ValorCusto_unit: "R$/m²"
+                },
+                variables: [
+                  {
+                    id: "altura",
+                    name: "Altura",
+                    role: "LENGTH",
+                    type: "INPUT",
+                    visible: true,
+                    defaultUnit: "cm",
+                    allowedUnits: ["mm", "cm", "m"]
+                  },
+                  {
+                    id: "largura",
+                    name: "Largura",
+                    role: "LENGTH",
+                    type: "INPUT",
+                    visible: true,
+                    defaultUnit: "cm",
+                    allowedUnits: ["mm", "cm", "m"]
+                  },
+                  {
+                    id: "ValorVenda",
+                    name: "Preço M²",
+                    role: "COST_RATE",
+                    type: "INPUT",
+                    visible: true,
+                    defaultUnit: "R$/m²",
+                    allowedUnits: ["R$/m²", "R$/cm²", "R$/mm²"]
+                  },
+                  {
+                    id: "ValorCusto",
+                    name: "Custo M²",
+                    role: "COST_RATE",
+                    type: "INPUT",
+                    visible: true,
+                    defaultUnit: "R$/m²",
+                    allowedUnits: ["R$/m²", "R$/cm²", "R$/mm²"]
+                  }
+                ]
+            },
+            active: true
+        },
+        create: {
+            id: 'bd0cbeac-ba5d-4124-ab5b-3d0a77ef8804',
+            organizationId: organization.id,
+            name: 'Área',
+            type: 'SQUARE_METER',
+            formula: {
+                formulaString: '( altura * largura ) * ValorVenda',
+                costFormulaString: '( altura * largura ) * ValorCusto',
+                referenceValues: {
+                    altura: "100",
+                    altura_unit: "cm",
+                    largura: "100",
+                    largura_unit: "cm",
+                    ValorVenda: 0,
+                    ValorVenda_unit: "R$/m²",
+                    ValorCusto: 0,
+                    ValorCusto_unit: "R$/m²"
+                },
+                variables: [
+                  {
+                    id: "altura",
+                    name: "Altura",
+                    role: "LENGTH",
+                    type: "INPUT",
+                    visible: true,
+                    defaultUnit: "cm",
+                    allowedUnits: ["mm", "cm", "m"]
+                  },
+                  {
+                    id: "largura",
+                    name: "Largura",
+                    role: "LENGTH",
+                    type: "INPUT",
+                    visible: true,
+                    defaultUnit: "cm",
+                    allowedUnits: ["mm", "cm", "m"]
+                  },
+                  {
+                    id: "ValorVenda",
+                    name: "Preço M²",
+                    role: "COST_RATE",
+                    type: "INPUT",
+                    visible: true,
+                    defaultUnit: "R$/m²",
+                    allowedUnits: ["R$/m²", "R$/cm²", "R$/mm²"]
+                  },
+                  {
+                    id: "ValorCusto",
+                    name: "Custo M²",
+                    role: "COST_RATE",
+                    type: "INPUT",
+                    visible: true,
+                    defaultUnit: "R$/m²",
+                    allowedUnits: ["R$/m²", "R$/cm²", "R$/mm²"]
+                  }
+                ]
+            },
+            active: true
+        }
+    });
+
+    console.log('✅ Regras de precificação garantidas');
 
     // ── Produtos Iniciais ──
     console.log('🎨 Criando produtos...');
@@ -139,19 +321,19 @@ async function main() {
             description: 'Banner personalizado com acabamento em bastão e cordão',
             productType: 'PRODUCT',
             pricingMode: 'DYNAMIC_ENGINEER',
-            pricingRuleId: regraPadrao.id,
+            pricingRuleId: regraArea.id,
             salePrice: 0,
-            minPrice: 15.00,
+            minPrice: 0,
             markup: 2.5
         },
         {
             name: 'Adesivo Vinil',
             description: 'Adesivo impresso em alta resolução',
             productType: 'PRODUCT',
-            pricingMode: 'SIMPLE_AREA',
-            customFormula: '((LARGURA * ALTURA) / 1000000) * 45', 
-            salePrice: 45.00,
-            minPrice: 30.00,
+            pricingMode: 'DYNAMIC_ENGINEER',
+            pricingRuleId: regraArea.id,
+            salePrice: 0,
+            minPrice: 0,
             markup: 2.0
         }
     ];
@@ -168,8 +350,7 @@ async function main() {
                     description: produto.description,
                     productType: produto.productType as any,
                     pricingMode: produto.pricingMode as any,
-                    pricingRuleId: produto.pricingRuleId,
-                    customFormula: produto.customFormula,
+                    pricingRuleId: (produto as any).pricingRuleId,
                     salePrice: produto.salePrice,
                     minPrice: produto.minPrice,
                     markup: produto.markup,
@@ -187,25 +368,8 @@ async function main() {
                 }
             });
         }
-
-        // Vincular Ficha Técnica Base (Exemplo)
-        if (produto.name === 'Banner em Lona') {
-            const lona = createdInsumos.find(i => i.nome === 'Lona Brilho 440g');
-            const ilhos = createdInsumos.find(i => i.nome === 'Ilhós Metálico');
-            
-            if (lona && ilhos) {
-                // Limpar e recriar
-                await prisma.fichaTecnicaInsumo.deleteMany({ where: { productId: existingProduct.id } });
-                await prisma.fichaTecnicaInsumo.createMany({
-                    data: [
-                        { productId: existingProduct.id, insumoId: lona.id, quantidade: 1, organizationId: organization.id, custoCalculado: lona.custoUnitario },
-                        { productId: existingProduct.id, insumoId: ilhos.id, quantidade: 4, organizationId: organization.id, custoCalculado: ilhos.custoUnitario }
-                    ]
-                });
-            }
-        }
     }
-    console.log('✅ Produtos e Fichas Técnicas garantidos');
+    console.log('✅ Produtos garantidos');
 
     console.log('');
     console.log('📋 DADOS DE ACESSO:');
@@ -218,7 +382,6 @@ async function main() {
 main()
     .catch((e) => {
         console.error('❌ Erro ao executar seed:', e);
-        process.exit(1);
     })
     .finally(async () => {
         await prisma.$disconnect();

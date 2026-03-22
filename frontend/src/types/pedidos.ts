@@ -8,6 +8,7 @@ export interface ProcessStatus {
   mappedBehavior: string;
   scope?: 'ORDER' | 'ITEM' | 'BOTH';
   allowEdition: boolean;
+  hideFromFlow?: boolean;
   displayOrder?: number;
   active?: boolean;
   parentId?: string;

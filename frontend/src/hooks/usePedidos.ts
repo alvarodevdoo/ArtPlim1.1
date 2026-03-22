@@ -86,7 +86,16 @@ export function usePedidos() {
 
   // --- Derivações ---
   const getStatusDisplay = useCallback((pedido: Pedido) => {
-    return statusConfig[pedido?.status as keyof typeof statusConfig] || statusConfig.DRAFT;
+    const baseConfig = statusConfig[pedido?.status as keyof typeof statusConfig] || statusConfig.DRAFT;
+    // Se o pedido tem um processStatus dinâmico, expor a cor dele como badgeColor
+    if (pedido?.processStatus?.color) {
+      return {
+        ...baseConfig,
+        label: pedido.processStatus.name || baseConfig.label,
+        badgeColor: pedido.processStatus.color,
+      };
+    }
+    return baseConfig;
   }, []);
 
   const filteredPedidos = useMemo(() => {

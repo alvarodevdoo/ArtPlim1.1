@@ -15,6 +15,11 @@ export interface Pedido {
   orderNumber: string;
   total: number;
   customer: PedidoCustomer;
+  transactions?: Array<{
+    amount: number | string;
+    status: string;
+    type: string;
+  }>;
 }
 
 interface CancelOrderModalProps {
@@ -34,13 +39,19 @@ const CancelOrderModal: React.FC<CancelOrderModalProps> = ({
   const [paymentAction, setPaymentAction] = useState('NONE');
   const [refundAmount, setRefundAmount] = useState<number>(0);
 
+  const totalPaid = pedido?.transactions
+    ? pedido.transactions
+        .filter(t => t.status === 'PAID' && t.type === 'INCOME')
+        .reduce((sum, t) => sum + Number(t.amount || 0), 0)
+    : 0;
+
   useEffect(() => {
     if (isOpen && pedido) {
       setCancelReason('');
       setPaymentAction('NONE');
-      setRefundAmount(Number(pedido.total) || 0);
+      setRefundAmount(totalPaid);
     }
-  }, [isOpen, pedido]);
+  }, [isOpen, pedido, totalPaid]);
 
   if (!isOpen || !pedido) return null;
 
@@ -78,10 +89,13 @@ const CancelOrderModal: React.FC<CancelOrderModalProps> = ({
               </SelectTrigger>
               <SelectContent className="z-[70]">
                 <SelectItem value="NONE">Nenhuma (Apenas cancelar)</SelectItem>
-                <SelectItem value="REFUND">Solicitar Estorno/Devolução</SelectItem>
-                <SelectItem value="CREDIT">Converter em Crédito para o Cliente</SelectItem>
+                <SelectItem value="REFUND" disabled={totalPaid <= 0}>Solicitar Estorno/Devolução</SelectItem>
+                <SelectItem value="CREDIT" disabled={totalPaid <= 0}>Converter em Crédito para o Cliente</SelectItem>
               </SelectContent>
             </Select>
+            {totalPaid <= 0 && paymentAction !== 'NONE' && (
+              <p className="text-sm text-yellow-600 font-medium">Não há histórico de pagamentos para estornar ou creditar.</p>
+            )}
           </div>
           {paymentAction !== 'NONE' && (
             <div className="space-y-2">
@@ -90,10 +104,11 @@ const CancelOrderModal: React.FC<CancelOrderModalProps> = ({
                 type="number" 
                 step="0.01" 
                 value={refundAmount} 
-                onChange={(e) => setRefundAmount(Math.min(Number(e.target.value), Number(pedido.total)))} 
-                max={Number(pedido.total)} 
+                onChange={(e) => setRefundAmount(Math.min(Number(e.target.value), totalPaid))} 
+                max={totalPaid} 
                 className="w-full" 
               />
+              <p className="text-xs text-muted-foreground">Valor pago: R$ {totalPaid.toFixed(2)}</p>
             </div>
           )}
         </CardContent>
@@ -101,7 +116,7 @@ const CancelOrderModal: React.FC<CancelOrderModalProps> = ({
           <Button 
             variant="destructive" 
             className="flex-1" 
-            disabled={!cancelReason.trim()} 
+            disabled={!cancelReason.trim() || (paymentAction !== 'NONE' && refundAmount > totalPaid)} 
             onClick={handleConfirm}
           >
             Confirmar Cancelamento

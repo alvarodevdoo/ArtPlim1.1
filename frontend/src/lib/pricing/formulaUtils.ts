@@ -12,11 +12,11 @@ const compileCache = new Map<string, EvalFunction>();
 
 // 1. MAPEAMENTO DE UNIDADES (Normalização de Nomes para o MathJS)
 const UNIT_MAPPING: Record<string, string> = {
-    'KM': 'km', 'M': 'm', 'CM': 'cm', 'MM': 'mm', 
+    'KM': 'km', 'M': 'm', 'CM': 'cm', 'MM': 'mm',
     'KG': 'kg', 'G': 'g', 'MG': 'mg', 'TON': 'ton',
-    'KWH': 'kWh', 'WH': 'Wh', 'J': 'J', 
+    'KWH': 'kWh', 'WH': 'Wh', 'J': 'J',
     'H': 'h', 'MIN': 'min', 'S': 's', 'D': 'd',
-    'W': 'W', 'KW': 'kW', 
+    'W': 'W', 'KW': 'kW',
     'M2': 'm^2', 'CM2': 'cm^2', 'MM2': 'mm^2',
     'M3': 'm^3', 'CM3': 'cm^3', 'MM3': 'mm^3',
     'L': 'l', 'ML': 'ml'
@@ -87,8 +87,8 @@ export const getConversionFactor = (from: string, to: string): number => {
  * Avalia uma fórmula matemática com variáveis normalizadas.
  */
 export const evaluateFormula = (
-    formulaStr: string, 
-    scope: Record<string, any> = {}, 
+    formulaStr: string,
+    scope: Record<string, any> = {},
     ruleVariables: any[] = [],
     logs?: string[]
 ): number | string => {
@@ -115,7 +115,7 @@ export const evaluateFormula = (
             const vid = v.id.toLowerCase();
             const rawValue = inputs[vid] ?? v.fixedValue ?? 0;
             const currentUnit = inputs[`${vid}_unit`] || v.defaultUnit || v.unit || null;
-            
+
             let numVal = typeof rawValue === 'string' ? parseFloat(rawValue.replace(',', '.')) : Number(rawValue);
             if (isNaN(numVal)) numVal = 0;
 
@@ -127,7 +127,7 @@ export const evaluateFormula = (
             // 1. Normalização de TAXAS (R$/m2, etc)
             if (role === 'COST_RATE' || (currentUnit && currentUnit.toString().includes('/'))) {
                 let unitPart = normalizeUnit(currentUnit.toString().split('/').pop()?.trim());
-                
+
                 // Se a unidade for genérica (moeda, un, etc) e for COST_RATE, assumimos m^2
                 if ((!unitPart || unitPart === 'moeda' || unitPart === 'un') && role === 'COST_RATE') {
                     unitPart = 'm^2';
@@ -142,12 +142,12 @@ export const evaluateFormula = (
                         if (logs) logs.push(`  -> [Rate Hack] ${unitPart} p/ ${targetUnit}: Dividindo por ${factor} = ${numVal}`);
                     }
                 }
-            } 
+            }
             // 2. Normalização de PERCENTUAL
             else if (role === 'PERCENT' || currentUnit === '%') {
                 numVal /= 100;
                 if (logs) logs.push(`  -> [Percent] 100% -> 1.0: Dividindo por 100 = ${numVal}`);
-            } 
+            }
             // 3. Normalização de MEDIDAS FÍSICAS
             else if (baseUnit && currentUnit) {
                 const normCurrent = normalizeUnit(currentUnit);
@@ -163,7 +163,7 @@ export const evaluateFormula = (
             normalizedScope[v.id] = numVal;
             normalizedScope[vid] = numVal;
             normalizedScope[v.id.toUpperCase()] = numVal;
-            
+
             // Aliases de compatibilidade para o Backend
             if (v.role === 'WIDTH') normalizedScope['LARGURA'] = normalizedScope['WIDTH'] = numVal;
             if (v.role === 'HEIGHT') normalizedScope['ALTURA'] = normalizedScope['HEIGHT'] = numVal;
@@ -185,8 +185,8 @@ export const evaluateFormula = (
  * Função de conveniência para calcular o preço e o detalhamento (breakdown).
  */
 export const calculatePricingResult = (
-    formulaStr: string | null | undefined, 
-    variables: any[] = [], 
+    formulaStr: string | null | undefined,
+    variables: any[] = [],
     inputValues: Record<string, any> = {},
     logs?: string[]
 ): { value: number; breakdown: any[] } => {

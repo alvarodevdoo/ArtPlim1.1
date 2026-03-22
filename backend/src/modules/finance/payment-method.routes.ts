@@ -10,6 +10,7 @@ const createPaymentMethodSchema = z.object({
     maxInstallments: z.number().min(1).optional(),
     interestFreeInstallments: z.number().min(1).optional(),
   }).optional(),
+  accountId: z.string().nullish(),
   active: z.boolean().default(true),
 });
 
@@ -24,6 +25,7 @@ export async function paymentMethodRoutes(fastify: FastifyInstance) {
     const prisma = getTenantClient(request.user!.organizationId);
     const methods = await prisma.paymentMethod.findMany({
       where: { organizationId: request.user!.organizationId },
+      include: { account: true },
       orderBy: { name: 'asc' }
     });
     return reply.send({ success: true, data: methods });
@@ -36,7 +38,8 @@ export async function paymentMethodRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     const prisma = getTenantClient(request.user!.organizationId);
     const method = await prisma.paymentMethod.findFirst({
-      where: { id, organizationId: request.user!.organizationId }
+      where: { id, organizationId: request.user!.organizationId },
+      include: { account: true }
     });
     if (!method) return reply.code(404).send({ success: false, message: 'Não encontrado' });
     return reply.send({ success: true, data: method });
@@ -49,7 +52,11 @@ export async function paymentMethodRoutes(fastify: FastifyInstance) {
     const data = createPaymentMethodSchema.parse(request.body);
     const prisma = getTenantClient(request.user!.organizationId);
     const method = await prisma.paymentMethod.create({
-      data: { ...data, organizationId: request.user!.organizationId }
+      data: { 
+        ...data, 
+        organizationId: request.user!.organizationId,
+        accountId: data.accountId || null
+      }
     });
     return reply.code(201).send({ success: true, data: method });
   });
@@ -69,7 +76,10 @@ export async function paymentMethodRoutes(fastify: FastifyInstance) {
 
     const method = await prisma.paymentMethod.update({
       where: { id },
-      data
+      data: {
+        ...data,
+        accountId: data.accountId === undefined ? undefined : (data.accountId || null)
+      }
     });
     return reply.send({ success: true, data: method });
   });

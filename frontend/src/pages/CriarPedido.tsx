@@ -193,6 +193,7 @@ const CriarPedido: React.FC = () => {
         const pagamentosCarregados = pedido.transactions
           .filter((t: any) => t.status !== 'CANCELLED' && t.type === 'INCOME')
           .map((t: any) => ({
+            id: t.id,
             methodId: t.paymentMethodId,
             methodName: t.paymentMethod?.name || 'Método Desconhecido',
             amount: Number(t.amount),
@@ -486,6 +487,7 @@ const CriarPedido: React.FC = () => {
         deliveryDate: deliveryDate || undefined,
         notes: notes || undefined,
         payments: payments.map(p => ({
+          id: p.id,           // ← IMPORTANTE: incluir id para o backend saber quais já existem
           methodId: p.methodId,
           methodName: p.methodName,
           amount: p.amount,

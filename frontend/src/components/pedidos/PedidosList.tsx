@@ -71,7 +71,7 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
 
       {filteredPedidos.map((pedido) => {
         const config = statusConfig[pedido?.status as keyof typeof statusConfig];
-        const statusColor = pedido?.processStatus?.color || (config as any)?.hex || '#cbd5e1';
+        const statusColor = pedido?.status === 'CANCELLED' ? '#EF4444' : (pedido?.processStatus?.color || (config as any)?.hex || '#cbd5e1');
         const isOverdue = pedido?.status === 'DRAFT' && pedido?.validUntil && new Date(pedido.validUntil) < new Date();
 
         return (
@@ -115,6 +115,9 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
                   <div className="text-right">
                     <p className="font-semibold text-lg">{formatCurrency(pedido?.total || 0)}</p>
                     {(() => {
+                      // Pedidos cancelados não mostram status de pagamento
+                      if (pedido?.status === 'CANCELLED') return null;
+
                       const totalPaid = pedido?.transactions?.reduce((sum, t) => {
                         if (t?.type === 'INCOME' && t?.status === 'PAID') return sum + Number(t?.amount || 0);
                         return sum;
@@ -125,7 +128,7 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
                       if (isPaid) return <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-0.5 rounded-full inline-block mt-1">Pago</span>;
                       return (
                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full inline-block mt-1 ${isPartial ? 'text-orange-600 bg-orange-50' : 'text-red-600 bg-red-50'}`}>
-                          {isPartial ? 'Parcial: ' : 'Pendente: '}{pendingAmount > 0 ? formatCurrency(pendingAmount) : 'R$ 0,00'}
+                          Pendente: {pendingAmount > 0 ? formatCurrency(pendingAmount) : 'R$ 0,00'}
                         </span>
                       );
                     })()}
@@ -150,6 +153,10 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
                       const isInteractive = pedido?.status !== 'DELIVERED' && pedido?.status !== 'CANCELLED';
 
                       if (!isInteractive) {
+                        const isCancelled = pedido?.status === 'CANCELLED';
+                        if (isCancelled) {
+                          return <span className="px-3 py-1 rounded-full text-xs font-medium border bg-red-100 text-red-700 border-red-300">{statusDisplay.label}</span>;
+                        }
                         return isDynamic ? (
                           <span className="px-3 py-1 rounded-full text-xs font-medium border" style={{ backgroundColor: (statusDisplay as any)?.badgeColor?.startsWith('#') ? `${(statusDisplay as any).badgeColor}20` : '#f3f4f6', color: (statusDisplay as any)?.badgeColor || '#374151', borderColor: (statusDisplay as any)?.badgeColor || '#d1d5db' }}>{statusDisplay.label}</span>
                         ) : (

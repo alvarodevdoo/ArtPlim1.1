@@ -1,5 +1,6 @@
 import { Money } from '../../../../shared/domain/value-objects/Money';
 import { Dimensions } from '../../../../shared/domain/value-objects/Dimensions';
+import { OrderStatusEnum } from '../value-objects/OrderStatus';
 
 export interface OrderItemProps {
   id?: string;
@@ -26,6 +27,8 @@ export interface OrderItemProps {
   isCustomSize?: boolean;
   attributes?: Record<string, any>;
   pricingRuleId?: string;
+  processStatusId?: string;
+  status?: OrderStatusEnum;
 }
 
 export class OrderItem {
@@ -51,6 +54,8 @@ export class OrderItem {
   private _isCustomSize?: boolean;
   private _attributes?: Record<string, any>;
   private _pricingRuleId?: string;
+  private _processStatusId?: string;
+  private _status: OrderStatusEnum;
 
   constructor(props: OrderItemProps) {
     this._id = props.id;
@@ -75,6 +80,8 @@ export class OrderItem {
     this._isCustomSize = props.isCustomSize;
     this._attributes = props.attributes;
     this._pricingRuleId = props.pricingRuleId;
+    this._processStatusId = props.processStatusId;
+    this._status = props.status || OrderStatusEnum.DRAFT;
 
     this.validate();
   }
@@ -175,6 +182,18 @@ export class OrderItem {
     return this._pricingRuleId;
   }
 
+  get processStatusId(): string | undefined {
+    return this._processStatusId;
+  }
+
+  set processStatusId(id: string | undefined) {
+    this._processStatusId = id;
+  }
+
+  get status(): OrderStatusEnum {
+    return this._status;
+  }
+
   // Métodos de negócio
   updateQuantity(newQuantity: number): void {
     if (newQuantity <= 0) {
@@ -189,6 +208,10 @@ export class OrderItem {
 
   updateNotes(notes: string): void {
     this._notes = notes;
+  }
+
+  cancel(): void {
+    this._status = OrderStatusEnum.CANCELLED;
   }
 
   equals(other: OrderItem): boolean {

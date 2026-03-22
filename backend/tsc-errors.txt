@@ -1,0 +1,112 @@
+src/modules/admin/admin.routes.ts(58,38): error TS2345: Argument of type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to parameter of type 'AuthenticatedRequest'.
+  Types of property 'user' are incompatible.
+    Property 'id' is missing in type 'JWTPayload' but required in type '{ id: string; organizationId: string; role: string; }'.
+src/modules/admin/admin.routes.ts(67,39): error TS2345: Argument of type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly body: { type: string; required: string[]; properties: { name: { ...; }; email: { ...; }; role: { ...; }; }; }; }, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to parameter of type 'AuthenticatedRequest'.
+  Types of property 'user' are incompatible.
+    Property 'id' is missing in type 'JWTPayload' but required in type '{ id: string; organizationId: string; role: string; }'.
+src/modules/admin/admin.routes.ts(83,39): error TS2345: Argument of type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly body: { type: string; required: string[]; properties: { name: { ...; }; email: { ...; }; role: { ...; }; active: { ...; }; }; }; readonly params: { ...; }; }, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequ...' is not assignable to parameter of type 'AuthenticatedRequest'.
+  Types of property 'user' are incompatible.
+    Property 'id' is missing in type 'JWTPayload' but required in type '{ id: string; organizationId: string; role: string; }'.
+src/modules/admin/admin.routes.ts(99,45): error TS2345: Argument of type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly body: { type: string; required: string[]; properties: { active: { ...; }; }; }; readonly params: { ...; }; }, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to parameter of type 'AuthenticatedRequest'.
+  Types of property 'user' are incompatible.
+    Property 'id' is missing in type 'JWTPayload' but required in type '{ id: string; organizationId: string; role: string; }'.
+src/modules/admin/admin.routes.ts(114,39): error TS2345: Argument of type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly params: { readonly type: "object"; readonly properties: { readonly userId: { ...; }; }; readonly required: readonly [...]; }; }, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to parameter of type 'AuthenticatedRequest'.
+  Types of property 'user' are incompatible.
+    Property 'id' is missing in type 'JWTPayload' but required in type '{ id: string; organizationId: string; role: string; }'.
+src/modules/admin/admin.routes.ts(119,50): error TS2345: Argument of type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to parameter of type 'AuthenticatedRequest'.
+  Types of property 'user' are incompatible.
+    Property 'id' is missing in type 'JWTPayload' but required in type '{ id: string; organizationId: string; role: string; }'.
+src/modules/admin/admin.routes.ts(123,42): error TS2345: Argument of type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to parameter of type 'AuthenticatedRequest'.
+  Types of property 'user' are incompatible.
+    Property 'id' is missing in type 'JWTPayload' but required in type '{ id: string; organizationId: string; role: string; }'.
+src/modules/admin/admin.routes.ts(127,39): error TS2345: Argument of type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to parameter of type 'AuthenticatedRequest'.
+  Types of property 'user' are incompatible.
+    Property 'id' is missing in type 'JWTPayload' but required in type '{ id: string; organizationId: string; role: string; }'.
+src/modules/admin/admin.routes.ts(131,44): error TS2345: Argument of type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to parameter of type 'AuthenticatedRequest'.
+  Types of property 'user' are incompatible.
+    Property 'id' is missing in type 'JWTPayload' but required in type '{ id: string; organizationId: string; role: string; }'.
+src/modules/admin/AdminController.ts(9,11): error TS2430: Interface 'AuthenticatedRequest' incorrectly extends interface 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+  Types of property 'user' are incompatible.
+    Property 'userId' is missing in type '{ id: string; organizationId: string; role: string; }' but required in type 'JWTPayload'.
+src/modules/analytics/AnalyticsEngine.ts(297,12): error TS18046: 'result' is of type 'unknown'.
+src/modules/catalog/controllers/FinishController.ts(19,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/FinishController.ts(47,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/FinishController.ts(74,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/FinishController.ts(101,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/FinishController.ts(155,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/FinishController.ts(207,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/FinishController.ts(232,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/FinishController.ts(264,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/FinishController.ts(284,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/FinishController.ts(305,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/ProductionMaterialController.ts(28,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/ProductionMaterialController.ts(82,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/ProductionMaterialController.ts(98,17): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/modules/catalog/controllers/ProductionMaterialController.ts(125,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/ProductionMaterialController.ts(177,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/ProductionMaterialController.ts(233,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/ProductionMaterialController.ts(273,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/ProductionMaterialController.ts(312,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/ProductionMaterialController.ts(341,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/ProductionMaterialController.ts(376,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/ProductionMaterialController.ts(419,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/StandardSizeController.ts(28,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/StandardSizeController.ts(70,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/StandardSizeController.ts(104,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/StandardSizeController.ts(155,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/StandardSizeController.ts(208,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/StandardSizeController.ts(243,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/StandardSizeController.ts(278,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/controllers/StandardSizeController.ts(307,40): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/modules/catalog/routes/finish.routes.ts(10,32): error TS2307: Cannot find module '../../../middleware/auth' or its corresponding type declarations.
+src/modules/catalog/services/ConfigurationValidationService.ts(184,49): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/modules/catalog/services/ConfigurationValidationService.ts(195,53): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/modules/catalog/services/ConfigurationValidationService.ts(365,54): error TS7006: Parameter 'machine' implicitly has an 'any' type.
+src/modules/catalog/services/FichaTecnicaService.ts(35,44): error TS7006: Parameter 'tx' implicitly has an 'any' type.
+src/modules/catalog/services/FichaTecnicaService.ts(50,45): error TS7006: Parameter 'i' implicitly has an 'any' type.
+src/modules/catalog/services/FichaTecnicaService.ts(61,27): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/modules/catalog/services/FichaTecnicaService.ts(111,26): error TS7006: Parameter 'total' implicitly has an 'any' type.
+src/modules/catalog/services/FichaTecnicaService.ts(111,33): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/modules/catalog/services/WasteCalculationService.ts(197,47): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+src/modules/catalog/services/WasteCalculationService.ts(197,52): error TS7006: Parameter 'waste' implicitly has an 'any' type.
+src/modules/catalog/services/WasteCalculationService.ts(198,46): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+src/modules/catalog/services/WasteCalculationService.ts(198,51): error TS7006: Parameter 'waste' implicitly has an 'any' type.
+src/modules/catalog/services/WasteCalculationService.ts(199,45): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+src/modules/catalog/services/WasteCalculationService.ts(199,50): error TS7006: Parameter 'waste' implicitly has an 'any' type.
+src/modules/insumos/InsumoService.ts(74,24): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/modules/production/services/PendingChangesService.ts(291,54): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(o: { [s: string]: string | number | boolean | JsonObject | JsonArray | null | undefined; } | ArrayLike<string | number | boolean | JsonObject | JsonArray | null | undefined>): [...][]', gave the following error.
+    Argument of type 'JsonValue' is not assignable to parameter of type '{ [s: string]: string | number | boolean | JsonObject | JsonArray | null | undefined; } | ArrayLike<string | number | boolean | JsonObject | JsonArray | null | undefined>'.
+      Type 'null' is not assignable to type '{ [s: string]: string | number | boolean | JsonObject | JsonArray | null | undefined; } | ArrayLike<string | number | boolean | JsonObject | JsonArray | null | undefined>'.
+  Overload 2 of 2, '(o: {}): [string, any][]', gave the following error.
+    Argument of type 'JsonValue' is not assignable to parameter of type '{}'.
+      Type 'null' is not assignable to type '{}'.
+src/modules/production/services/PendingChangesService.ts(407,52): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(o: { [s: string]: string | number | boolean | JsonObject | JsonArray | null | undefined; } | ArrayLike<string | number | boolean | JsonObject | JsonArray | null | undefined>): [...][]', gave the following error.
+    Argument of type 'JsonValue' is not assignable to parameter of type '{ [s: string]: string | number | boolean | JsonObject | JsonArray | null | undefined; } | ArrayLike<string | number | boolean | JsonObject | JsonArray | null | undefined>'.
+      Type 'null' is not assignable to type '{ [s: string]: string | number | boolean | JsonObject | JsonArray | null | undefined; } | ArrayLike<string | number | boolean | JsonObject | JsonArray | null | undefined>'.
+  Overload 2 of 2, '(o: {}): [string, any][]', gave the following error.
+    Argument of type 'JsonValue' is not assignable to parameter of type '{}'.
+      Type 'null' is not assignable to type '{}'.
+src/modules/production/services/PendingChangesService.ts(413,30): error TS18047: 'originalData' is possibly 'null'.
+src/modules/production/services/PendingChangesService.ts(413,43): error TS2339: Property 'items' does not exist on type 'string | number | boolean | JsonObject | JsonArray'.
+  Property 'items' does not exist on type 'string'.
+src/modules/production/services/PendingChangesService.ts(417,20): error TS18047: 'originalData' is possibly 'null'.
+src/modules/production/services/PendingChangesService.ts(417,20): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type 'string | number | boolean | JsonObject | JsonArray'.
+  No index signature with a parameter of type 'string' was found on type 'string | number | boolean | JsonObject | JsonArray'.
+src/modules/sales/application/use-cases/UpdateOrderStatusUseCase.ts(5,38): error TS2307: Cannot find module '../../../../organization/services/ProcessStatusService' or its corresponding type declarations.
+src/modules/sales/automation.routes.ts(151,17): error TS18046: 'error' is of type 'unknown'.
+src/modules/sales/automation.routes.ts(183,17): error TS18046: 'error' is of type 'unknown'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(6,39): error TS2304: Cannot find name 'Socket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(36,30): error TS2345: Argument of type '(socket: AuthenticatedSocket) => void' is not assignable to parameter of type '(socket: Socket<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, any>) => void'.
+  Types of parameters 'socket' and 'socket' are incompatible.
+    Type 'Socket<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, any>' has no properties in common with type 'AuthenticatedSocket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(46,52): error TS2339: Property 'id' does not exist on type 'AuthenticatedSocket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(50,14): error TS2339: Property 'on' does not exist on type 'AuthenticatedSocket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(56,14): error TS2339: Property 'on' does not exist on type 'AuthenticatedSocket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(60,14): error TS2339: Property 'on' does not exist on type 'AuthenticatedSocket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(61,16): error TS2339: Property 'emit' does not exist on type 'AuthenticatedSocket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(99,12): error TS2339: Property 'join' does not exist on type 'AuthenticatedSocket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(105,51): error TS2339: Property 'id' does not exist on type 'AuthenticatedSocket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(117,34): error TS2339: Property 'id' does not exist on type 'AuthenticatedSocket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(152,18): error TS2339: Property 'emit' does not exist on type 'AuthenticatedSocket'.

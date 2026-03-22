@@ -1,145 +1,185 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { getTenantClient } from '../../shared/infrastructure/database/tenant';
+import { AccountService } from './services/AccountService';
+import { TransactionService } from './services/TransactionService';
+import { CategoryService } from './services/CategoryService';
+import { AccountType, TransactionType, CategoryType } from '@prisma/client';
 
 const listQuerySchema = z.object({
   limit: z.string().transform(val => parseInt(val) || 50).optional(),
-  days: z.string().transform(val => parseInt(val) || 30).optional()
+  days: z.string().transform(val => parseInt(val) || 30).optional(),
+  accountId: z.string().optional(),
+  type: z.enum(['INCOME', 'EXPENSE', 'TRANSFER']).optional(),
+  status: z.enum(['PENDING', 'PAID', 'OVERDUE', 'CANCELLED']).optional(),
+  categoryId: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional()
+});
+
+const createAccountSchema = z.object({
+  name: z.string(),
+  type: z.nativeEnum(AccountType),
+  balance: z.number().default(0),
+  bank: z.string().optional().nullable(),
+  agency: z.string().optional().nullable(),
+  accountNumber: z.string().optional().nullable()
+});
+
+const createCategorySchema = z.object({
+  name: z.string(),
+  type: z.nativeEnum(CategoryType),
+  color: z.string().optional().nullable(),
+  parentId: z.string().optional().nullable()
+});
+
+const createTransactionSchema = z.object({
+  accountId: z.string(),
+  type: z.enum(['INCOME', 'EXPENSE', 'TRANSFER']),
+  amount: z.number().min(0.01),
+  description: z.string(),
+  categoryId: z.string().optional().nullable(),
+  orderId: z.string().optional().nullable(),
+  dueDate: z.string().optional().nullable()
 });
 
 export async function financeRoutes(fastify: FastifyInstance) {
 
   // ========== CONTAS ==========
 
-  // Listar contas
-  fastify.get('/accounts', {
-    preHandler: [fastify.authenticate]
-  }, async (request, reply) => {
-    // Implementação temporária - retorna dados mock
-    const accounts = [
-      {
-        id: '1',
-        name: 'Conta Corrente Principal',
-        type: 'CHECKING',
-        balance: 15000.00,
-        currency: 'BRL'
-      },
-      {
-        id: '2',
-        name: 'Conta Poupança',
-        type: 'SAVINGS',
-        balance: 25000.00,
-        currency: 'BRL'
-      }
-    ];
-
-    return reply.send({
-      success: true,
-      data: accounts
-    });
+  fastify.get('/accounts', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const prisma = getTenantClient(request.user!.organizationId);
+    const accountService = new AccountService(prisma);
+    const accounts = await accountService.list(request.user!.organizationId);
+    return reply.send({ success: true, data: accounts });
   });
 
-  // ========== TRANSAÇÕES ==========
-
-  // Listar transações
-  fastify.get('/transactions', {
-    preHandler: [fastify.authenticate]
-  }, async (request, reply) => {
-    const query = listQuerySchema.parse(request.query);
-
-    // Implementação temporária - retorna dados mock
-    const transactions = [
-      {
-        id: '1',
-        description: 'Venda - Pedido #001',
-        amount: 500.00,
-        type: 'INCOME',
-        date: new Date().toISOString(),
-        category: 'Vendas'
-      },
-      {
-        id: '2',
-        description: 'Compra de Material',
-        amount: -200.00,
-        type: 'EXPENSE',
-        date: new Date(Date.now() - 86400000).toISOString(),
-        category: 'Materiais'
-      }
-    ].slice(0, query.limit || 50);
-
-    return reply.send({
-      success: true,
-      data: transactions
+  fastify.post('/accounts', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const data = createAccountSchema.parse(request.body);
+    const prisma = getTenantClient(request.user!.organizationId);
+    const accountService = new AccountService(prisma);
+    const account = await accountService.create({
+      ...data,
+      organizationId: request.user!.organizationId,
+      bank: data.bank || undefined,
+      agency: data.agency || undefined,
+      accountNumber: data.accountNumber || undefined
     });
+    return reply.code(201).send({ success: true, data: account });
+  });
+
+  fastify.put('/accounts/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const data = createAccountSchema.partial().parse(request.body);
+    const prisma = getTenantClient(request.user!.organizationId);
+    const accountService = new AccountService(prisma);
+    
+    // Remapeando nullable para optional
+    const updateData: any = { ...data };
+    if (updateData.bank === null) updateData.bank = undefined;
+    if (updateData.agency === null) updateData.agency = undefined;
+    if (updateData.accountNumber === null) updateData.accountNumber = undefined;
+
+    const account = await accountService.update(id, request.user!.organizationId, updateData);
+    return reply.send({ success: true, data: account });
   });
 
   // ========== CATEGORIAS ==========
 
-  // Listar categorias
-  fastify.get('/categories', {
-    preHandler: [fastify.authenticate]
-  }, async (request, reply) => {
-    // Implementação temporária - retorna dados mock
-    const categories = [
-      { id: '1', name: 'Vendas', type: 'INCOME', color: '#10B981' },
-      { id: '2', name: 'Materiais', type: 'EXPENSE', color: '#EF4444' },
-      { id: '3', name: 'Salários', type: 'EXPENSE', color: '#F59E0B' },
-      { id: '4', name: 'Aluguel', type: 'EXPENSE', color: '#8B5CF6' }
-    ];
+  fastify.get('/categories', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { type } = request.query as { type?: CategoryType };
+    const prisma = getTenantClient(request.user!.organizationId);
+    const categoryService = new CategoryService(prisma);
+    const categories = await categoryService.list(request.user!.organizationId, type);
+    return reply.send({ success: true, data: categories });
+  });
 
-    return reply.send({
-      success: true,
-      data: categories
+  fastify.post('/categories', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const data = createCategorySchema.parse(request.body);
+    const prisma = getTenantClient(request.user!.organizationId);
+    const categoryService = new CategoryService(prisma);
+    const category = await categoryService.create({
+      ...data,
+      organizationId: request.user!.organizationId,
+      color: data.color || undefined,
+      parentId: data.parentId || undefined
     });
+    return reply.code(201).send({ success: true, data: category });
+  });
+
+  fastify.delete('/categories/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const prisma = getTenantClient(request.user!.organizationId);
+    const categoryService = new CategoryService(prisma);
+    try {
+      await categoryService.delete(id, request.user!.organizationId);
+      return reply.send({ success: true, message: 'Categoria removida' });
+    } catch (error: any) {
+      return reply.code(400).send({ success: false, message: error.message });
+    }
+  });
+
+  // ========== TRANSAÇÕES ==========
+
+  fastify.get('/transactions', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const query = listQuerySchema.parse(request.query);
+    const prisma = getTenantClient(request.user!.organizationId);
+    const transactionService = new TransactionService(prisma);
+    
+    const transactions = await transactionService.list(request.user!.organizationId, {
+      accountId: query.accountId,
+      type: query.type,
+      status: query.status,
+      categoryId: query.categoryId,
+      startDate: query.startDate,
+      endDate: query.endDate
+    });
+
+    return reply.send({ success: true, data: transactions });
+  });
+
+  fastify.post('/transactions', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const data = createTransactionSchema.parse(request.body);
+    const prisma = getTenantClient(request.user!.organizationId);
+    const transactionService = new TransactionService(prisma);
+    
+    const transaction = await transactionService.create({
+      ...data,
+      organizationId: request.user!.organizationId,
+      categoryId: data.categoryId || undefined,
+      orderId: data.orderId || undefined,
+      dueDate: data.dueDate || undefined
+    });
+
+    return reply.code(201).send({ success: true, data: transaction });
+  });
+
+  fastify.patch('/transactions/:id/pay', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const prisma = getTenantClient(request.user!.organizationId);
+    const transactionService = new TransactionService(prisma);
+    
+    try {
+      const transaction = await transactionService.markAsPaid(id, request.user!.organizationId);
+      return reply.send({ success: true, data: transaction });
+    } catch (error: any) {
+      return reply.code(400).send({ success: false, message: error.message });
+    }
   });
 
   // ========== DASHBOARD ==========
 
-  // Dashboard financeiro
-  fastify.get('/dashboard', {
-    preHandler: [fastify.authenticate]
-  }, async (request, reply) => {
+  fastify.get('/dashboard', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const query = listQuerySchema.parse(request.query);
-
-    // Estrutura atualizada para coincidir com o frontend (Financeiro.tsx)
-    const dashboard = {
-      summary: {
-        totalIncome: 15000.00,
-        totalExpense: 8500.00,
-        profit: 6500.00,
-        profitMargin: 43.33
-      },
-      pending: {
-        receivables: 12450.00,
-        payables: 3200.00
-      },
-      accounts: {
-        totalBalance: 40000.00,
-        balanceByType: {
-          'CHECKING': 15000.00,
-          'SAVINGS': 25000.00
-        }
-      },
-      cashFlow: [
-        { date: new Date(Date.now() - 86400000 * 2).toISOString(), income: 2000, expense: 500, balance: 1500 },
-        { date: new Date(Date.now() - 86400000).toISOString(), income: 1500, expense: 800, balance: 2200 },
-        { date: new Date().toISOString(), income: 3000, expense: 1200, balance: 4000 }
-      ],
-      categoryStats: [
-        { name: 'Vendas', value: 15000.00, color: '#10B981', type: 'INCOME' },
-        { name: 'Materiais', value: 5000.00, color: '#EF4444', type: 'EXPENSE' },
-        { name: 'Salários', value: 2500.00, color: '#F59E0B', type: 'EXPENSE' },
-        { name: 'Aluguel', value: 1000.00, color: '#8B5CF6', type: 'EXPENSE' }
-      ],
-      monthlyComparison: {
-        currentMonth: { income: 15000, expense: 8500, profit: 6500 },
-        previousMonth: { income: 12000, expense: 7000, profit: 5000 },
-        growth: { income: 25, expense: 21.4, profit: 30 }
-      }
-    };
-
-    return reply.send({
-      success: true,
-      data: dashboard
+    const prisma = getTenantClient(request.user!.organizationId);
+    const transactionService = new TransactionService(prisma);
+    
+    const dashboard = await transactionService.getDashboard(request.user!.organizationId, {
+      startDate: query.startDate,
+      endDate: query.endDate,
+      days: query.days
     });
+
+    return reply.send({ success: true, data: dashboard });
   });
 }

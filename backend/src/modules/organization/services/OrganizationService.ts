@@ -11,6 +11,8 @@ interface UpdateSettingsInput {
   enableWMS?: boolean;
   enableProduction?: boolean;
   enableFinance?: boolean;
+  enableFinanceReports?: boolean;
+  enableAutomation?: boolean;
   defaultMarkup?: number;
   taxRate?: number;
   validadeOrcamento?: number;
@@ -73,6 +75,8 @@ export class OrganizationService {
           enableWMS: false,
           enableProduction: false,
           enableFinance: true,
+          enableFinanceReports: true,
+          enableAutomation: true,
           defaultMarkup: 2.0,
           taxRate: 0.0,
           validadeOrcamento: 7,
@@ -105,6 +109,8 @@ export class OrganizationService {
           enableWMS: false,
           enableProduction: false,
           enableFinance: true,
+          enableFinanceReports: true,
+          enableAutomation: true,
           defaultMarkup: 2.0,
           taxRate: 0.0,
           validadeOrcamento: 7,

@@ -5,6 +5,7 @@ import { getTenantClient, prisma } from '../../shared/infrastructure/database/te
 import { OrderStatus } from '@prisma/client';
 import { PricingEngine } from '../../shared/application/pricing/PricingEngine';
 import { StatusEngine } from './domain/services/StatusEngine';
+import { TransactionService } from '../finance/services/TransactionService';
 
 const listQuerySchema = z.object({
   limit: z.string().transform(val => parseInt(val) || 50).optional(),
@@ -21,25 +22,26 @@ const createOrderSchema = z.object({
   customerId: z.string().min(1),
   items: z.array(z.object({
     productId: z.string().min(1),
-    itemType: z.enum(['PRODUCT', 'SERVICE', 'PRINT_SHEET', 'PRINT_ROLL', 'LASER_CUT']).optional(),
-    width: z.number().min(0).optional(),
-    height: z.number().min(0).optional(),
+    itemType: z.enum(['PRODUCT', 'SERVICE', 'PRINT_SHEET', 'PRINT_ROLL', 'LASER_CUT']).nullish(),
+    width: z.number().min(0).nullish(),
+    height: z.number().min(0).nullish(),
     quantity: z.number().positive(),
     unitPrice: z.number().min(0),
     totalPrice: z.number().min(0),
-    costPrice: z.number().min(0).optional(),
-    calculatedPrice: z.number().min(0).optional(),
-    status: z.string().optional(),
-    processStatusId: z.string().optional(),
-    pricingRuleId: z.string().optional(),
-    attributes: z.record(z.any()).optional()
+    costPrice: z.number().min(0).nullish(),
+    calculatedPrice: z.number().min(0).nullish(),
+    status: z.string().nullish(),
+    processStatusId: z.string().nullish(),
+    pricingRuleId: z.string().nullish(),
+    attributes: z.record(z.any()).nullish()
   })),
-  notes: z.string().optional(),
-  deliveryDate: z.string().optional(),
-  validUntil: z.string().optional(),
+  notes: z.string().nullish(),
+  deliveryDate: z.string().nullish(),
+  validUntil: z.string().nullish(),
 
   // Pagamentos
   payments: z.array(z.object({
+    id: z.string().optional(),
     methodId: z.string(),
     methodName: z.string(),
     amount: z.number().positive(),
@@ -281,12 +283,12 @@ export async function salesRoutes(fastify: FastifyInstance) {
 
     // Processar pagamentos
     if (body.payments && body.payments.length > 0) {
-      let account = await prisma.account.findFirst({
+      let defaultAccount = await prisma.account.findFirst({
         where: { organizationId: request.user!.organizationId, active: true }
       });
 
-      if (!account) {
-        account = await prisma.account.create({
+      if (!defaultAccount) {
+        defaultAccount = await prisma.account.create({
           data: {
             organizationId: request.user!.organizationId,
             name: 'Caixa Pv',
@@ -297,20 +299,33 @@ export async function salesRoutes(fastify: FastifyInstance) {
         });
       }
 
+      const transactionService = new TransactionService(prisma);
+
       for (const p of body.payments) {
-        await prisma.transaction.create({
-          data: {
-            organizationId: request.user!.organizationId,
-            accountId: account.id,
-            type: 'INCOME',
-            amount: p.amount,
-            description: `Pagamento Pedido ${orderNumber}`,
-            orderId: order.id,
-            status: 'PAID',
-            paidAt: new Date(p.date),
-            paymentMethodId: p.methodId
-          }
+        // Obter método de pagamento para descobrir a conta destino
+        const paymentMethod = await prisma.paymentMethod.findFirst({
+          where: { id: p.methodId, organizationId: request.user!.organizationId }
         });
+        const targetAccountId = paymentMethod?.accountId || defaultAccount.id;
+
+        // Criar transação inicial pendente para passar pelas travas do serviço
+        const tx = await transactionService.create({
+          organizationId: request.user!.organizationId,
+          accountId: targetAccountId,
+          type: 'INCOME',
+          amount: p.amount,
+          description: `Pagamento Pedido ${orderNumber}`,
+          orderId: order.id
+        });
+
+        // Adicionar informações extras antes de aprovar
+        await (prisma as any).transaction.update({
+          where: { id: tx.id, organizationId: request.user!.organizationId },
+          data: { paymentMethodId: p.methodId, paidAt: new Date(p.date) }
+        });
+
+        // Efetivar a transação, disparando o AccountService subjacente para somar no saldo
+        await transactionService.markAsPaid(tx.id, request.user!.organizationId);
       }
     }
 
@@ -460,6 +475,59 @@ export async function salesRoutes(fastify: FastifyInstance) {
     // Sincronizar status do pai após a recriação dos itens
     const statusEngine = new StatusEngine(prisma as any);
     await statusEngine.syncParentFromItems(id, (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub);
+
+    // Processar NOVOS pagamentos
+    if (body.payments && body.payments.length > 0) {
+      // Filtrar apenas os pagamentos sem ID (novos)
+      const novosPagamentos = body.payments.filter(p => !p.id);
+
+      if (novosPagamentos.length > 0) {
+        let defaultAccount = await prisma.account.findFirst({
+          where: { organizationId: request.user!.organizationId, active: true }
+        });
+
+        if (!defaultAccount) {
+          defaultAccount = await prisma.account.create({
+            data: {
+              organizationId: request.user!.organizationId,
+              name: 'Caixa Pv',
+              type: 'CASH',
+              balance: 0,
+              active: true
+            }
+          });
+        }
+
+        const transactionService = new TransactionService(prisma);
+
+        for (const p of novosPagamentos) {
+          // Obter método de pagamento para descobrir a conta destino
+          const paymentMethod = await prisma.paymentMethod.findFirst({
+            where: { id: p.methodId, organizationId: request.user!.organizationId }
+          });
+          const targetAccountId = paymentMethod?.accountId || defaultAccount.id;
+
+          // Criar transação inicial pendente
+          const tx = await transactionService.create({
+            organizationId: request.user!.organizationId,
+            accountId: targetAccountId,
+            type: 'INCOME',
+            amount: p.amount,
+            description: `Pagamento Adicional Pedido ${existingOrder.orderNumber}`,
+            orderId: existingOrder.id
+          });
+
+          // Adicionar informações extras
+          await (prisma as any).transaction.update({
+            where: { id: tx.id, organizationId: request.user!.organizationId },
+            data: { paymentMethodId: p.methodId, paidAt: new Date(p.date) }
+          });
+
+          // Efetivar a transação, disparando o AccountService subjacente para somar no saldo
+          await transactionService.markAsPaid(tx.id, request.user!.organizationId);
+        }
+      }
+    }
 
     // Buscar retorno final limpo e completo
     const finalResult = await prisma.order.findUnique({

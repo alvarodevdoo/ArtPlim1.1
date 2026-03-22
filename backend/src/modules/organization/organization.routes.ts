@@ -16,6 +16,8 @@ const updateSettingsSchema = z.object({
   enableWMS: z.boolean().optional(),
   enableProduction: z.boolean().optional(),
   enableFinance: z.boolean().optional(),
+  enableFinanceReports: z.boolean().optional(),
+  enableAutomation: z.boolean().optional(),
   defaultMarkup: z.number().positive().optional(),
   taxRate: z.number().min(0).max(1).optional(),
   validadeOrcamento: z.number().int().min(1).max(365).optional(),

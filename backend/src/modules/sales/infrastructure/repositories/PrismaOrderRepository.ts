@@ -75,6 +75,7 @@ export class PrismaOrderRepository implements OrderRepository {
                   customSizeName: item.customSizeName,
                   isCustomSize: item.isCustomSize,
                   attributes: item.attributes,
+                  status: item.status,
                 pricingRuleId: item.pricingRuleId
               }))
             }
@@ -140,6 +141,7 @@ export class PrismaOrderRepository implements OrderRepository {
                 customSizeName: item.customSizeName,
                 isCustomSize: item.isCustomSize,
                 attributes: item.attributes,
+                status: item.status,
                 pricingRuleId: item.pricingRuleId
               }))
             }
@@ -220,6 +222,11 @@ export class PrismaOrderRepository implements OrderRepository {
 
     if (filters?.status) {
       whereClause.status = filters.status;
+    } else if (!filters?.search) {
+      // Se não há filtro de status nem busca, ocultar os pedidos marcados para sair do fluxo padrão
+      whereClause.processStatus = {
+        hideFromFlow: false
+      };
     }
 
     if (filters?.search) {
@@ -416,6 +423,7 @@ export class PrismaOrderRepository implements OrderRepository {
       customSizeName: item.customSizeName,
       isCustomSize: item.isCustomSize,
       attributes: item.attributes ? (item.attributes as any) : undefined,
+      status: item.status as OrderStatusEnum,
       pricingRuleId: item.pricingRuleId
     }));
 

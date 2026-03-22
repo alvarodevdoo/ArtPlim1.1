@@ -14,18 +14,16 @@ import {
   Clock,
   AlertCircle,
   Eye,
-  Filter,
   BarChart3,
   PieChart,
   ArrowUpRight,
   ArrowDownRight,
   Target,
   Activity,
-  RefreshCw
+  RefreshCw,
+  Trash
 } from 'lucide-react';
 import {
-  LineChart,
-  Line,
   AreaChart,
   Area,
   XAxis,
@@ -49,6 +47,8 @@ interface Account {
   type: 'CHECKING' | 'SAVINGS' | 'CASH' | 'CREDIT_CARD';
   balance: number;
   bank?: string;
+  agency?: string;
+  accountNumber?: string;
   _count: {
     transactions: number;
   };
@@ -150,6 +150,8 @@ const Financeiro: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [showAddTransaction, setShowAddTransaction] = useState(false);
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState('30'); // dias
 
   const [accountForm, setAccountForm] = useState({
@@ -168,6 +170,12 @@ const Financeiro: React.FC = () => {
     description: '',
     categoryId: '',
     dueDate: ''
+  });
+
+  const [categoryForm, setCategoryForm] = useState({
+    name: '',
+    type: 'EXPENSE',
+    color: '#EF4444'
   });
 
   useEffect(() => {
@@ -204,22 +212,43 @@ const Financeiro: React.FC = () => {
     e.preventDefault();
 
     try {
-      await api.post('/api/finance/accounts', {
+      const payload = {
         name: accountForm.name,
         type: accountForm.type,
         balance: parseFloat(accountForm.balance),
-        bank: accountForm.bank,
-        agency: accountForm.agency,
-        accountNumber: accountForm.accountNumber
-      });
+        bank: accountForm.bank || null,
+        agency: accountForm.agency || null,
+        accountNumber: accountForm.accountNumber || null
+      };
 
-      toast.success('Conta criada com sucesso!');
+      if (editingAccountId) {
+        await api.put(`/api/finance/accounts/${editingAccountId}`, payload);
+        toast.success('Conta atualizada com sucesso!');
+      } else {
+        await api.post('/api/finance/accounts', payload);
+        toast.success('Conta criada com sucesso!');
+      }
+
       setShowAddAccount(false);
+      setEditingAccountId(null);
       resetAccountForm();
       loadData();
     } catch (error: any) {
-      toast.error(error.response?.data?.error?.message || 'Erro ao criar conta');
+      toast.error(error.response?.data?.error?.message || 'Erro ao processar conta');
     }
+  };
+
+  const handleEditAccount = (account: Account) => {
+    setEditingAccountId(account.id);
+    setAccountForm({
+      name: account.name,
+      type: account.type as any,
+      balance: account.balance.toString(),
+      bank: account.bank || '',
+      agency: account.agency || '',
+      accountNumber: account.accountNumber || ''
+    });
+    setShowAddAccount(true);
   };
 
   const handleCreateTransaction = async (e: React.FormEvent) => {
@@ -254,6 +283,30 @@ const Financeiro: React.FC = () => {
     }
   };
 
+  const handleCreateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await api.post('/api/finance/categories', categoryForm);
+      toast.success('Categoria criada!');
+      setShowAddCategory(false);
+      setCategoryForm({ name: '', type: 'EXPENSE', color: '#EF4444' });
+      loadData();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error?.message || 'Erro ao criar categoria');
+    }
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    if (!confirm('Tem certeza que deseja remover esta categoria?')) return;
+    try {
+      await api.delete(`/api/finance/categories/${id}`);
+      toast.success('Categoria removida!');
+      loadData();
+    } catch (error: any) {
+      toast.error('Não é possível remover categorias em uso por transações.');
+    }
+  };
+
   const initializeDefaultCategories = async () => {
     try {
       await api.post('/api/finance/categories/default');
@@ -265,6 +318,7 @@ const Financeiro: React.FC = () => {
   };
 
   const resetAccountForm = () => {
+    setEditingAccountId(null);
     setAccountForm({
       name: '',
       type: 'CHECKING',
@@ -493,6 +547,7 @@ const Financeiro: React.FC = () => {
           {[
             { id: 'dashboard', label: 'Dashboard' },
             { id: 'accounts', label: 'Contas' },
+            { id: 'categories', label: 'Categorias' },
             { id: 'transactions', label: 'Transações' },
             { id: 'receivables', label: 'A Receber' },
             { id: 'payables', label: 'A Pagar' }
@@ -542,8 +597,8 @@ const Financeiro: React.FC = () => {
                         tickFormatter={(value) => `R$ ${(value / 1000).toFixed(0)}k`}
                       />
                       <Tooltip
-                        formatter={(value: number, name: string) => [
-                          formatCurrency(value),
+                        formatter={(value: any, name: any) => [
+                          formatCurrency(Number(value) || 0),
                           name === 'income' ? 'Receitas' : name === 'expense' ? 'Despesas' : 'Saldo'
                         ]}
                         labelFormatter={(value) => new Date(value).toLocaleDateString('pt-BR')}
@@ -605,7 +660,7 @@ const Financeiro: React.FC = () => {
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                           ))}
                         </Pie>
-                        <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                        <Tooltip formatter={(value: any) => formatCurrency(Number(value) || 0)} />
                       </RechartsPieChart>
                     </ResponsiveContainer>
 
@@ -776,8 +831,8 @@ const Financeiro: React.FC = () => {
                       </CardTitle>
                       <CardDescription>{typeConfig.label}</CardDescription>
                     </div>
-                    <Button size="icon" variant="ghost">
-                      <Eye className="w-4 h-4" />
+                    <Button size="sm" variant="outline" onClick={() => handleEditAccount(account)}>
+                      Editar
                     </Button>
                   </div>
                 </CardHeader>
@@ -789,23 +844,83 @@ const Financeiro: React.FC = () => {
                       </p>
                       <p className="text-sm text-muted-foreground">Saldo atual</p>
                     </div>
-
                     {account.bank && (
                       <p className="text-sm">
                         <span className="font-medium">Banco:</span> {account.bank}
                       </p>
                     )}
-
-                    <div className="pt-2 border-t">
-                      <p className="text-sm text-muted-foreground">
-                        {account._count.transactions} transação(ões)
-                      </p>
+                    <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">Saldo Atual</p>
+                        <p className={`text-2xl font-bold flex items-center space-x-2 ${account.balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          <span>{formatCurrency(account.balance)}</span>
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm text-muted-foreground mb-1">
+                          {account._count.transactions} transação(ões)
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </CardContent>
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {/* Categories Tab */}
+      {activeTab === 'categories' && (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-xl font-semibold">Gerenciar Categorias</h2>
+              <p className="text-sm text-muted-foreground">Classifique seus lançamentos</p>
+            </div>
+            <Button onClick={() => setShowAddCategory(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Nova Categoria
+            </Button>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader><CardTitle className="text-green-600 flex items-center gap-2"><TrendingUp className="w-5 h-5"/> Receitas</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                 {categories.filter(c => c.type === 'INCOME').length === 0 && <p className="text-sm text-muted-foreground">Nenhuma categoria encontrada.</p>}
+                 {categories.filter(c => c.type === 'INCOME').map(c => (
+                   <div key={c.id} className="flex justify-between items-center p-3 text-sm border rounded hover:bg-slate-50">
+                     <div className="flex items-center gap-3">
+                       <div className="w-4 h-4 rounded-full" style={{ backgroundColor: c.color || '#10B981' }} />
+                       <span className="font-medium">{c.name}</span>
+                     </div>
+                     <Button variant="ghost" size="icon" onClick={() => handleDeleteCategory(c.id)}>
+                        <Trash className="w-4 h-4 text-slate-400 hover:text-red-500" />
+                     </Button>
+                   </div>
+                 ))}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle className="text-red-600 flex items-center gap-2"><TrendingDown className="w-5 h-5"/> Despesas</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                 {categories.filter(c => c.type === 'EXPENSE').length === 0 && <p className="text-sm text-muted-foreground">Nenhuma categoria encontrada.</p>}
+                 {categories.filter(c => c.type === 'EXPENSE').map(c => (
+                   <div key={c.id} className="flex justify-between items-center p-3 text-sm border rounded hover:bg-slate-50">
+                     <div className="flex items-center gap-3">
+                       <div className="w-4 h-4 rounded-full" style={{ backgroundColor: c.color || '#EF4444' }} />
+                       <span className="font-medium">{c.name}</span>
+                     </div>
+                     <Button variant="ghost" size="icon" onClick={() => handleDeleteCategory(c.id)}>
+                        <Trash className="w-4 h-4 text-slate-400 hover:text-red-500" />
+                     </Button>
+                   </div>
+                 ))}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       )}
 
@@ -880,11 +995,11 @@ const Financeiro: React.FC = () => {
 
       {/* Add Account Modal */}
       {showAddAccount && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <Card className="w-full max-w-md animate-in zoom-in-95">
             <CardHeader>
-              <CardTitle>Nova Conta</CardTitle>
-              <CardDescription>Adicione uma nova conta ao sistema</CardDescription>
+              <CardTitle>{editingAccountId ? 'Editar Conta' : 'Nova Conta'}</CardTitle>
+              <CardDescription>{editingAccountId ? 'Atualize os dados bancários' : 'Adicione uma nova conta ao sistema'}</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleCreateAccount} className="space-y-4">
@@ -943,7 +1058,7 @@ const Financeiro: React.FC = () => {
                   >
                     Cancelar
                   </Button>
-                  <Button type="submit">Criar Conta</Button>
+                  <Button type="submit">{editingAccountId ? 'Salvar Configurações' : 'Criar Conta'}</Button>
                 </div>
               </form>
             </CardContent>
@@ -1051,6 +1166,62 @@ const Financeiro: React.FC = () => {
                     Cancelar
                   </Button>
                   <Button type="submit">Criar Transação</Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Add Category Modal */}
+      {showAddCategory && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <Card className="w-full max-w-md animate-in zoom-in-95">
+            <CardHeader>
+              <CardTitle>Nova Categoria</CardTitle>
+              <CardDescription>Crie uma classificação para suas transações</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleCreateCategory} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Nome *</label>
+                  <Input
+                    value={categoryForm.name}
+                    onChange={(e) => setCategoryForm(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="Ex: Fornecedores, Salários..."
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Tipo *</label>
+                    <select
+                      value={categoryForm.type}
+                      onChange={(e) => setCategoryForm(prev => ({ ...prev, type: e.target.value as 'INCOME' | 'EXPENSE' }))}
+                      className="w-full h-10 px-3 border rounded-md"
+                    >
+                      <option value="EXPENSE">Despesa (Saída)</option>
+                      <option value="INCOME">Receita (Entrada)</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Cor</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={categoryForm.color}
+                        onChange={(e) => setCategoryForm(prev => ({ ...prev, color: e.target.value }))}
+                        className="w-10 h-10 p-1 border rounded-md cursor-pointer"
+                      />
+                      <span className="text-sm text-muted-foreground">{categoryForm.color}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button type="button" variant="ghost" onClick={() => setShowAddCategory(false)}>Cancelar</Button>
+                  <Button type="submit">Salvar</Button>
                 </div>
               </form>
             </CardContent>
