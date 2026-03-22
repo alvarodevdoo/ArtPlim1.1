@@ -75,11 +75,11 @@ export const statusConfig = {
   CANCELLED: { label: 'Cancelado', color: 'bg-red-100 text-red-800', hex: '#ef4444', icon: XCircle, border: 'border-l-red-500' },
 };
 
-export const shouldShowDimensions = (item: any, enableEngineering?: boolean): boolean => {
+export const shouldShowDimensions = (item: any): boolean => {
   const width = Number(item?.width || 0);
   const height = Number(item?.height || 0);
   if (width <= 0 || height <= 0) return false;
   if (item?.itemType === 'SERVICE' || item?.product?.productType === 'SERVICE') return false;
-  if (item?.product?.pricingMode === 'DYNAMIC_ENGINEER' && enableEngineering === false) return false;
+  if (item?.product?.pricingMode === 'DYNAMIC_ENGINEER') return true;
   return true;
 };

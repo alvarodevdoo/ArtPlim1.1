@@ -36,7 +36,6 @@ async function main() {
   await prisma.organizationSettings.create({
     data: {
       organizationId: organization.id,
-      enableEngineering: true,
       enableWMS: true, // Corrigido de enableWms para enableWMS
       enableProduction: true,
       enableFinance: true,

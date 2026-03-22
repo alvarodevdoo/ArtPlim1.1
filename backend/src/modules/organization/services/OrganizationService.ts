@@ -7,7 +7,6 @@ interface UpdateOrganizationInput {
 }
 
 interface UpdateSettingsInput {
-  enableEngineering?: boolean;
   enableWMS?: boolean;
   enableProduction?: boolean;
   enableFinance?: boolean;
@@ -71,7 +70,6 @@ export class OrganizationService {
       settings = await this.prisma.organizationSettings.create({
         data: {
           organizationId,
-          enableEngineering: false,
           enableWMS: false,
           enableProduction: false,
           enableFinance: true,
@@ -105,7 +103,6 @@ export class OrganizationService {
       return await this.prisma.organizationSettings.create({
         data: {
           organizationId,
-          enableEngineering: false,
           enableWMS: false,
           enableProduction: false,
           enableFinance: true,

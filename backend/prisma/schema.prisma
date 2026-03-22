@@ -51,7 +51,6 @@ model Organization {
 model OrganizationSettings {
   id                   String       @id @default(uuid())
   organizationId       String       @unique
-  enableEngineering    Boolean      @default(false)
   enableWMS            Boolean      @default(false)
   enableProduction     Boolean      @default(false)
   enableFinance        Boolean      @default(true)

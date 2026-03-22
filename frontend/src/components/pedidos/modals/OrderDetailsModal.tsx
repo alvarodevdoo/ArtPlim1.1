@@ -32,7 +32,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   onMaterialRequest,
   processStatuses = []
 }) => {
-  const { settings, hasPermission } = useAuth();
+  const { hasPermission } = useAuth();
 
   if (!isOpen || !pedido) return null;
 
@@ -51,7 +51,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
     const height = Number(item.height || 0);
     if (width <= 0 || height <= 0) return false;
     if (item.itemType === 'SERVICE' || item.product?.productType === 'SERVICE') return false;
-    if (item.product?.pricingMode === 'DYNAMIC_ENGINEER' && settings?.enableEngineering === false) return false;
+    if (item.product?.pricingMode === 'DYNAMIC_ENGINEER') return true;
     return true;
   };
 

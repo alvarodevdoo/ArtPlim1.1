@@ -28,7 +28,6 @@ async function main() {
     await prisma.organizationSettings.upsert({
         where: { organizationId: organization.id },
         update: {
-            enableEngineering: true,
             enableWMS: true,
             enableProduction: true,
             enableFinance: true,
@@ -37,7 +36,6 @@ async function main() {
         },
         create: {
             organizationId: organization.id,
-            enableEngineering: true,
             enableWMS: true,
             enableProduction: true,
             enableFinance: true,

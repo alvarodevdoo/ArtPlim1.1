@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 interface ModuleProtectedRouteProps {
   children: React.ReactNode;
-  requiredSetting: 'enableEngineering' | 'enableWMS' | 'enableProduction' | 'enableFinance';
+  requiredSetting: 'enableWMS' | 'enableProduction' | 'enableFinance';
   redirectTo?: string;
 }
 

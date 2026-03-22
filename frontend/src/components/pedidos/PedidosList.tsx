@@ -19,7 +19,6 @@ interface PedidosListProps {
   handleStatusChange: (pedidoId: string, newStatus: string, details?: any) => void;
   setSelectedPedido: (p: Pedido) => void;
   setShowCancelModal: (v: boolean) => void;
-  settings: any;
   debouncedSearch: string;
   statusFilter: string;
 }
@@ -28,7 +27,7 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
   filteredPedidos, selectedPedidos, processStatuses,
   handleSelectAll, handleSelectPedido, getStatusDisplay,
   handleStatusChange, setSelectedPedido, setShowCancelModal,
-  settings, debouncedSearch, statusFilter,
+  debouncedSearch, statusFilter,
 }) => {
   const navigate = useNavigate();
   const [historyPedidoId, setHistoryPedidoId] = React.useState<string | null>(null);
@@ -284,7 +283,7 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
                           <p className="font-bold text-slate-800">{item?.product?.name}</p>
                         </div>
                         <p className="text-muted-foreground text-xs">
-                          {shouldShowDimensions(item as any, settings?.enableEngineering)
+                          {shouldShowDimensions(item as any)
                             ? `${item?.width} × ${item?.height}mm • ${item?.quantity}un`
                             : `${item?.quantity}un`}
                         </p>

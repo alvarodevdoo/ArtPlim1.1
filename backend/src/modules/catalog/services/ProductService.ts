@@ -27,27 +27,7 @@ interface UpdateProductInput extends Partial<CreateProductInput> {
 export class ProductService {
   constructor(private prisma: any) { }
 
-  private async validateEngineeringMode(organizationId: string, pricingMode: PricingMode) {
-    if (pricingMode === 'DYNAMIC_ENGINEER') {
-      // Buscar configurações da organização
-      const settings = await this.prisma.organizationSettings.findUnique({
-        where: { organizationId }
-      });
-
-      // Se não há configurações ou a engenharia está desabilitada
-      if (!settings || !settings.enableEngineering) {
-        throw new ValidationError(
-          'O modo de precificação "Engenharia Dinâmica" não está disponível. ' +
-          'Ative o módulo de Engenharia de Produto nas configurações do sistema.'
-        );
-      }
-    }
-  }
-
   async create(data: CreateProductInput) {
-    // Validar se o modo de engenharia está habilitado
-    await this.validateEngineeringMode(data.organizationId, data.pricingMode);
-
     const product = await this.prisma.product.create({
       data: {
         organization: { connect: { id: data.organizationId } },
@@ -141,11 +121,6 @@ export class ProductService {
     const existing = await this.prisma.product.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundError('Produto');
-    }
-
-    // Se está tentando alterar o modo de precificação, validar
-    if (data.pricingMode && data.organizationId) {
-      await this.validateEngineeringMode(data.organizationId, data.pricingMode);
     }
 
     // Destructuring para remover organizationId do update do Prisma

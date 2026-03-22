@@ -27,7 +27,6 @@ import PricingRuleSettings from '@/components/admin/PricingRuleSettings';
 
 interface OrganizationSettings {
   id: string;
-  enableEngineering: boolean;
   enableWMS: boolean;
   enableProduction: boolean;
   enableFinance: boolean;
@@ -52,7 +51,6 @@ const Configuracoes: React.FC = () => {
 
   const [settings, setSettings] = useState<OrganizationSettings>({
     id: '',
-    enableEngineering: false,
     enableWMS: false,
     enableProduction: false,
     enableFinance: true,
@@ -288,28 +286,6 @@ const Configuracoes: React.FC = () => {
                     <h4 className="font-medium">Módulos Disponíveis</h4>
 
                     <div className="space-y-3">
-                      <div className={`flex items-center justify-between p-3 border rounded-lg ${settings.enableEngineering ? 'border-green-200 bg-green-50' : 'border-border'
-                        }`}>
-                        <div>
-                          <h5 className="font-medium flex items-center space-x-2">
-                            <span>Engenharia de Produto</span>
-                            {settings.enableEngineering && (
-                              <span className="px-2 py-1 bg-green-100 text-green-600 text-xs rounded-full">
-                                ATIVO
-                              </span>
-                            )}
-                          </h5>
-                          <p className="text-sm text-muted-foreground">
-                            Cálculo dinâmico de preços baseado em custos
-                          </p>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={settings.enableEngineering}
-                          onChange={(e) => setSettings(prev => ({ ...prev, enableEngineering: e.target.checked }))}
-                          className="rounded border-input"
-                        />
-                      </div>
 
                       <div className={`flex items-center justify-between p-3 border rounded-lg ${settings.enableWMS ? 'border-green-200 bg-green-50' : 'border-border'
                         }`}>

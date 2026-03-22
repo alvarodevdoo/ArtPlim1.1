@@ -12,7 +12,6 @@ const updateOrganizationSchema = z.object({
 });
 
 const updateSettingsSchema = z.object({
-  enableEngineering: z.boolean().optional(),
   enableWMS: z.boolean().optional(),
   enableProduction: z.boolean().optional(),
   enableFinance: z.boolean().optional(),

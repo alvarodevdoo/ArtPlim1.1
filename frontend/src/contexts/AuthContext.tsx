@@ -13,7 +13,6 @@ interface User {
 
 interface OrganizationSettings {
   id: string;
-  enableEngineering: boolean;
   enableWMS: boolean;
   enableProduction: boolean;
   enableFinance: boolean;
@@ -60,7 +59,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Se falhar, usar configurações padrão
       setSettings({
         id: '',
-        enableEngineering: false,
         enableWMS: false,
         enableProduction: false,
         enableFinance: true,
@@ -98,7 +96,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // Usar configurações padrão se falhar
             setSettings({
               id: '',
-              enableEngineering: false,
               enableWMS: false,
               enableProduction: false,
               enableFinance: true,
@@ -144,7 +141,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Usar configurações padrão se falhar
         setSettings({
           id: '',
-          enableEngineering: false,
           enableWMS: false,
           enableProduction: false,
           enableFinance: true,

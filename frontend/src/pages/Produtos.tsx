@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Plus, Search, Edit, Trash2, Package, Settings, Wrench, Lock, Unlock, ShoppingBag, Briefcase, Warehouse } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { ProductComponentManager } from '@/components/catalog/ProductComponentManager';
@@ -81,7 +80,6 @@ const defaultForm: FormData = {
 };
 
 const Produtos: React.FC = () => {
-  const { settings } = useAuth();
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -761,7 +759,6 @@ const Produtos: React.FC = () => {
                     variant="ghost"
                     onClick={() => handleConfigure(produto)}
                     title="Configurar materiais e opções"
-                    disabled={!settings?.enableEngineering}
                   >
                     <Settings className="w-4 h-4" />
                   </Button>

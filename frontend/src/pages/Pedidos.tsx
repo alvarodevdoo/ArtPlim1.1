@@ -169,7 +169,6 @@ const Pedidos: React.FC = () => {
           handleStatusChange={handleStatusChange}
           setSelectedPedido={setSelectedPedido}
           setShowCancelModal={setShowCancelModal}
-          settings={settings}
           debouncedSearch={debouncedSearch}
           statusFilter={statusFilter}
         />
