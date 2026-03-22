@@ -4,13 +4,9 @@ import { ItemType } from '@/types/item-types';
 import ProductSelectionModal from './ProductSelectionModal';
 import ItemConfigurationModal from './ItemConfigurationModal';
 
-interface Produto {
-    id: string;
-    name: string;
-    description?: string;
-    pricingMode: 'SIMPLE_AREA' | 'SIMPLE_UNIT' | 'DYNAMIC_ENGINEER';
-    salePrice?: number;
-    productType?: ItemType; // Corrigido para usar ItemType
+import { Produto as SalesProduct } from '@/types/sales';
+
+interface SelectableProduct extends SalesProduct {
     usageCount?: number;
 }
 
@@ -18,7 +14,7 @@ interface ItemPedido {
     id: string;
     itemType: ItemType;
     productId: string;
-    product?: Produto;
+    product?: SelectableProduct;
     width?: number;
     height?: number;
     quantity: number;
@@ -30,7 +26,7 @@ interface ItemPedido {
 }
 
 interface AddItemModalFlowProps {
-    produtos: Produto[];
+    produtos: SalesProduct[];
     onAddItem: (item: ItemPedido) => void;
     onUpdateItem?: (item: ItemPedido) => void;
     editingItem?: ItemPedido | null;
@@ -49,7 +45,7 @@ const AddItemModalFlow: React.FC<AddItemModalFlowProps> = ({
     onClose
 }) => {
     const [currentStep, setCurrentStep] = useState<ModalStep>('selection');
-    const [selectedProduct, setSelectedProduct] = useState<Produto | null>(null);
+    const [selectedProduct, setSelectedProduct] = useState<SelectableProduct | null>(null);
 
     // Adicionar contadores de uso simulados aos produtos
     // Em produção, isso viria do backend baseado no histórico real de uso
@@ -95,7 +91,7 @@ const AddItemModalFlow: React.FC<AddItemModalFlowProps> = ({
     // pois o produto do item pode ter dados extras (pricingRule) que a lista genérica não tem
     // Removed the second useEffect that was overwriting the selectedProduct
 
-    const handleProductSelect = (produto: Produto) => {
+    const handleProductSelect = (produto: SelectableProduct) => {
         setSelectedProduct(produto);
         setCurrentStep('configuration');
     };

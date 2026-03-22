@@ -1,16 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import CurrencyInput from '@/components/ui/CurrencyInput';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Plus, Search, Edit, Trash2, Package, Settings, Wrench, Lock, Unlock, ShoppingBag, Briefcase, Warehouse } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { ProductComponentManager } from '@/components/catalog/ProductComponentManager';
 import { ProductConfigurationManager } from '@/components/catalog/ProductConfigurationManager';
 import { calculatePricingResult } from '@/lib/pricing/formulaUtils';
+import { getProductDisplayInfo } from '@/lib/pricing/displayUtils';
 import { SeletorInsumos } from '@/features/insumos/SeletorInsumos';
 import { useInsumos } from '@/features/insumos/useInsumos';
 import { InsumoMaterialSelecionado } from '@/features/insumos/types';
@@ -133,7 +132,7 @@ const Produtos: React.FC = () => {
   const loadProdutos = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/api/catalog/products?_t=${Date.now()}`);
+      const response = await api.get(`/api/catalog/products?include=pricingRule&_t=${Date.now()}`);
       // Normalizar campos Decimal (que vêm como string ou null) para number
       const normalizedData = (response.data.data || []).map((p: any) => ({
         ...p,
@@ -158,8 +157,8 @@ const Produtos: React.FC = () => {
       productType: formData.productType,
       pricingRuleId: formData.pricingRuleId || null,
       pricingMode: formData.pricingRuleId ? 'DYNAMIC_ENGINEER' : formData.pricingMode,
-      salePrice: formulaObj ? calculatedPrices.sale : (formData.salePrice > 0 ? formData.salePrice : 0),
-      costPrice: formulaObj ? calculatedPrices.cost : (formData.costPrice > 0 ? formData.costPrice : undefined),
+      salePrice: calculatedPrices.sale,
+      costPrice: calculatedPrices.cost,
       formulaData: formData.formulaVarValues || null,
     };
 
@@ -325,65 +324,6 @@ const Produtos: React.FC = () => {
     }
   };
 
-  const getProductDisplayInfo = (produto: Produto) => {
-    // Se tem preço fixo salvo, usa ele
-    if (produto.salePrice > 0) {
-      return { price: formatCurrency(produto.salePrice), cost: produto.costPrice > 0 ? formatCurrency(produto.costPrice) : null, isStarting: false, note: null };
-    }
-
-    const ruleId = produto.pricingRuleId;
-    if (ruleId) {
-      const rule = globalRules.find(r => r.id === ruleId);
-      if (rule) {
-        const formula = typeof rule.formula === 'string' ? JSON.parse(rule.formula) : (rule.formula || rule);
-        
-        // Se a regra estiver configurada para ocultar o preço de referência, não calcula
-        if (formula?.hideReferencePrice) {
-          return { price: 'Sob Consulta', cost: null, isStarting: false, note: null };
-        }
-        
-        const activeValues = { ...(formula?.referenceValues || {}) };
-        let hasProductOverride = false;
-
-        if (produto.formulaData) {
-          Object.keys(produto.formulaData).forEach(k => {
-            const val = produto.formulaData[k];
-            const isEmpty = val === '' || val === 0 || val === '0' || val === null || val === undefined;
-            if (!isEmpty && !k.endsWith('_unit') && !k.endsWith('_locked')) {
-              activeValues[k] = val;
-              hasProductOverride = true;
-              if (produto.formulaData[`${k}_unit`]) activeValues[`${k}_unit`] = produto.formulaData[`${k}_unit`];
-            }
-          });
-        }
-
-        if (formula?.formulaString && Object.keys(activeValues).length > 0) {
-          const res = calculatePricingResult(formula.formulaString, formula.variables, activeValues);
-          const costRes = calculatePricingResult(formula.costFormulaString, formula.variables, activeValues);
-          
-          if (res.value > 0 || costRes.value > 0) {
-            const inputVars = (formula.variables || []).filter((v: any) => v.type === 'INPUT');
-            const noteParts = inputVars
-              .map((v: any) => {
-                const val = activeValues[v.id];
-                const unit = activeValues[`${v.id}_unit`] || v.defaultUnit || '';
-                return val ? `${val}${unit}` : null;
-              })
-              .filter(Boolean);
-
-            return {
-              price: formatCurrency(res.value),
-              cost: costRes.value > 0 ? formatCurrency(costRes.value) : null,
-              isStarting: !hasProductOverride,
-              note: noteParts.length > 0 ? noteParts.join(' x ') : null
-            };
-          }
-        }
-      }
-    }
-
-    return { price: formatCurrency(0), cost: null, isStarting: false, note: null };
-  };
 
   const filteredProdutos = produtos.filter(produto =>
     produto.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -526,11 +466,12 @@ const Produtos: React.FC = () => {
                         value={formData.pricingRuleId}
                         onChange={(e) => {
                           const selectedId = e.target.value;
-                          setFormData(prev => ({ ...prev, pricingRuleId: selectedId, localFormulaId: '' }));
+                          setFormData(prev => ({ ...prev, pricingRuleId: selectedId }));
                         }}
-                        className="w-full h-10 px-3 py-2 border border-input rounded-md bg-background text-sm"
+                        className="w-full h-10 px-3 py-2 border border-input rounded-md bg-background text-sm font-medium"
+                        required
                       >
-                        <option value="">Sem regra (preço manual)</option>
+                        <option value="" disabled>Selecione uma regra...</option>
                         {globalRules.map((rule) => (
                           <option key={rule.id} value={rule.id}>
                             {rule.name}
@@ -577,7 +518,6 @@ const Produtos: React.FC = () => {
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide shrink-0">
                             Variáveis da Fórmula
-                            ({formData.pricingSource === 'GLOBAL' ? 'Global' : 'Local'})
                           </p>
                           <code className="text-xs bg-muted px-2 py-0.5 rounded font-mono text-muted-foreground truncate">
                             {formulaObj.formulaString}
@@ -674,27 +614,6 @@ const Produtos: React.FC = () => {
                   );
                 })()}
 
-                {/* Preços Manuais - Apenas quando NÃO há fórmula */}
-                {!formulaObj && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-50 rounded-lg border border-slate-100">
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium text-slate-700">Preço do Card / Vitrine (R$)</label>
-                      <CurrencyInput
-                        value={formData.salePrice}
-                        onValueChange={(value) => setFormData(prev => ({ ...prev, salePrice: value || 0 }))}
-                        placeholder="R$ 0,00"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium text-slate-700">Custo Base (R$)</label>
-                      <CurrencyInput
-                        value={formData.costPrice}
-                        onValueChange={(value) => setFormData(prev => ({ ...prev, costPrice: value || 0 }))}
-                        placeholder="R$ 0,00"
-                      />
-                    </div>
-                  </div>
-                )}
                 {/* Controle de estoque — apenas para produtos */}
                 {formData.productType === 'PRODUCT' && (
                   <div className="space-y-3 p-4 rounded-lg border border-border bg-muted/30">

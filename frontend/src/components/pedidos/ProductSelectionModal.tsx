@@ -5,19 +5,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, Package, X } from 'lucide-react';
 import { ItemType, ITEM_TYPE_CONFIGS } from '@/types/item-types';
 
-interface Produto {
-    id: string;
-    name: string;
-    description?: string;
-    pricingMode: 'SIMPLE_AREA' | 'SIMPLE_UNIT' | 'DYNAMIC_ENGINEER';
-    salePrice?: number;
-    productType?: ItemType; // Corrigido para usar ItemType enum
-    usageCount?: number; // Para ordenação por mais usado
+import { getProductDisplayInfo } from '@/lib/pricing/displayUtils';
+import { Produto } from '@/types/sales';
+
+interface SelectableProduct extends Produto {
+    usageCount?: number;
 }
 
 interface ProductSelectionModalProps {
-    produtos: Produto[];
-    onSelect: (produto: Produto) => void;
+    produtos: SelectableProduct[];
+    onSelect: (produto: SelectableProduct) => void;
     onCancel: () => void;
     isOpen: boolean;
 }
@@ -152,7 +149,7 @@ const ProductSelectionModal: React.FC<ProductSelectionModalProps> = ({
         }
     }, [sortedProducts.length, searchTerm]);
 
-    const handleSelect = (produto: Produto) => {
+    const handleSelect = (produto: SelectableProduct) => {
         onSelect(produto);
     };
 
@@ -185,7 +182,7 @@ const ProductSelectionModal: React.FC<ProductSelectionModalProps> = ({
         setSortOrder(orders[nextIndex]);
     };
 
-    const getProductTypeInfo = (produto: Produto) => {
+    const getProductTypeInfo = (produto: SelectableProduct) => {
         const productType = produto.productType || ItemType.PRODUCT;
         const config = ITEM_TYPE_CONFIGS[productType];
 
@@ -297,42 +294,53 @@ const ProductSelectionModal: React.FC<ProductSelectionModalProps> = ({
                                                 onMouseLeave={() => setHoveredIndex(null)}
                                                 onClick={() => handleSelect(produto)}
                                             >
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center space-x-3 flex-1">
-                                                        <span className="text-2xl">
+                                                <div className="flex items-start justify-between gap-4">
+                                                    <div className="flex items-start space-x-4 flex-1 min-w-0">
+                                                        <div className="flex-shrink-0 w-12 h-12 bg-muted/50 rounded-lg flex items-center justify-center text-3xl">
                                                             {productInfo.icon}
-                                                        </span>
-                                                        <div className="flex-1">
-                                                            <div className="font-medium">{produto.name}</div>
-                                                            {produto.description && (
-                                                                <div className="text-sm text-muted-foreground">
-                                                                    {produto.description}
-                                                                </div>
-                                                            )}
-                                                            <div className="flex items-center space-x-4 mt-1">
-                                                                <span className={`text-xs px-2 py-1 rounded-full ${productInfo.isService
-                                                                    ? 'bg-blue-100 text-blue-700'
-                                                                    : 'bg-green-100 text-green-700'
-                                                                    }`}>
-                                                                    {productInfo.label}
-                                                                </span>
-                                                                <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">
-                                                                    {produto.pricingMode === 'SIMPLE_AREA' ? 'Por m²' :
-                                                                        produto.pricingMode === 'SIMPLE_UNIT' ? 'Por unidade' : 'Dinâmico'}
-                                                                </span>
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center flex-wrap gap-2 mb-1">
+                                                                <h4 className="font-bold text-foreground truncate">{produto.name}</h4>
                                                             </div>
+                                                            
+                                                            {produto.description && (
+                                                                <p className="text-sm text-muted-foreground line-clamp-1 leading-tight">
+                                                                    {produto.description}
+                                                                </p>
+                                                            )}
                                                         </div>
                                                     </div>
-                                                    <Button
-                                                        variant={isHovered ? "default" : "outline"}
-                                                        size="sm"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleSelect(produto);
-                                                        }}
-                                                    >
-                                                        Selecionar
-                                                    </Button>
+
+                                                    <div className="flex flex-col items-end text-right min-w-[120px] gap-2">
+                                                        {(() => {
+                                                            const display = getProductDisplayInfo(produto);
+                                                            return (
+                                                                <div className="flex flex-col items-end">
+                                                                    <div className="flex flex-col items-end leading-none">
+                                                                        {display.isStarting && (
+                                                                            <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-tighter mb-0.5">A partir de</span>
+                                                                        )}
+                                                                        <span className="text-lg font-black text-primary tracking-tight">
+                                                                            {display.price}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })()}
+                                                        
+                                                        <Button
+                                                            variant={isHovered ? "default" : "outline"}
+                                                            size="sm"
+                                                            className="h-8 px-4 mt-auto font-semibold"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleSelect(produto);
+                                                            }}
+                                                        >
+                                                            Selecionar
+                                                        </Button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         );

@@ -259,7 +259,16 @@ export class QueryOptimizer {
         city: true,
         state: true,
         zipCode: true,
-        createdAt: true
+        createdAt: true,
+        _count: {
+          select: {
+            orders: {
+              where: {
+                status: { not: 'CANCELLED' }
+              }
+            }
+          }
+        }
       },
       orderBy: { name: 'asc' },
       take: limit
@@ -290,7 +299,11 @@ export class QueryOptimizer {
         createdAt: true,
         _count: {
           select: {
-            orders: true
+            orders: {
+              where: {
+                status: { not: 'CANCELLED' }
+              }
+            }
           }
         },
         user: {

@@ -156,7 +156,9 @@ export class ProfileService {
       include: {
         _count: {
           select: {
-            orders: true
+            orders: {
+              where: { status: { not: 'CANCELLED' } }
+            }
           }
         }
       },

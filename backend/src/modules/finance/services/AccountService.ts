@@ -2,6 +2,7 @@ import { AccountType } from '@prisma/client';
 import { NotFoundError } from '../../../shared/infrastructure/errors/AppError';
 
 interface CreateAccountInput {
+  organizationId: string;
   name: string;
   type: AccountType;
   balance: number;
@@ -16,6 +17,7 @@ export class AccountService {
   async create(data: CreateAccountInput) {
     const account = await this.prisma.account.create({
       data: {
+        organizationId: data.organizationId,
         name: data.name,
         type: data.type,
         balance: data.balance,
@@ -28,9 +30,10 @@ export class AccountService {
     return account;
   }
 
-  async list() {
+  async list(organizationId: string) {
     return this.prisma.account.findMany({
       where: {
+        organizationId,
         active: true
       },
       include: {
@@ -46,9 +49,9 @@ export class AccountService {
     });
   }
 
-  async findById(id: string) {
-    const account = await this.prisma.account.findUnique({
-      where: { id },
+  async findById(id: string, organizationId: string) {
+    const account = await this.prisma.account.findFirst({
+      where: { id, organizationId },
       include: {
         transactions: {
           orderBy: {
@@ -75,17 +78,16 @@ export class AccountService {
     return account;
   }
 
-  async update(id: string, data: Partial<CreateAccountInput>) {
-    const account = await this.prisma.account.update({
-      where: { id },
+  async update(id: string, organizationId: string, data: Partial<CreateAccountInput>) {
+    const account = await this.prisma.account.updateMany({
+      where: { id, organizationId },
       data
     });
-
-    return account;
+    return this.findById(id, organizationId);
   }
 
-  async updateBalance(id: string, amount: number, operation: 'ADD' | 'SUBTRACT') {
-    const account = await this.findById(id);
+  async updateBalance(id: string, organizationId: string, amount: number, operation: 'ADD' | 'SUBTRACT') {
+    const account = await this.findById(id, organizationId);
     
     let newBalance = Number(account.balance);
     
@@ -95,19 +97,20 @@ export class AccountService {
       newBalance -= amount;
     }
 
-    const updatedAccount = await this.prisma.account.update({
-      where: { id },
+    const updatedAccount = await this.prisma.account.updateMany({
+      where: { id, organizationId },
       data: {
         balance: newBalance
       }
     });
 
-    return updatedAccount;
+    return this.findById(id, organizationId);
   }
 
-  async getAccountSummary() {
+  async getAccountSummary(organizationId: string) {
     const accounts = await this.prisma.account.findMany({
       where: {
+        organizationId,
         active: true
       },
       select: {

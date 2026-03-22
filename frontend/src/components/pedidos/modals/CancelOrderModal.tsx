@@ -76,7 +76,7 @@ const CancelOrderModal: React.FC<CancelOrderModalProps> = ({
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Selecione a ação" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[70]">
                 <SelectItem value="NONE">Nenhuma (Apenas cancelar)</SelectItem>
                 <SelectItem value="REFUND">Solicitar Estorno/Devolução</SelectItem>
                 <SelectItem value="CREDIT">Converter em Crédito para o Cliente</SelectItem>

@@ -2,6 +2,7 @@ import { CategoryType } from '@prisma/client';
 import { NotFoundError } from '../../../shared/infrastructure/errors/AppError';
 
 interface CreateCategoryInput {
+  organizationId: string;
   name: string;
   type: CategoryType;
   color?: string;
@@ -14,6 +15,7 @@ export class CategoryService {
   async create(data: CreateCategoryInput) {
     const category = await this.prisma.category.create({
       data: {
+        organizationId: data.organizationId,
         name: data.name,
         type: data.type,
         color: data.color,
@@ -32,8 +34,9 @@ export class CategoryService {
     return category;
   }
 
-  async list(type?: CategoryType) {
+  async list(organizationId: string, type?: CategoryType) {
     const where: any = {
+      organizationId,
       active: true
     };
 
@@ -70,9 +73,9 @@ export class CategoryService {
     });
   }
 
-  async findById(id: string) {
-    const category = await this.prisma.category.findUnique({
-      where: { id },
+  async findById(id: string, organizationId: string) {
+    const category = await this.prisma.category.findFirst({
+      where: { id, organizationId },
       include: {
         parent: true,
         children: true,
@@ -92,27 +95,18 @@ export class CategoryService {
     return category;
   }
 
-  async update(id: string, data: Partial<CreateCategoryInput>) {
-    const category = await this.prisma.category.update({
-      where: { id },
-      data,
-      include: {
-        parent: {
-          select: {
-            id: true,
-            name: true
-          }
-        }
-      }
+  async update(id: string, organizationId: string, data: Partial<CreateCategoryInput>) {
+    const category = await this.prisma.category.updateMany({
+      where: { id, organizationId },
+      data
     });
-
-    return category;
+    return this.findById(id, organizationId);
   }
 
-  async delete(id: string) {
+  async delete(id: string, organizationId: string) {
     // Verificar se tem transações associadas
     const transactionCount = await this.prisma.transaction.count({
-      where: { categoryId: id }
+      where: { categoryId: id, organizationId }
     });
 
     if (transactionCount > 0) {
@@ -121,23 +115,24 @@ export class CategoryService {
 
     // Verificar se tem subcategorias
     const childrenCount = await this.prisma.category.count({
-      where: { parentId: id }
+      where: { parentId: id, organizationId }
     });
 
     if (childrenCount > 0) {
       throw new Error('Categoria não pode ser removida pois possui subcategorias');
     }
 
-    await this.prisma.category.update({
-      where: { id },
+    await this.prisma.category.updateMany({
+      where: { id, organizationId },
       data: { active: false }
     });
 
     return { message: 'Categoria removida com sucesso' };
   }
 
-  async getCategoryStats(type?: CategoryType, startDate?: Date, endDate?: Date) {
+  async getCategoryStats(organizationId: string, type?: CategoryType, startDate?: Date, endDate?: Date) {
     const where: any = {
+      organizationId,
       active: true
     };
 
@@ -187,7 +182,7 @@ export class CategoryService {
     return stats.sort((a: any, b: any) => b.totalAmount - a.totalAmount);
   }
 
-  async createDefaultCategories() {
+  async createDefaultCategories(organizationId: string) {
     const defaultCategories = [
       // Receitas
       { name: 'Vendas', type: 'INCOME', color: '#10B981' },
@@ -209,13 +204,17 @@ export class CategoryService {
     for (const categoryData of defaultCategories) {
       const existing = await this.prisma.category.findFirst({
         where: {
+          organizationId,
           name: categoryData.name,
           type: categoryData.type
         }
       });
 
       if (!existing) {
-        const category = await this.create(categoryData as CreateCategoryInput);
+        const category = await this.create({
+          ...categoryData,
+          organizationId
+        } as CreateCategoryInput);
         createdCategories.push(category);
       }
     }

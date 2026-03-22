@@ -96,7 +96,14 @@ export async function profilesRoutes(fastify: FastifyInstance) {
           isCustomer: true,
           isSupplier: true,
           isEmployee: true,
-          createdAt: true
+          createdAt: true,
+          _count: {
+            select: {
+              orders: {
+                where: { status: { not: 'CANCELLED' } }
+              }
+            }
+          }
         },
         take: query.limit || 50,
         orderBy: { name: 'asc' }

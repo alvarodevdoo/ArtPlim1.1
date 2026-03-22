@@ -86,7 +86,7 @@ const CriarPedido: React.FC = () => {
 
   const loadProdutos = async () => {
     try {
-      const response = await api.get('/api/catalog/products?include=standardSizes');
+      const response = await api.get('/api/catalog/products?include=standardSizes,pricingRule');
       const produtosData = response.data.data || [];
 
       // Converter productType string para ItemType enum
