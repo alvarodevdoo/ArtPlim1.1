@@ -15,6 +15,7 @@ const Orcamentos: React.FC = () => {
   const [orcamentos, setOrcamentos] = useState<any[]>([]);
   const [selectedBudget, setSelectedBudget] = useState<any | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     loadOrcamentos();
@@ -32,6 +33,23 @@ const Orcamentos: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const filteredOrcamentos = orcamentos.filter(orc => {
+    const searchLower = searchTerm.toLowerCase().trim();
+    if (!searchLower) return true;
+    
+    const budgetNumberMatch = orc.budgetNumber?.toLowerCase().includes(searchLower);
+    const customerMatch = orc.customer?.name?.toLowerCase().includes(searchLower);
+    
+    // Busca por telefone (original ou apenas números)
+    const rawPhone = orc.customer?.phone || '';
+    const cleanPhone = rawPhone.replace(/\D/g, '');
+    const cleanSearch = searchLower.replace(/\D/g, '');
+    
+    const phoneMatch = rawPhone.toLowerCase().includes(searchLower) || (cleanSearch !== '' && cleanPhone.includes(cleanSearch));
+    
+    return budgetNumberMatch || customerMatch || phoneMatch;
+  });
 
   const abrirDetalhes = (orcamento: any) => {
     setSelectedBudget(orcamento);
@@ -107,31 +125,48 @@ const Orcamentos: React.FC = () => {
       {/* Recent List */}
       <Card>
         <CardHeader>
-          <CardTitle>Histórico de Orçamentos</CardTitle>
-          <CardDescription>
-            Últimos orçamentos gerados
-          </CardDescription>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <CardTitle>Histórico de Orçamentos</CardTitle>
+              <CardDescription>
+                Últimos orçamentos gerados
+              </CardDescription>
+            </div>
+            <div className="relative w-full md:w-96">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Pesquisar por cliente, número ou telefone..."
+                className="w-full pl-10 pr-4 py-2 bg-muted rounded-md border border-input focus:ring-1 focus:ring-primary outline-none text-sm"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             {loading ? (
               <div className="text-center py-8">Carregando...</div>
-            ) : orcamentos.length === 0 ? (
+            ) : filteredOrcamentos.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
-                <p>Nenhum orçamento encontrado.</p>
-                <Button variant="link" onClick={() => navigate('/orcamentos/criar')}>
-                  Criar meu primeiro orçamento
+                <p>Nenhum orçamento encontrado para "{searchTerm}".</p>
+                <Button variant="link" onClick={() => setSearchTerm('')}>
+                  Limpar busca
                 </Button>
               </div>
             ) : (
-              orcamentos.map((orcamento) => (
+              filteredOrcamentos.map((orcamento) => (
                 <div key={orcamento.id} className="border border-border rounded-lg p-4 hover:bg-gray-50 transition-colors">
                   <div className="flex justify-between items-start mb-3">
                     <div>
                       <h4 className="font-semibold text-lg hover:text-primary cursor-pointer transition-colors" onClick={() => abrirDetalhes(orcamento)}>
-                        {orcamento.budgetNumber || 'SEM NÚMERO'}
+                        {orcamento.customer?.name || 'Cliente Removido'}
                       </h4>
-                      <p className="text-sm text-muted-foreground font-medium">Cliente: {orcamento.customer?.name || 'Cliente Removido'}</p>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground font-medium">
+                        <span className="bg-gray-100 px-2 py-0.5 rounded text-xs">#{orcamento.budgetNumber || 'SEM NÚMERO'}</span>
+                        {orcamento.customer?.phone && <span>• {orcamento.customer.phone}</span>}
+                      </div>
                       <p className="text-xs text-muted-foreground mt-1">
                         {orcamento.items?.length || 0} itens • {orcamento.items?.[0]?.product?.name || 'Item'} ...
                       </p>

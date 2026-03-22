@@ -131,6 +131,7 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
         const formulaToExtract = activeTab === 'venda' ? formData.formulaString : (formData.costFormulaString || '');
         const extracted = extractVariables(formulaToExtract);
         const currentVars = [...formData.variables];
+        const newSimValues = { ...simulationValues };
 
         let newAdded = 0;
         extracted.forEach(varId => {
@@ -139,21 +140,23 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                     id: varId,
                     name: varId.charAt(0).toUpperCase() + varId.slice(1).replace(/_/g, ' '),
                     type: 'INPUT',
-                    allowedUnits: ['mm', 'cm', 'm'],
+                    allowedUnits: [], // Inicia vazio para Financeiro (NONE)
                     role: 'NONE',
                     visible: true
                 });
+                newSimValues[varId] = 0;
                 newAdded++;
             }
         });
 
         if (newAdded > 0) {
             setFormData(prev => ({ ...prev, variables: currentVars }));
+            setSimulationValues(newSimValues);
             toast.success(`${newAdded} variáveis extraídas da fórmula com sucesso!`);
         } else {
             toast.info('Nenhuma variável nova encontrada na fórmula.');
         }
-    }, [activeTab, formData.formulaString, formData.costFormulaString, formData.variables]);
+    }, [activeTab, formData.formulaString, formData.costFormulaString, formData.variables, simulationValues]);
 
     const handleVariableChange = useCallback((index: number, field: keyof FormulaVariable, value: any) => {
         setFormData(prev => {

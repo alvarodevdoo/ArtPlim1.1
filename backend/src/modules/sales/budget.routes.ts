@@ -40,7 +40,7 @@ export async function budgetRoutes(fastify: FastifyInstance) {
         const budgets = await prisma.budget.findMany({
             where: { organizationId: request.user!.organizationId },
             include: {
-                customer: { select: { id: true, name: true } },
+                customer: { select: { id: true, name: true, phone: true } },
                 items: { include: { product: { include: { pricingRule: { select: { id: true, name: true, formula: true, config: true } } } } } }
             },
             orderBy: { createdAt: 'desc' },
