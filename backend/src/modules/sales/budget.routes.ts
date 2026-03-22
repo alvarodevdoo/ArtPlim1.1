@@ -8,14 +8,15 @@ const createBudgetSchema = z.object({
     items: z.array(z.object({
         productId: z.string().min(1),
         itemType: z.string().optional(),
-        width: z.number().min(0).optional(),
-        height: z.number().min(0).optional(),
+        width: z.coerce.number().min(0).optional(),
+        height: z.coerce.number().min(0).optional(),
         quantity: z.number().positive(),
         unitPrice: z.number().min(0),
         totalPrice: z.number().min(0),
         costPrice: z.number().min(0).optional(),
         calculatedPrice: z.number().min(0).optional(),
         attributes: z.any().optional(),
+        pricingRuleId: z.string().optional(),
         notes: z.string().optional()
     })),
     notes: z.string().optional(),
@@ -40,7 +41,7 @@ export async function budgetRoutes(fastify: FastifyInstance) {
             where: { organizationId: request.user!.organizationId },
             include: {
                 customer: { select: { id: true, name: true } },
-                items: { include: { product: true } }
+                items: { include: { product: { include: { pricingRule: { select: { id: true, name: true, formula: true, config: true } } } } } }
             },
             orderBy: { createdAt: 'desc' },
             skip: offset,
@@ -74,11 +75,25 @@ export async function budgetRoutes(fastify: FastifyInstance) {
             where: { id, organizationId: request.user!.organizationId },
             include: {
                 customer: true,
-                items: { include: { product: true } }
+                items: { include: { product: { include: { pricingRule: { select: { id: true, name: true, formula: true, config: true } } } } } }
             }
         });
 
         if (!budget) return reply.code(404).send({ success: false, message: 'Não encontrado' });
+        
+        // Substituir as regras pela histórica caso exista
+        for (const item of budget.items) {
+            if (item.pricingRuleId && item.product) {
+                const fixedRule = await prisma.pricingRule.findUnique({
+                    where: { id: item.pricingRuleId },
+                    select: { id: true, name: true, formula: true, config: true }
+                });
+                if (fixedRule) {
+                    (item.product as any).pricingRule = fixedRule;
+                }
+            }
+        }
+
         return reply.send({ success: true, data: budget });
     });
 
@@ -117,6 +132,7 @@ export async function budgetRoutes(fastify: FastifyInstance) {
                         costPrice: item.costPrice || 0,
                         calculatedPrice: item.calculatedPrice || 0,
                         attributes: item.attributes || {},
+                        pricingRuleId: item.pricingRuleId,
                         notes: item.notes
                     }))
                 }
@@ -134,7 +150,10 @@ export async function budgetRoutes(fastify: FastifyInstance) {
         const body = updateBudgetSchema.parse(request.body);
         const prisma = getTenantClient(request.user!.organizationId);
 
-        const existing = await prisma.budget.findFirst({
+        console.log('[DEBUG] PUT /budgets body:', JSON.stringify(body, null, 2));
+
+        try {
+            const existing = await prisma.budget.findFirst({
             where: { id, organizationId: request.user!.organizationId }
         });
         if (!existing) return reply.code(404).send({ success: false, message: 'Não encontrado' });
@@ -142,7 +161,17 @@ export async function budgetRoutes(fastify: FastifyInstance) {
         const data: any = {};
         if (body.customerId !== undefined) data.customerId = body.customerId;
         if (body.notes !== undefined) data.notes = body.notes;
-        if (body.validUntil !== undefined) data.validUntil = body.validUntil ? new Date(body.validUntil) : null;
+        if (body.validUntil !== undefined) {
+            if (body.validUntil) {
+                const d = new Date(body.validUntil);
+                if (isNaN(d.getTime())) {
+                    return reply.code(400).send({ success: false, message: 'Data de validade inválida' });
+                }
+                data.validUntil = d;
+            } else {
+                data.validUntil = null;
+            }
+        }
 
         if (body.items) {
             const subtotal = body.items.reduce((sum, item) => sum + item.totalPrice, 0);
@@ -161,6 +190,7 @@ export async function budgetRoutes(fastify: FastifyInstance) {
                     costPrice: item.costPrice || 0,
                     calculatedPrice: item.calculatedPrice || 0,
                     attributes: item.attributes || {},
+                    pricingRuleId: item.pricingRuleId,
                     notes: item.notes
                 }))
             };
@@ -172,7 +202,11 @@ export async function budgetRoutes(fastify: FastifyInstance) {
             include: { items: true }
         });
         return reply.send({ success: true, data: updated });
-    });
+    } catch (error) {
+        console.error('[ERROR] PUT /budgets:', error);
+        return reply.code(500).send({ success: false, message: 'Internal Server Error', error: String(error) });
+    }
+});
 
     // Status
     fastify.patch('/:id/status', {

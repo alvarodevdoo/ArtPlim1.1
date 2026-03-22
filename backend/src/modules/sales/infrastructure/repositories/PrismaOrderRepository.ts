@@ -56,25 +56,26 @@ export class PrismaOrderRepository implements OrderRepository {
             items: {
               create: data.items.map((item: any) => ({
                 productId: item.productId,
-                width: item.width,
-                height: item.height,
-                quantity: item.quantity,
-                costPrice: item.costPrice,
-                calculatedPrice: item.calculatedPrice,
-                unitPrice: item.unitPrice,
-                totalPrice: item.totalPrice,
-                notes: item.notes,
-                area: item.area,
-                paperSize: item.paperSize,
-                paperType: item.paperType,
-                printColors: item.printColors,
-                finishing: item.finishing,
-                machineTime: item.machineTime,
-                setupTime: item.setupTime,
-                complexity: item.complexity,
-                customSizeName: item.customSizeName,
-                isCustomSize: item.isCustomSize,
-                attributes: item.attributes
+                  width: item.width,
+                  height: item.height,
+                  quantity: item.quantity,
+                  costPrice: item.costPrice,
+                  calculatedPrice: item.calculatedPrice,
+                  unitPrice: item.unitPrice,
+                  totalPrice: item.totalPrice,
+                  notes: item.notes,
+                  area: item.area,
+                  paperSize: item.paperSize,
+                  paperType: item.paperType,
+                  printColors: item.printColors,
+                  finishing: item.finishing,
+                  machineTime: item.machineTime,
+                  setupTime: item.setupTime,
+                  complexity: item.complexity,
+                  customSizeName: item.customSizeName,
+                  isCustomSize: item.isCustomSize,
+                  attributes: item.attributes,
+                pricingRuleId: item.pricingRuleId
               }))
             }
           },
@@ -120,27 +121,28 @@ export class PrismaOrderRepository implements OrderRepository {
           items: {
             create: data.items.map((item: any) => ({
               productId: item.productId,
-              width: item.width,
-              height: item.height,
-              quantity: item.quantity,
-              costPrice: item.costPrice,
-              calculatedPrice: item.calculatedPrice,
-              unitPrice: item.unitPrice,
-              totalPrice: item.totalPrice,
-              notes: item.notes,
-              area: item.area,
-              paperSize: item.paperSize,
-              paperType: item.paperType,
-              printColors: item.printColors,
-              finishing: item.finishing,
-              machineTime: item.machineTime,
-              setupTime: item.setupTime,
-              complexity: item.complexity,
-              customSizeName: item.customSizeName,
-              isCustomSize: item.isCustomSize,
-              attributes: item.attributes
-            }))
-          }
+                width: item.width,
+                height: item.height,
+                quantity: item.quantity,
+                costPrice: item.costPrice,
+                calculatedPrice: item.calculatedPrice,
+                unitPrice: item.unitPrice,
+                totalPrice: item.totalPrice,
+                notes: item.notes,
+                area: item.area,
+                paperSize: item.paperSize,
+                paperType: item.paperType,
+                printColors: item.printColors,
+                finishing: item.finishing,
+                machineTime: item.machineTime,
+                setupTime: item.setupTime,
+                complexity: item.complexity,
+                customSizeName: item.customSizeName,
+                isCustomSize: item.isCustomSize,
+                attributes: item.attributes,
+                pricingRuleId: item.pricingRuleId
+              }))
+            }
         },
         include: {
           items: true
@@ -413,7 +415,8 @@ export class PrismaOrderRepository implements OrderRepository {
       complexity: item.complexity,
       customSizeName: item.customSizeName,
       isCustomSize: item.isCustomSize,
-      attributes: item.attributes ? (item.attributes as any) : undefined
+      attributes: item.attributes ? (item.attributes as any) : undefined,
+      pricingRuleId: item.pricingRuleId
     }));
 
     return new Order({

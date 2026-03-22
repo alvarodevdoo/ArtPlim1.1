@@ -50,6 +50,7 @@ export interface PricingFormulaRule {
     costFormulaString?: string;
     variables: FormulaVariable[];
     active: boolean;
+    usageCount?: number;
 }
 
 interface Props {

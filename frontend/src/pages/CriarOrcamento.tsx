@@ -6,7 +6,9 @@ import {
     ArrowLeft,
     FileText,
     Calculator,
-    Send
+    Send,
+    AlertCircle,
+    RefreshCw
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import api from '@/lib/api';
@@ -16,6 +18,7 @@ import { ItemType } from '@/types/item-types';
 import { Cliente, Produto, ItemPedido } from '@/types/sales';
 import { CustomerSelection } from '@/components/sales/CustomerSelection';
 import { OrderItemsList } from '@/components/sales/OrderItemsList';
+import { calculatePricingResult } from '@/lib/pricing/formulaUtils';
 
 const CriarOrcamento: React.FC = () => {
     const navigate = useNavigate();
@@ -38,20 +41,49 @@ const CriarOrcamento: React.FC = () => {
     const [editingItem, setEditingItem] = useState<ItemPedido | null>(null);
     const [showEditModal, setShowEditModal] = useState(false);
     const [showAddModal, setShowAddModal] = useState(false);
+    const [settings, setSettings] = useState<any>(null);
 
     useEffect(() => {
         loadClientes();
         loadProdutos();
+        loadSettings();
 
         if (isEditing && editId) {
             loadOrcamento(editId);
-        } else {
-            // Set default validity to 15 days from now for new budgets
-            const date = new Date();
-            date.setDate(date.getDate() + 15);
-            setValidityDate(date.toISOString().split('T')[0]);
         }
     }, [isEditing, editId]);
+
+    const loadSettings = async () => {
+        try {
+            const response = await api.get('/api/organization/settings');
+            const data = response.data.data;
+            setSettings(data);
+            
+            // Se for novo orçamento, aplicar validade padrão das configurações
+            if (!isEditing && data?.validadeOrcamento) {
+                const date = new Date();
+                date.setDate(date.getDate() + data.validadeOrcamento);
+                
+                const formattedDate = date.getFullYear() + '-' + 
+                    String(date.getMonth() + 1).padStart(2, '0') + '-' + 
+                    String(date.getDate()).padStart(2, '0');
+                
+                setValidityDate(formattedDate);
+            } else if (!isEditing) {
+                // Fallback padrão se não houver configuração
+                const date = new Date();
+                date.setDate(date.getDate() + 15);
+                
+                const formattedDate = date.getFullYear() + '-' + 
+                    String(date.getMonth() + 1).padStart(2, '0') + '-' + 
+                    String(date.getDate()).padStart(2, '0');
+                
+                setValidityDate(formattedDate);
+            }
+        } catch (error) {
+            console.error('Erro ao carregar configurações:', error);
+        }
+    };
 
     const loadOrcamento = async (id: string) => {
         setLoading(true);
@@ -85,6 +117,7 @@ const CriarOrcamento: React.FC = () => {
                     totalPrice: Number(item.totalPrice),
                     notes: item.notes,
                     attributes: item.attributes || {},
+                    pricingRuleId: item.pricingRuleId,
                     customSizeName: item.customSizeName,
                     isCustomSize: item.isCustomSize
                 }));
@@ -172,6 +205,92 @@ const CriarOrcamento: React.FC = () => {
         setShowEditModal(true);
     };
 
+    const isExpiredFlag = validityDate && new Date(validityDate + 'T23:59:59').getTime() < new Date().setHours(0,0,0,0);
+
+    const handleRecalculateAll = async () => {
+        setLoading(true);
+        try {
+            const updatedItems = await Promise.all(itens.map(async (item) => {
+                if (!item.productId) return item;
+                
+                const prodRes = await api.get(`/api/catalog/products/${item.productId}`);
+                const product = prodRes.data.data;
+                if (!product || !product.pricingRule) return item;
+
+                const pricingRule = product.pricingRule;
+                let formulaStr = '';
+                let variables = [];
+
+                try {
+                    const formulaData = typeof pricingRule.formula === 'string' 
+                        ? JSON.parse(pricingRule.formula) 
+                        : (pricingRule.formula || {});
+                    
+                    formulaStr = formulaData.formulaString || formulaData.current || pricingRule.formula || '';
+                    variables = formulaData.variables || [];
+                    
+                    if (variables.length === 0) {
+                        const config = typeof pricingRule.config === 'string' 
+                            ? JSON.parse(pricingRule.config) 
+                            : (pricingRule.config || {});
+                        variables = config.variables || [];
+                    }
+                } catch (e) {
+                    formulaStr = typeof pricingRule.formula === 'string' ? pricingRule.formula : '';
+                }
+
+                const inputs: Record<string, any> = {};
+                if (item.width) {
+                    inputs['largura'] = inputs['width'] = Number(item.width);
+                }
+                if (item.height) {
+                    inputs['altura'] = inputs['height'] = Number(item.height);
+                }
+
+                if (item.attributes?.dynamicVariables) {
+                    Object.entries(item.attributes.dynamicVariables).forEach(([id, data]: [string, any]) => {
+                        const idLow = id.toLowerCase();
+                        inputs[idLow] = data.value;
+                        inputs[`${idLow}_unit`] = data.unit;
+                        inputs[id] = data.value;
+                        inputs[`${id}_unit`] = data.unit;
+                    });
+                }
+                inputs['quantidade'] = item.quantity;
+                inputs['custo_materiais'] = item.attributes?.CUSTO_MATERIAIS || 0;
+
+                const result = calculatePricingResult(formulaStr, variables, inputs);
+
+                return {
+                    ...item,
+                    unitPrice: result.value,
+                    totalPrice: result.value * item.quantity,
+                    pricingRuleId: pricingRule.id
+                };
+            }));
+
+            setItens(updatedItems);
+            
+            // Renovar validade baseado nas configurações
+            const daysToExtend = settings?.validadeOrcamento || 7;
+            const newDate = new Date();
+            newDate.setDate(newDate.getDate() + daysToExtend);
+            
+            const formattedDate = newDate.getFullYear() + '-' + 
+                String(newDate.getMonth() + 1).padStart(2, '0') + '-' + 
+                String(newDate.getDate()).padStart(2, '0');
+            
+            setValidityDate(formattedDate);
+
+            toast.success('Preços atualizados com base nas fórmulas atuais!');
+        } catch (error) {
+            console.error('Erro ao recalcular:', error);
+            toast.error('Erro ao atualizar preços');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const salvarOrcamento = async () => {
         if (!clienteSelecionado) {
             toast.error('Selecione um cliente para salvar o orçamento');
@@ -190,8 +309,8 @@ const CriarOrcamento: React.FC = () => {
                 items: itens.map(item => ({
                     productId: item.productId,
                     itemType: item.itemType,
-                    width: item.width,
-                    height: item.height,
+                    width: (item.width != null) ? Number(item.width) : undefined,
+                    height: (item.height != null) ? Number(item.height) : undefined,
                     quantity: item.quantity,
                     unitPrice: item.unitPrice,
                     totalPrice: item.totalPrice,
@@ -199,6 +318,7 @@ const CriarOrcamento: React.FC = () => {
                     calculatedPrice: 0,
                     notes: item.notes,
                     attributes: item.attributes || {},
+                    pricingRuleId: item.pricingRuleId,
                     customSizeName: item.customSizeName,
                     isCustomSize: item.isCustomSize
                 })),
@@ -244,9 +364,6 @@ const CriarOrcamento: React.FC = () => {
                                 Simulação
                             </span>
                         </h1>
-                        <p className="text-muted-foreground">
-                            Crie orçamentos e simulações de preço para seus clientes
-                        </p>
                     </div>
                 </div>
                 <div className="flex space-x-2">
@@ -264,6 +381,25 @@ const CriarOrcamento: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Formulário Principal */}
                 <div className="lg:col-span-2 space-y-6">
+                    {isExpiredFlag && isEditing && (
+                        <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl flex items-start space-x-3 text-orange-800 animate-in slide-in-from-top-4 duration-300">
+                            <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1">
+                                <p className="font-bold">Atenção: Este orçamento está vencido!</p>
+                                <p className="text-sm mt-1">Os preços originais podem estar desatualizados devido a mudanças nas fórmulas ou tabelas de preços.</p>
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    onClick={handleRecalculateAll}
+                                    disabled={loading}
+                                    className="mt-3 bg-white border-orange-300 text-orange-700 hover:bg-orange-100 font-bold"
+                                >
+                                    <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                                    Atualizar Preços do Orçamento
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                     {/* Seleção de Cliente */}
                     <CustomerSelection
                         selectedCustomer={clienteSelecionado}

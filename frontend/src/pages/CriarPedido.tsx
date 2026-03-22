@@ -162,6 +162,7 @@ const CriarPedido: React.FC = () => {
         totalPrice: Number(item.totalPrice),
         notes: item.notes,
         attributes: item.attributes || {},
+        pricingRuleId: item.pricingRuleId,
 
         // Legacy fields for backward compatibility
         area: item.area,
@@ -245,6 +246,7 @@ const CriarPedido: React.FC = () => {
         totalPrice: Number(item.totalPrice),
         notes: item.notes,
         attributes: item.attributes || {},
+        pricingRuleId: item.pricingRuleId,
         customSizeName: item.customSizeName,
         isCustomSize: item.isCustomSize || false
       }));
@@ -461,6 +463,7 @@ const CriarPedido: React.FC = () => {
           unitPrice: Number(item.unitPrice),
           totalPrice: Number(item.totalPrice), // Campo obrigatório que estava faltando
           notes: item.notes,
+          pricingRuleId: item.pricingRuleId,
           attributes: item.attributes || {},
 
           // Legacy fields for backward compatibility
@@ -494,7 +497,7 @@ const CriarPedido: React.FC = () => {
           justification: p.justification || undefined
         }))
       };
-
+      
       if (isEditing && editId) {
         // Atualizar pedido existente
         await api.put(`/api/sales/orders/${editId}`, pedidoData);

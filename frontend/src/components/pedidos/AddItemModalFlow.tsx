@@ -25,6 +25,7 @@ interface ItemPedido {
     unitPrice: number;
     totalPrice: number;
     notes?: string;
+    pricingRuleId?: string;
     attributes?: Record<string, any>;
 }
 
@@ -64,8 +65,9 @@ const AddItemModalFlow: React.FC<AddItemModalFlowProps> = ({
         if (isOpen) {
             if (editingItem) {
                 if (editingItem.product) {
-                    // Modo edição: ir direto para configuração com produto já selecionado
-                    setSelectedProduct(editingItem.product);
+                    // Modo edição: usar o produto do ITEM (que vem do backend com pricingRule já resolvido)
+                    // NÃO sobrescrever com o produto da lista de catálogo (que não tem fórmula)
+                    setSelectedProduct(editingItem.product as any);
                     setCurrentStep('configuration');
                 } else if (editingItem.productId) {
                     // Item sem produto - tentar encontrar na lista
@@ -87,19 +89,11 @@ const AddItemModalFlow: React.FC<AddItemModalFlowProps> = ({
                 setSelectedProduct(null);
             }
         }
-    }, [editingItem, isOpen, produtosComUsage]);
+    }, [editingItem, isOpen]);
 
-    // Verificar se o produto do item em edição ainda existe na lista
-    React.useEffect(() => {
-        if (editingItem && editingItem.product && currentStep === 'configuration') {
-            const produtoExiste = produtosComUsage.find(p => p.id === editingItem.product?.id);
-            if (!produtoExiste) {
-                // Se o produto não existe mais, voltar para seleção
-                setCurrentStep('selection');
-                setSelectedProduct(null);
-            }
-        }
-    }, [editingItem, produtosComUsage, currentStep]);
+    // NÃO verificar mais se o produto existe em produtosComUsage durante edição
+    // pois o produto do item pode ter dados extras (pricingRule) que a lista genérica não tem
+    // Removed the second useEffect that was overwriting the selectedProduct
 
     const handleProductSelect = (produto: Produto) => {
         setSelectedProduct(produto);

@@ -732,6 +732,19 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     return reply.send({ success: true, data: rules });
   });
 
+  // Buscar regra por ID
+  fastify.get('/pricing-rules/:id', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const prisma = getTenantClient(request.user!.organizationId);
+    const rule = await (prisma as any).pricingRule.findFirst({
+      where: { id, organizationId: request.user!.organizationId }
+    });
+    if (!rule) return reply.code(404).send({ success: false, message: 'Regra não encontrada' });
+    return reply.send({ success: true, data: rule });
+  });
+
   // Criar regra
   fastify.post('/pricing-rules', {
     preHandler: [fastify.authenticate]
@@ -768,6 +781,17 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const updateData: any = { ...body };
     const rule = await service.update(id, updateData);
     return reply.send({ success: true, data: rule });
+  });
+
+  // Histórico de versões da regra
+  fastify.get('/pricing-rules/:id/history', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new PricingRuleService(prisma);
+    const history = await service.getHistory(id);
+    return reply.send({ success: true, data: history });
   });
 
   // Deletar regra

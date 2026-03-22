@@ -1,0 +1,5 @@
+{
+  "id": "9164f253-fc1d-4398-b279-2107aac29aa9",
+  "budgetNumber": "ORC-0001",
+  "validUntil": "2026-04-04T00:00:00.000Z"
+}

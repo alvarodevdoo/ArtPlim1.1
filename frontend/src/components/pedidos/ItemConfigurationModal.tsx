@@ -27,6 +27,7 @@ interface ItemPedido {
     unitPrice: number;
     totalPrice: number;
     notes?: string;
+    pricingRuleId?: string;
     attributes?: Record<string, any>;
 }
 

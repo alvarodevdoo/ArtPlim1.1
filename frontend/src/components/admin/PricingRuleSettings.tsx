@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
-import { Edit2, Trash2, Plus, Download, Upload } from 'lucide-react';
+import { Edit2, Trash2, Plus, Download, Upload, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import PricingRuleEditorModal, { PricingFormulaRule } from './pricing/PricingRuleEditorModal';
+import PricingRuleHistoryModal from './pricing/PricingRuleHistoryModal';
 
 import api from '@/lib/api';
 
@@ -13,6 +14,7 @@ const PricingRuleSettings: React.FC = () => {
     // Modal State
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [editingRule, setEditingRule] = useState<PricingFormulaRule | null>(null);
+    const [historyRuleId, setHistoryRuleId] = useState<string | null>(null);
 
     const loadRules = async () => {
         setLoading(true);
@@ -38,11 +40,12 @@ const PricingRuleSettings: React.FC = () => {
                     costFormulaString: formulaData?.costFormulaString || '',
                     variables: (formulaData?.variables || r.variables || []).map((v: any) => ({
                         ...v,
-                        baseUnit: v.baseUnit || '',
+                        defaultUnit: v.defaultUnit || v.baseUnit || '',
                         allowedUnits: v.allowedUnits || [],
                         role: v.role || 'NONE'
                     })),
-                    active: r.active
+                    active: r.active,
+                    usageCount: r._count?.orderItems || 0
                 };
             });
             
@@ -211,13 +214,16 @@ const PricingRuleSettings: React.FC = () => {
                                     {rule.variables.map(v => (
                                         <div key={v.id} className={`text-xs px-2 py-1 rounded flex items-center gap-1 border ${v.type === 'INPUT' ? 'bg-sky-50 border-sky-100 text-sky-700' : 'bg-emerald-50 border-emerald-100 text-emerald-700'}`}>
                                             <span className="font-semibold">{v.name}</span>
-                                            <span className="opacity-60">({v.baseUnit || 'un'})</span>
+                                            <span className="opacity-60">({v.defaultUnit || 'un'})</span>
                                         </div>
                                     ))}
                                 </div>
                             </div>
 
                             <div className="flex items-center gap-2 self-end md:self-center">
+                                <Button size="sm" variant="outline" className="text-indigo-600 hover:bg-indigo-50 border-indigo-100" onClick={() => setHistoryRuleId(rule.id!)} title="Ver Histórico de Versões">
+                                    <Clock className="w-4 h-4" />
+                                </Button>
                                 <Button size="sm" variant="outline" className="text-slate-600" onClick={() => handleEdit(rule)}>
                                     <Edit2 className="w-4 h-4 mr-2" /> Editar
                                 </Button>
@@ -236,6 +242,14 @@ const PricingRuleSettings: React.FC = () => {
                     rule={editingRule}
                     onSave={handleSaveRule}
                     onClose={() => setIsEditorOpen(false)}
+                />
+            )}
+
+            {/* Modal de Histórico */}
+            {historyRuleId && (
+                <PricingRuleHistoryModal
+                    ruleId={historyRuleId}
+                    onClose={() => setHistoryRuleId(null)}
                 />
             )}
         </div>

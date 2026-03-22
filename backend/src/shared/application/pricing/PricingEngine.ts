@@ -1,11 +1,11 @@
 import { prisma } from '../../infrastructure/database/prisma';
-import { all, create } from 'mathjs';
-
-const math = create(all);
+import * as formulaUtils from './formulaUtils';
 
 interface CalculationInput {
   productId: string;
   quantity: number;
+  width?: number;
+  height?: number;
   variables?: Record<string, { value: any; unit: string | null }>;
   selectedOptionIds?: string[];
   organizationId: string;
@@ -30,7 +30,7 @@ export class PricingEngine {
   constructor() {}
 
   async execute(input: CalculationInput): Promise<CalculationOutput> {
-    const { productId, quantity = 1, variables = {}, selectedOptionIds = [], organizationId } = input;
+    const { productId, quantity = 1, width, height, variables = {}, selectedOptionIds = [], organizationId } = input;
 
     // 1. Buscar Produto com Ficha Técnica Base e Regra
     const product = await prisma.product.findUnique({
@@ -64,62 +64,39 @@ export class PricingEngine {
     }
 
     const ruleVariables = formulaDataRaw?.variables || [];
+
+    // O evaluateFormula já cuida de toda a normalização de unidades físicas e taxas
+    // e popula o normalizedScope com tudo o que é necessário.
+    const result = formulaUtils.evaluateFormula(
+      formulaDataRaw.formulaString || "0",
+      variables,
+      ruleVariables,
+      logs
+    );
+
+    // Para manter a compatibilidade com o cálculo de BOM abaixo, precisamos rodar a normalização
+    // Isso garante que o normalizedScope tenha os valores corretos para AREA, WIDTH, etc.
     const normalizedScope: Record<string, number> = {};
-
-    // Mapear variáveis do frontend para o escopo, normalizando se necessário
     for (const v of ruleVariables) {
-      const lowerId = v.id.toLowerCase();
-      const upperId = v.id.toUpperCase();
-      
-      const received = (variables as any)[v.id] || (variables as any)[lowerId] || (variables as any)[upperId];
-      const baseUnit = v.baseUnit || v.unit || null;
-      
-      let val = 0;
-      try {
-        if (received && typeof received === 'object' && received.value !== undefined) {
-          val = typeof received.value === 'string' ? Number(received.value.replace(',', '.')) : received.value;
-          
-          // Lista de unidades "não-físicas" - não converter no mathjs
-          const nonPhysicalUnits = ['X', 'moeda', '%', 'un', 'unidade', 'und', 'pç', 'pcas', 'folhas'];
-          const isPhysical = (u: string) => u && !nonPhysicalUnits.includes(u.toLowerCase());
-
-          if (baseUnit && received.unit && isPhysical(baseUnit) && isPhysical(received.unit)) {
-            const unitMapping: Record<string, string> = {
-              'M': 'm', 'M2': 'm2', 'M²': 'm2', 'CM': 'cm', 'MM': 'mm',
-              'KG': 'kg', 'G': 'g', 'L': 'l', 'H': 'h'
-            };
-            const normalize = (u: string) => unitMapping[u.toUpperCase()] || u;
-            const normBase = normalize(baseUnit);
-            const normCurrent = normalize(received.unit);
-
-            if (normBase !== normCurrent) {
-              val = math.unit(val, normCurrent).toNumber(normBase);
-              logs.push(`Variável [${v.name}] normalizada: ${received.value}${received.unit} -> ${val}${baseUnit}`);
-            }
-          }
-        } else {
-          val = v.fixedValue !== undefined ? Number(v.fixedValue) : 0;
-        }
-
-        // Registrar no escopo por ID e por Nome (para facilitar fórmulas amigáveis)
-        normalizedScope[v.id] = val;
+        const vid = v.id.toLowerCase();
+        const rawValue = (variables as any)[v.id] || 
+                        (variables as any)[vid] || 
+                        (variables as any).dynamicVariables?.[v.id] ||
+                        (variables as any).dynamicVariables?.[vid];
         
-        // Injetar por nome normalizado (ex: "Largura do Produto" -> "LARGURA_DO_PRODUTO")
-        const cleanName = v.name.toUpperCase().replace(/\s+/g, '_').normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        if (!normalizedScope[cleanName]) normalizedScope[cleanName] = val;
-        
-        // Injetar por Role (Papeis fixos) - Isso garante que LARGURA sempre funcione se marcada como WIDTH
-        if (v.role === 'WIDTH') normalizedScope['LARGURA'] = normalizedScope['WIDTH'] = val;
-        if (v.role === 'HEIGHT') normalizedScope['ALTURA'] = normalizedScope['HEIGHT'] = val;
-        if (v.role === 'DEPTH') normalizedScope['PROFUNDIDADE'] = normalizedScope['DEPTH'] = val;
-        if (v.role === 'LENGTH') normalizedScope['COMPRIMENTO'] = normalizedScope['LENGTH'] = val;
-        if (v.role === 'SQUARE_METERS') normalizedScope['M2'] = normalizedScope['AREA'] = val;
+        const currentUnit = (received: any) => (typeof received === 'object' && received?.unit) ? received.unit : (v.defaultUnit || v.unit);
+        const normVal = formulaUtils.evaluateFormula(v.id, variables, [v]);
+        normalizedScope[v.id] = Number(normVal);
 
-      } catch (err: any) {
-        logs.push(`⚠️ Variável [${v.name}]: Erro de conversão (${err.message}). Usando valor bruto.`);
-        normalizedScope[v.id] = val;
-      }
+        // Aliases para o BOM e regras legadas
+        if (v.role === 'WIDTH') { normalizedScope['LARGURA'] = normalizedScope['WIDTH'] = Number(normVal); }
+        if (v.role === 'HEIGHT') { normalizedScope['ALTURA'] = normalizedScope['HEIGHT'] = Number(normVal); }
+        if (v.role === 'SQUARE_METERS' || v.role === 'AREA') { normalizedScope['M2'] = normalizedScope['AREA'] = Number(normVal); }
     }
+
+    // Injeção de fallback para dimensões caso não tenham sido encontradas nas variáveis
+    if (width && !normalizedScope['LARGURA']) normalizedScope['LARGURA'] = width;
+    if (height && !normalizedScope['ALTURA']) normalizedScope['ALTURA'] = height;
 
     // Identificar Dimensões Físicas para o BOM (Consumo de Material)
     let BOM_M2 = 0;
@@ -129,13 +106,21 @@ export class PricingEngine {
 
     for (const v of ruleVariables) {
       const val = normalizedScope[v.id] || 0;
-      const unit = v.baseUnit;
+      const unitAlias = v.baseUnit ? formulaUtils.normalizeUnit(v.baseUnit) : null;
 
       try {
-        if (v.role === 'SQUARE_METERS') BOM_M2 = unit ? math.unit(val, unit).toNumber('m2') : val;
-        if (v.role === 'LINEAR_METERS') BOM_M = unit ? math.unit(val, unit).toNumber('m') : val;
-        if (v.role === 'WIDTH') physicalWidthMm = unit ? math.unit(val, unit).toNumber('mm') : val;
-        if (v.role === 'HEIGHT') physicalHeightMm = unit ? math.unit(val, unit).toNumber('mm') : val;
+        if (v.role === 'SQUARE_METERS' || v.role === 'AREA') {
+            BOM_M2 = val * formulaUtils.getConversionFactor(unitAlias || 'm^2', 'm^2');
+        }
+        if (v.role === 'LINEAR_METERS' || v.role === 'LENGTH') {
+            BOM_M = val * formulaUtils.getConversionFactor(unitAlias || 'm', 'm');
+        }
+        if (v.role === 'WIDTH') {
+            physicalWidthMm = val * formulaUtils.getConversionFactor(unitAlias || 'mm', 'mm');
+        }
+        if (v.role === 'HEIGHT') {
+            physicalHeightMm = val * formulaUtils.getConversionFactor(unitAlias || 'mm', 'mm');
+        }
       } catch (e: any) {
         logs.push(`⚠️ Erro BOM física [${v.name}]: ${e.message}`);
       }
@@ -215,12 +200,15 @@ export class PricingEngine {
 
     try {
       if (costFormulaString) {
-        finalUnitCost = Number(math.evaluate(costFormulaString, finalScope));
+        // Passamos [] nas variáveis para evitar dupla normalização, pois o finalScope já está normalizado
+        const val = formulaUtils.evaluateFormula(costFormulaString, finalScope, [], logs);
+        finalUnitCost = typeof val === 'number' ? val : 0;
         logs.push(`Custo Financeiro resolvido (${costFormulaString}) = R$ ${finalUnitCost.toFixed(2)}`);
       }
       
       if (formulaString) {
-        finalUnitPrice = Number(math.evaluate(formulaString, finalScope));
+        const val = formulaUtils.evaluateFormula(formulaString, finalScope, [], logs);
+        finalUnitPrice = typeof val === 'number' ? val : 0;
         logs.push(`Preço de Venda resolvido (${formulaString}) = R$ ${finalUnitPrice.toFixed(2)}`);
       } else if (!product.salePrice) {
         finalUnitPrice = finalUnitCost; // Safe fallback

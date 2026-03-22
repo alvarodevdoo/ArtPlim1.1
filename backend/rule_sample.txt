@@ -1,0 +1,14 @@
+{
+  "id": "cb71d193-ac88-4df1-bc72-b4cb38a556bb",
+  "organizationId": "88d84116-ac96-4693-b78a-004938020c36",
+  "name": "Area",
+  "active": true,
+  "type": "UNIT",
+  "parentId": null,
+  "formula": "{\"formulaString\":\" ceil( (LARGURA * ALTURA) * price)\",\"costFormulaString\":\"(LARGURA * ALTURA) * price_for\",\"variables\":[{\"id\":\"largura\",\"name\":\"Largura\",\"type\":\"INPUT\",\"unit\":\"cm\",\"lockedUnit\":false,\"role\":\"LENGTH\",\"baseUnit\":\"cm\",\"allowedUnits\":[\"mm\",\"cm\",\"m\"],\"defaultUnit\":\"cm\"},{\"id\":\"altura\",\"name\":\"Altura\",\"type\":\"INPUT\",\"unit\":\"cm\",\"lockedUnit\":false,\"baseUnit\":\"cm\",\"allowedUnits\":[\"mm\",\"cm\",\"m\"],\"role\":\"LENGTH\",\"defaultUnit\":\"cm\"},{\"id\":\"price\",\"name\":\"Pre├ºo por m┬▓\",\"type\":\"INPUT\",\"unit\":\"moeda\",\"fixedValue\":80,\"lockedUnit\":true,\"baseUnit\":\"m┬▓\",\"allowedUnits\":[\"R$/m┬▓\"],\"role\":\"COST_RATE\",\"defaultUnit\":\"R$/m┬▓\"},{\"id\":\"price_for\",\"name\":\"custo\",\"type\":\"INPUT\",\"unit\":\"moeda\",\"visible\":false,\"fixedValue\":25,\"lockedUnit\":false,\"baseUnit\":\"\",\"allowedUnits\":[\"R$/m┬▓\"],\"role\":\"COST_RATE\",\"defaultUnit\":\"R$/m┬▓\"}]}",
+  "config": null,
+  "version": 1,
+  "isLatest": true,
+  "createdAt": "2026-03-13T20:58:26.057Z",
+  "updatedAt": "2026-03-20T21:04:57.603Z"
+}

@@ -122,8 +122,6 @@ export const evaluateFormula = (
             const role = v.role || 'NONE';
             const baseUnit = ROLE_TO_BASE_UNIT[role];
 
-            if (logs) logs.push(`Var [${v.id}]: Bruto=${numVal}, Unit=${currentUnit || 'null'}, Role=${role}`);
-
             // 1. Normalização de TAXAS (R$/m2, etc)
             if (role === 'COST_RATE' || (currentUnit && currentUnit.toString().includes('/'))) {
                 let unitPart = normalizeUnit(currentUnit.toString().split('/').pop()?.trim());
@@ -137,16 +135,13 @@ export const evaluateFormula = (
 
                 if (unitPart && targetUnit && unitPart !== targetUnit) {
                     const factor = getConversionFactor(unitPart, targetUnit);
-                    if (factor > 0) {
-                        numVal /= factor;
-                        if (logs) logs.push(`  -> [Rate Hack] ${unitPart} p/ ${targetUnit}: Dividindo por ${factor} = ${numVal}`);
-                    }
+                    if (factor > 0) numVal /= factor;
+                    if (logs) logs.push(`[Rate] ${v.id}: ${unitPart} -> ${targetUnit} (DIV ${factor})`);
                 }
             } 
             // 2. Normalização de PERCENTUAL
             else if (role === 'PERCENT' || currentUnit === '%') {
                 numVal /= 100;
-                if (logs) logs.push(`  -> [Percent] 100% -> 1.0: Dividindo por 100 = ${numVal}`);
             } 
             // 3. Normalização de MEDIDAS FÍSICAS
             else if (baseUnit && currentUnit) {
@@ -155,7 +150,7 @@ export const evaluateFormula = (
                 if (normCurrent && normBase && normCurrent !== normBase) {
                     const factor = getConversionFactor(normCurrent, normBase);
                     numVal *= factor;
-                    if (logs) logs.push(`  -> [Unit Hack] ${normCurrent} p/ ${normBase}: Multiplicando por ${factor} = ${numVal}`);
+                    if (logs) logs.push(`[Unit] ${v.id}: ${normCurrent} -> ${normBase} (MULT ${factor})`);
                 }
             }
 
@@ -187,8 +182,7 @@ export const evaluateFormula = (
 export const calculatePricingResult = (
     formulaStr: string | null | undefined, 
     variables: any[] = [], 
-    inputValues: Record<string, any> = {},
-    logs?: string[]
+    inputValues: Record<string, any> = {}
 ): { value: number; breakdown: any[] } => {
     if (!formulaStr) return { value: 0, breakdown: [] };
 
@@ -200,7 +194,7 @@ export const calculatePricingResult = (
     }
 
     try {
-        const valueResult = evaluateFormula(formulaStr, scope, variables, logs);
+        const valueResult = evaluateFormula(formulaStr, scope, variables);
         const numericVal = typeof valueResult === 'number' ? valueResult : 0;
         const breakdown: any[] = [];
 

@@ -6,6 +6,8 @@ import { ListOrdersUseCase } from '../../application/use-cases/ListOrdersUseCase
 import { UpdateOrderStatusUseCase } from '../../application/use-cases/UpdateOrderStatusUseCase';
 import { GetOrderStatsUseCase } from '../../application/use-cases/GetOrderStatsUseCase';
 import { CreateOrderDTO } from '../../application/dto/CreateOrderDTO';
+import { getTenantClient } from '../../../../shared/infrastructure/database/tenant';
+import { PrismaClient } from '@prisma/client';
 
 export class OrderController {
   constructor(
@@ -56,13 +58,14 @@ export class OrderController {
 
       const orderData = order.toJSON();
 
-      // Buscar dados do customer
-      const customer = await this.getCustomerData(order.customerId);
+      // Buscar dados do customer e produtos com o Prisma do Tenant
+      const prisma = getTenantClient(request.user!.organizationId);
+      const customer = await this.getCustomerData(prisma, order.customerId);
 
       // Buscar dados dos produtos para cada item
       const itemsWithProduct = await Promise.all(
         orderData.items.map(async (item: any) => {
-          const product = await this.getProductData(item.productId);
+          const product = await this.getProductData(prisma, item.productId, item.pricingRuleId);
           return {
             ...item,
             product: product || {
@@ -111,24 +114,22 @@ export class OrderController {
 
       const orders = await this.listOrdersUseCase.execute(filters);
 
-      // Para cada pedido, buscar dados do customer e produtos
+      // Para cada      // Buscar detalhes adicionais para cada pedido
+      const prisma = getTenantClient(request.user!.organizationId);
       const ordersWithDetails = await Promise.all(
         orders.map(async (order) => {
           const orderData = order.toJSON();
+          const customer = await this.getCustomerData(prisma, order.customerId);
 
-          // Buscar dados do customer
-          const customer = await this.getCustomerData(order.customerId);
-
-          // Buscar dados dos produtos para cada item
           const itemsWithProduct = await Promise.all(
             orderData.items.map(async (item: any) => {
-              const product = await this.getProductData(item.productId);
+              const product = await this.getProductData(prisma, item.productId, item.pricingRuleId);
               return {
                 ...item,
                 product: product || {
                   id: item.productId,
                   name: 'Produto não encontrado',
-                  description: null
+                  pricingMode: 'SIMPLE_UNIT'
                 }
               };
             })
@@ -156,12 +157,9 @@ export class OrderController {
     }
   }
 
-  private async getCustomerData(customerId: string) {
-    // TODO: Substituir por injeção de dependência do CustomerService
-    const { prisma } = require('../../../../shared/infrastructure/database/prisma');
-
+  private async getCustomerData(prisma: PrismaClient, customerId: string) {
     try {
-      return await prisma.profile.findUnique({
+      return await (prisma as any).profile.findUnique({
         where: { id: customerId },
         select: {
           id: true,
@@ -175,21 +173,48 @@ export class OrderController {
     }
   }
 
-  private async getProductData(productId: string) {
-    // TODO: Substituir por injeção de dependência do ProductService
-    const { prisma } = require('../../../../shared/infrastructure/database/prisma');
-
+  private async getProductData(prisma: PrismaClient, productId: string, fixedRuleId?: string) {
     try {
-      return await prisma.product.findUnique({
+      const product = await (prisma as any).product.findUnique({
         where: { id: productId },
         select: {
           id: true,
           name: true,
           description: true,
           pricingMode: true,
-          salePrice: true
+          salePrice: true,
+          pricingRuleId: true,
+          pricingRule: {
+            select: {
+              id: true,
+              name: true,
+              formula: true,
+              config: true
+            }
+          }
         }
       });
+
+      // Se houver uma regra fixa (versão histórica), buscamos e substituímos a regra atual
+      const ruleToUse = fixedRuleId || product?.pricingRuleId;
+
+      if (ruleToUse && product) {
+        const Rule = await (prisma as any).pricingRule.findUnique({
+          where: { id: ruleToUse },
+          select: {
+            id: true,
+            name: true,
+            formula: true,
+            config: true
+          }
+        });
+
+        if (Rule) {
+          product.pricingRule = Rule;
+        }
+      }
+
+      return product;
     } catch (error) {
       return null;
     }

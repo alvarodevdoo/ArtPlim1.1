@@ -30,7 +30,9 @@ const createOrderSchema = z.object({
     costPrice: z.number().min(0).optional(),
     calculatedPrice: z.number().min(0).optional(),
     status: z.string().optional(),
-    processStatusId: z.string().optional()
+    processStatusId: z.string().optional(),
+    pricingRuleId: z.string().optional(),
+    attributes: z.record(z.any()).optional()
   })),
   notes: z.string().optional(),
   deliveryDate: z.string().optional(),
@@ -257,7 +259,9 @@ export async function salesRoutes(fastify: FastifyInstance) {
             costPrice: item.costPrice || 0,
             calculatedPrice: item.calculatedPrice || item.unitPrice,
             status: (defaultStatus?.mappedBehavior as OrderStatus) || 'DRAFT',
-            processStatusId: defaultStatus?.id || null
+            processStatusId: defaultStatus?.id || null,
+            pricingRuleId: item.pricingRuleId || existingProducts.find(p => p.id === item.productId)?.pricingRuleId || null,
+            attributes: item.attributes || {}
           }))
         },
         statusHistory: {
@@ -421,6 +425,14 @@ export async function salesRoutes(fastify: FastifyInstance) {
       // Deletar itens antigos antes de criar os novos (Estratégia de substituição total)
       await prisma.orderItem.deleteMany({ where: { orderId: id } });
       
+      // Buscar regras originais dos produtos para fallback
+      const productIds = body.items.map(item => item.productId);
+      const uniqueIds = [...new Set(productIds)];
+      const products = await prisma.product.findMany({
+        where: { id: { in: uniqueIds } },
+        select: { id: true, pricingRuleId: true }
+      });
+
       updateData.items = {
         create: body.items.map(item => ({
           productId: item.productId,
@@ -434,7 +446,8 @@ export async function salesRoutes(fastify: FastifyInstance) {
           calculatedPrice: item.calculatedPrice || item.unitPrice,
           status: (item.status as OrderStatus) || 'DRAFT',
           processStatusId: item.processStatusId || null,
-          attributes: (item as any).attributes || {}
+          attributes: (item as any).attributes || {},
+          pricingRuleId: (item as any).pricingRuleId || products.find(p => p.id === item.productId)?.pricingRuleId || null
         }))
       };
     }

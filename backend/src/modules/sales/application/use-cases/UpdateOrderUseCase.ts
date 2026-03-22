@@ -134,7 +134,7 @@ export class UpdateOrderUseCase {
         width: itemData.width,
         height: itemData.height,
         quantity: itemData.quantity,
-        variables: itemData.attributes || {}, // Injetar escopo dinâmico
+        variables: itemData.attributes?.dynamicVariables || itemData.attributes || {}, 
         selectedOptionIds,
         organizationId: customer.organizationId
       });
@@ -142,10 +142,11 @@ export class UpdateOrderUseCase {
       // Usar preço customizado se fornecido, senão usar o calculado
       const unitPrice = itemData.unitPrice || pricing.unitPrice;
 
-      // Unificar atributos e adicionar o snapshot histórico
+
+      // Unificar atributos e adicionar o snapshot histórico de materiais
       const attributes = {
         ...(itemData.attributes || {}),
-        insumos_snapshot: pricing.insumos // SNAPSHOT HISTÓRICO
+        insumos_snapshot: pricing.insumos
       };
 
       const orderItem = new OrderItem({
@@ -170,7 +171,8 @@ export class UpdateOrderUseCase {
 
         // Tamanho personalizado
         customSizeName: itemData.customSizeName,
-        isCustomSize: itemData.isCustomSize
+        isCustomSize: itemData.isCustomSize,
+        pricingRuleId: itemData.pricingRuleId || product.pricingRuleId // VINCULAR VERSÃO HISTÓRICA OU ATUAL DA REGRA
       });
 
       orderItems.push(orderItem);

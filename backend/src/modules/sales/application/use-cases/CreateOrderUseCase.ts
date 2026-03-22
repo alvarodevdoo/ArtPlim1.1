@@ -81,7 +81,7 @@ export class CreateOrderUseCase {
         width: itemData.width,
         height: itemData.height,
         quantity: itemData.quantity,
-        variables: itemData.attributes || {}, // Injetar escopo dinâmico
+        variables: itemData.attributes?.dynamicVariables || itemData.attributes || {}, // Tentar extrair variáveis dinâmicas
         selectedOptionIds,
         organizationId: customer.organizationId
       });
@@ -89,11 +89,14 @@ export class CreateOrderUseCase {
       // Usar preço customizado se fornecido, senão usar o calculado
       const unitPrice = itemData.unitPrice || pricing.unitPrice;
 
-      // Unificar atributos e adicionar o snapshot histórico
+
+      // Unificar atributos e adicionar o snapshot histórico de materiais
       const attributes = {
         ...(itemData.attributes || {}),
-        insumos_snapshot: pricing.insumos // SNAPSHOT HISTÓRICO
+        insumos_snapshot: pricing.insumos, // SNAPSHOT HISTÓRICO DE MATERIAIS
       };
+
+      console.log(`[CreateOrderUseCase] Item - Prod: ${product.id} | DTO Rule: ${itemData.pricingRuleId} | Prod Rule: ${product.pricingRuleId}`);
 
       const orderItem = new OrderItem({
         productId: itemData.productId,
@@ -103,7 +106,8 @@ export class CreateOrderUseCase {
         calculatedPrice: new Money(pricing.unitPrice),
         unitPrice: new Money(unitPrice),
         notes: itemData.notes,
-        attributes, // Salvar snapshot
+        attributes, 
+        pricingRuleId: itemData.pricingRuleId || product.pricingRuleId, // VINCULAR VERSÃO HISTÓRICA OU ATUAL DA REGRA
 
         // Campos específicos por tipo
         area: itemData.area,

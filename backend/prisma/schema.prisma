@@ -67,23 +67,23 @@ model OrganizationSettings {
 }
 
 model User {
-  id                 String              @id @default(uuid())
+  id                 String               @id @default(uuid())
   organizationId     String
   email              String
   password           String
   name               String
-  role               UserRole            @default(USER)
-  active             Boolean             @default(true)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  role               UserRole             @default(USER)
+  active             Boolean              @default(true)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
   auditLogs          AuditLog[]
   inventoryMovements InventoryMovement[]
   notifications      Notifications[]
-  cancelledOrders    Order[]             @relation("OrderCancelledBy")
-  requestedChanges   PendingChanges[]    @relation("RequestedBy")
-  reviewedChanges    PendingChanges[]    @relation("ReviewedBy")
+  cancelledOrders    Order[]              @relation("OrderCancelledBy")
+  requestedChanges   PendingChanges[]     @relation("RequestedBy")
+  reviewedChanges    PendingChanges[]     @relation("ReviewedBy")
   profile            Profile?
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   statusHistory      OrderStatusHistory[]
 
   @@unique([organizationId, email])
@@ -362,24 +362,24 @@ model ProductOperation {
 }
 
 model Order {
-  id                        String              @id @default(uuid())
+  id                        String               @id @default(uuid())
   organizationId            String
   customerId                String
   orderNumber               String
-  status                    OrderStatus         @default(DRAFT)
-  subtotal                  Decimal             @db.Decimal(10, 2)
-  discount                  Decimal             @default(0) @db.Decimal(10, 2)
-  tax                       Decimal             @default(0) @db.Decimal(10, 2)
-  total                     Decimal             @db.Decimal(10, 2)
+  status                    OrderStatus          @default(DRAFT)
+  subtotal                  Decimal              @db.Decimal(10, 2)
+  discount                  Decimal              @default(0) @db.Decimal(10, 2)
+  tax                       Decimal              @default(0) @db.Decimal(10, 2)
+  total                     Decimal              @db.Decimal(10, 2)
   deliveryDate              DateTime?
-  createdAt                 DateTime            @default(now())
+  createdAt                 DateTime             @default(now())
   validUntil                DateTime?
-  updatedAt                 DateTime            @updatedAt
+  updatedAt                 DateTime             @updatedAt
   notes                     String?
   approvedAt                DateTime?
   cancellationPaymentAction String?
   cancellationReason        String?
-  cancellationRefundAmount  Decimal?            @db.Decimal(10, 2)
+  cancellationRefundAmount  Decimal?             @db.Decimal(10, 2)
   cancelledAt               DateTime?
   cancelledById             String?
   deliveredAt               DateTime?
@@ -388,10 +388,10 @@ model Order {
   processStatusId           String?
   inventoryMovements        InventoryMovement[]
   items                     OrderItem[]
-  cancelledBy               User?               @relation("OrderCancelledBy", fields: [cancelledById], references: [id])
-  customer                  Profile             @relation(fields: [customerId], references: [id])
-  organization              Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  processStatus             ProcessStatus?      @relation(fields: [processStatusId], references: [id])
+  cancelledBy               User?                @relation("OrderCancelledBy", fields: [cancelledById], references: [id])
+  customer                  Profile              @relation(fields: [customerId], references: [id])
+  organization              Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  processStatus             ProcessStatus?       @relation(fields: [processStatusId], references: [id])
   pendingChanges            PendingChanges[]
   productionQueue           ProductionQueue[]
   productionWastes          ProductionWaste[]
@@ -403,7 +403,7 @@ model Order {
 }
 
 model OrderStatusHistory {
-  id                  String         @id @default(uuid())
+  id                  String       @id @default(uuid())
   orderId             String
   fromStatus          OrderStatus?
   toStatus            OrderStatus
@@ -411,12 +411,12 @@ model OrderStatusHistory {
   toProcessStatusId   String?
   notes               String?
   userId              String?
-  createdAt           DateTime       @default(now())
-  
-  order               Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  user                User?          @relation(fields: [userId], references: [id])
-  fromProcessStatus   ProcessStatus? @relation("FromPS", fields: [fromProcessStatusId], references: [id])
-  toProcessStatus     ProcessStatus? @relation("ToPS", fields: [toProcessStatusId], references: [id])
+  createdAt           DateTime     @default(now())
+
+  order             Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user              User?          @relation(fields: [userId], references: [id])
+  fromProcessStatus ProcessStatus? @relation("FromPS", fields: [fromProcessStatusId], references: [id])
+  toProcessStatus   ProcessStatus? @relation("ToPS", fields: [toProcessStatusId], references: [id])
 
   @@map("order_status_history")
 }
@@ -448,10 +448,12 @@ model OrderItem {
   notes           String?
   processStatusId String?
   status          OrderStatus              @default(DRAFT)
+  pricingRuleId   String?
   configurations  OrderItemConfiguration[]
   order           Order                    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   processStatus   ProcessStatus?           @relation(fields: [processStatusId], references: [id])
   product         Product                  @relation(fields: [productId], references: [id])
+  pricingRule     PricingRule?             @relation(fields: [pricingRuleId], references: [id])
 
   @@map("order_items")
 }
@@ -497,6 +499,8 @@ model BudgetItem {
   machineTime     Float?
   setupTime       Float?
   complexity      String?
+  pricingRuleId   String?
+  pricingRule     PricingRule?   @relation(fields: [pricingRuleId], references: [id])
   costPrice       Decimal        @db.Decimal(10, 2)
   calculatedPrice Decimal        @db.Decimal(10, 2)
   unitPrice       Decimal        @db.Decimal(10, 2)
@@ -800,25 +804,25 @@ model AutomationRule {
 }
 
 model ProcessStatus {
-  id             String          @id @default(uuid())
+  id             String               @id @default(uuid())
   organizationId String
   name           String
   color          String?
   icon           String?
   parentId       String?
   mappedBehavior OrderStatus
-  allowEdition   Boolean         @default(true)
-  displayOrder   Int             @default(1)
-  active         Boolean         @default(true)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  scope          StatusScope     @default(ORDER)
+  allowEdition   Boolean              @default(true)
+  displayOrder   Int                  @default(1)
+  active         Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  scope          StatusScope          @default(ORDER)
   budgetItems    BudgetItem[]
   orderItems     OrderItem[]
   orders         Order[]
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  parent         ProcessStatus?  @relation("StatusHierarchy", fields: [parentId], references: [id])
-  children       ProcessStatus[] @relation("StatusHierarchy")
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent         ProcessStatus?       @relation("StatusHierarchy", fields: [parentId], references: [id])
+  children       ProcessStatus[]      @relation("StatusHierarchy")
   fromHistory    OrderStatusHistory[] @relation("FromPS")
   toHistory      OrderStatusHistory[] @relation("ToPS")
 
@@ -826,17 +830,24 @@ model ProcessStatus {
 }
 
 model PricingRule {
-  id             String       @id @default(uuid())
+  id             String        @id @default(uuid())
   organizationId String
   name           String
-  active         Boolean      @default(true)
+  active         Boolean       @default(true)
   type           ItemType
+  parentId       String?
   formula        Json
   config         Json?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  version        Int           @default(1)
+  isLatest       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  parent         PricingRule?  @relation("PricingRuleVersions", fields: [parentId], references: [id])
+  versions       PricingRule[] @relation("PricingRuleVersions")
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   products       Product[]
+  orderItems     OrderItem[]
+  BudgetItem     BudgetItem[]
 
   @@map("pricing_rules")
 }

@@ -1,0 +1,3 @@
+--- REGRAS DE PRECIFICAÇÃO NO BANCO ---
+ID: cb71d193-ac88-4df1-bc72-b4cb38a556bb | Nome: Area | Versão: 1 | Itens: 0
+ID: a3309fba-cd23-481b-8900-be31d3fd999b | Nome: Impressão 3D | Versão: 1 | Itens: 0

@@ -20,6 +20,7 @@ export interface CreateOrderItemDTO {
   customSizeName?: string;
   isCustomSize?: boolean;
   attributes?: Record<string, any>;
+  pricingRuleId?: string;
 }
 
 export interface CreateOrderDTO {

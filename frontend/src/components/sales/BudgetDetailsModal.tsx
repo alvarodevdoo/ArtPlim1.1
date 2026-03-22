@@ -1,33 +1,50 @@
-import React, { useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
-import { X, FileText, User, ShoppingBag, Calendar as CalendarIcon, ClipboardList } from 'lucide-react';
+import { 
+    AlertCircle, 
+    RefreshCw, 
+    X,
+    User,
+    Calendar,
+    FileText,
+    Calculator,
+    Package
+} from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
-import { DatasOrcamento } from '@/components/ui/DatasOrcamento';
+import api from '@/lib/api';
+import { toast } from 'sonner';
+import { calculatePricingResult } from '@/lib/pricing/formulaUtils';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
 interface BudgetItem {
     id: string;
     productId: string;
-    product?: { name: string };
-    itemType: string;
+    product: {
+        name: string;
+        pricingRule?: any;
+    };
     width?: number;
     height?: number;
     quantity: number;
     unitPrice: number;
     totalPrice: number;
+    costPrice?: number;
+    calculatedPrice?: number;
     notes?: string;
-    isCustomSize?: boolean;
-    customSizeName?: string;
+    attributes?: any;
+    pricingRuleId?: string;
+    itemType?: string;
 }
 
 interface Budget {
     id: string;
     budgetNumber: string;
-    customer?: { name: string };
+    customer?: { id: string; name: string };
     status: string;
     total: number;
-    createdAt: string;
+    subtotal: number;
     validUntil?: string;
+    createdAt: string;
     notes?: string;
     items: BudgetItem[];
 }
@@ -39,10 +56,16 @@ interface BudgetDetailsModalProps {
 }
 
 export const BudgetDetailsModal: React.FC<BudgetDetailsModalProps> = ({ budget, isOpen, onClose }) => {
+    const [isRecalculating, setIsRecalculating] = useState(false);
+    const [settings, setSettings] = useState<any>(null);
 
     useEffect(() => {
         if (isOpen) {
             document.body.style.overflow = 'hidden';
+            // Carregar configurações para saber o prazo de validade
+            api.get('/api/organization/settings')
+                .then(res => setSettings(res.data.data))
+                .catch(err => console.error("Erro ao carregar configurações:", err));
         } else {
             document.body.style.overflow = '';
         }
@@ -53,142 +76,289 @@ export const BudgetDetailsModal: React.FC<BudgetDetailsModalProps> = ({ budget, 
 
     if (!isOpen || !budget) return null;
 
-    const getStatusBadge = (status: string) => {
-        switch (status) {
-            case 'DRAFT': return <span className="px-3 py-1 bg-gray-100 text-gray-800 rounded-full text-xs font-bold uppercase tracking-wider">Orçamento Criado</span>;
-            case 'SENT': return <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-bold uppercase tracking-wider">Enviado</span>;
-            case 'APPROVED': return <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-bold uppercase tracking-wider">Aprovado</span>;
-            case 'REJECTED': return <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-xs font-bold uppercase tracking-wider">Rejeitado</span>;
-            case 'EXPIRED': return <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-bold uppercase tracking-wider">Vencido</span>;
-            default: return <span className="px-3 py-1 bg-gray-100 text-gray-800 rounded-full text-xs font-bold uppercase tracking-wider">{status}</span>;
+    const isExpired = budget.status === 'EXPIRED' || (budget.validUntil && new Date(budget.validUntil).getTime() < new Date().setHours(0,0,0,0));
+    console.log('[DEBUG] Budget Status:', budget.status, 'Valid Until:', budget.validUntil, 'isExpired:', isExpired);
+
+    const handleRecalculate = async () => {
+        setIsRecalculating(true);
+        try {
+            const updatedItems = await Promise.all(budget.items.map(async (item) => {
+                const prodRes = await api.get(`/api/catalog/products/${item.productId}`);
+                const product = prodRes.data.data;
+                if (!product) return item;
+
+                const pricingRule = product.pricingRule;
+                if (!pricingRule) return item;
+
+                // Parsear a regra (garantir que formula e config sejam objetos manipuláveis)
+                let formulaStr = '';
+                let variables = [];
+
+                try {
+                    const formulaData = typeof pricingRule.formula === 'string' 
+                        ? JSON.parse(pricingRule.formula) 
+                        : (pricingRule.formula || {});
+                    
+                    formulaStr = formulaData.formulaString || formulaData.current || pricingRule.formula || '';
+                    variables = formulaData.variables || [];
+                    
+                    // Se não achou na formula, tenta no config (fallback para outros modelos)
+                    if (variables.length === 0) {
+                        const config = typeof pricingRule.config === 'string' 
+                            ? JSON.parse(pricingRule.config) 
+                            : (pricingRule.config || {});
+                        variables = config.variables || [];
+                    }
+                } catch (e) {
+                    console.error("Erro ao parsear fórmula:", e);
+                    formulaStr = typeof pricingRule.formula === 'string' ? pricingRule.formula : '';
+                }
+
+                // Preparar inputs (normalização para lowercase para o motor)
+                const inputs: Record<string, any> = {};
+                
+                // Adicionar dimensões base (LARGURA/ALTURA)
+                if (item.width) {
+                    inputs['largura'] = Number(item.width);
+                    inputs['width'] = Number(item.width);
+                }
+                if (item.height) {
+                    inputs['altura'] = Number(item.height);
+                    inputs['height'] = Number(item.height);
+                }
+
+                if (item.attributes?.dynamicVariables) {
+                    Object.entries(item.attributes.dynamicVariables).forEach(([id, data]: [string, any]) => {
+                        const idLow = id.toLowerCase();
+                        inputs[idLow] = data.value;
+                        inputs[`${idLow}_unit`] = data.unit;
+                        // Fallback case sensitive
+                        inputs[id] = data.value;
+                        inputs[`${id}_unit`] = data.unit;
+                    });
+                }
+
+                // Adicionar variáveis globais de contexto
+                inputs['quantidade'] = item.quantity;
+                inputs['custo_materiais'] = item.attributes?.CUSTO_MATERIAIS || 0;
+
+                const result = calculatePricingResult(
+                    formulaStr,
+                    variables,
+                    inputs
+                );
+
+                return {
+                    ...item,
+                    unitPrice: result.value,
+                    totalPrice: result.value * item.quantity,
+                    calculatedPrice: result.value,
+                    pricingRuleId: pricingRule.id
+                };
+            }));
+
+            const daysToExtend = settings?.validadeOrcamento || 7;
+            const newDate = new Date();
+            newDate.setDate(newDate.getDate() + daysToExtend);
+            
+            // Usar formato local YYYY-MM-DD para evitar problemas de fuso horário no UTC
+            const formattedDate = newDate.getFullYear() + '-' + 
+                String(newDate.getMonth() + 1).padStart(2, '0') + '-' + 
+                String(newDate.getDate()).padStart(2, '0');
+
+            console.log('[DEBUG] Recalculating with:', updatedItems.length, 'items');
+
+            const payload = {
+                customerId: budget.customer?.id || (budget as any).customerId,
+                items: updatedItems.map(i => ({
+                    productId: i.productId,
+                    itemType: i.itemType,
+                    width: (i.width != null) ? Number(i.width) : undefined,
+                    height: (i.height != null) ? Number(i.height) : undefined,
+                    quantity: i.quantity,
+                    unitPrice: i.unitPrice,
+                    totalPrice: i.totalPrice,
+                    attributes: i.attributes,
+                    pricingRuleId: i.pricingRuleId,
+                    notes: i.notes
+                })),
+                validUntil: formattedDate
+            };
+
+            await api.put(`/api/sales/budgets/${budget.id}`, payload);
+
+            toast.success('Preços atualizados com sucesso!');
+            onClose();
+            window.location.reload();
+        } catch (error) {
+            console.error('Erro ao recalcular:', error);
+            toast.error('Erro ao atualizar preços');
+        } finally {
+            setIsRecalculating(false);
         }
     };
 
     return (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <Card className="w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
-                <CardHeader className="border-b sticky top-0 bg-white z-10 flex flex-row items-center justify-between pb-4">
-                    <div className="flex items-center space-x-3">
-                        <div className="p-2 bg-primary/10 rounded-lg text-primary">
-                            <FileText className="w-6 h-6" />
-                        </div>
-                        <div>
-                            <CardTitle className="text-2xl">{budget.budgetNumber}</CardTitle>
-                            <div className="mt-1">{getStatusBadge(budget.status)}</div>
-                        </div>
-                    </div>
-                    <Button variant="outline" size="sm" onClick={onClose} className="rounded-full h-10 w-10 p-0">
+                <CardHeader className="border-b bg-gray-50 flex flex-row items-center justify-between p-4 rounded-t-xl">
+                    <CardTitle className="text-xl flex items-center space-x-2">
+                        <Calculator className="w-6 h-6 text-primary" />
+                        <span>Detalhes do Orçamento: {budget.budgetNumber}</span>
+                    </CardTitle>
+                    <Button variant="ghost" size="icon" onClick={onClose} className="hover:bg-gray-200 rounded-full">
                         <X className="w-5 h-5" />
                     </Button>
                 </CardHeader>
 
                 <CardContent className="flex-1 overflow-y-auto p-6 scroll-smooth">
+                    {isExpired && (
+                        <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-xl flex items-start space-x-3 text-orange-800 animate-in slide-in-from-top-4 duration-300">
+                            <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1">
+                                <p className="font-bold">Este orçamento está vencido!</p>
+                                <p className="text-sm mt-1">As fórmulas e preços dos produtos podem ter sido alterados desde a criação desta proposta. Para garantir a precisão, clique no botão de atualizar preços abaixo.</p>
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    onClick={handleRecalculate}
+                                    disabled={isRecalculating}
+                                    className="mt-3 bg-white border-orange-300 text-orange-700 hover:bg-orange-100 font-bold"
+                                >
+                                    {isRecalculating ? (
+                                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                    ) : (
+                                        <RefreshCw className="w-4 h-4 mr-2" />
+                                    )}
+                                    Atualizar Todos os Preços Agora
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         {/* Informações Gerais */}
                         <div className="space-y-6">
-                            <section>
-                                <div className="flex items-center space-x-2 text-primary font-semibold mb-3">
-                                    <User className="w-4 h-4" />
-                                    <h4>Informações do Cliente</h4>
+                            <div className="space-y-4">
+                                <h3 className="font-bold text-gray-900 flex items-center border-b pb-2">
+                                    <User className="w-4 h-4 mr-2 text-primary" />
+                                    Cliente
+                                </h3>
+                                <div className="bg-white p-4 rounded-lg border shadow-sm">
+                                    <p className="font-semibold text-lg text-primary">{budget.customer?.name || 'Cliente Geral'}</p>
                                 </div>
-                                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                                    <p className="text-lg font-bold text-gray-800">{budget.customer?.name || 'Cliente não identificado'}</p>
-                                </div>
-                            </section>
+                            </div>
 
-                            <section>
-                                <div className="flex items-center space-x-2 text-primary font-semibold mb-3">
-                                    <CalendarIcon className="w-4 h-4" />
-                                    <h4>Cronograma e Validade</h4>
+                            <div className="space-y-4">
+                                <h3 className="font-bold text-gray-900 flex items-center border-b pb-2">
+                                    <Calendar className="w-4 h-4 mr-2 text-primary" />
+                                    Datas e Prazos
+                                </h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-white p-3 rounded-lg border shadow-sm">
+                                        <p className="text-xs text-muted-foreground uppercase font-bold mb-1">Criação</p>
+                                        <p className="font-medium">{new Date(budget.createdAt).toLocaleDateString()}</p>
+                                    </div>
+                                    <div className="bg-white p-3 rounded-lg border shadow-sm">
+                                        <p className="text-xs text-muted-foreground uppercase font-bold mb-1">Validade</p>
+                                        <p className={`font-medium ${isExpired ? 'text-red-500 font-bold' : ''}`}>
+                                            {budget.validUntil ? new Date(budget.validUntil).toLocaleDateString() : 'Não informada'}
+                                        </p>
+                                    </div>
                                 </div>
-                                <DatasOrcamento
-                                    criadoEm={budget.createdAt}
-                                    validadeEm={budget.validUntil}
-                                    className="bg-gray-50 p-4 rounded-xl border border-gray-100"
-                                />
-                            </section>
+                            </div>
                         </div>
 
                         {/* Resumo Financeiro */}
-                        <div>
-                            <section>
-                                <div className="flex items-center space-x-2 text-primary font-semibold mb-3">
-                                    <ShoppingBag className="w-4 h-4" />
-                                    <h4>Resumo do Orçamento</h4>
-                                </div>
-                                <div className="bg-primary/5 p-6 rounded-2xl border border-primary/10 flex flex-col items-center justify-center">
-                                    <p className="text-sm text-primary/70 uppercase font-bold tracking-widest mb-1">Total Geral</p>
-                                    <p className="text-4xl font-black text-primary">{formatCurrency(Number(budget.total))}</p>
-                                    <p className="text-xs text-primary/60 mt-2">{budget.items.length} item(ns) incluídos</p>
-                                </div>
-                            </section>
-
-                            {budget.notes && (
-                                <section className="mt-6">
-                                    <div className="flex items-center space-x-2 text-primary font-semibold mb-3">
-                                        <ClipboardList className="w-4 h-4" />
-                                        <h4>Observações</h4>
+                        <div className="space-y-4">
+                            <h3 className="font-bold text-gray-900 flex items-center border-b pb-2">
+                                <Calculator className="w-4 h-4 mr-2 text-primary" />
+                                Resumo Financeiro
+                            </h3>
+                            <div className="bg-gray-50 p-6 rounded-xl border-2 border-dashed border-gray-200">
+                                <div className="space-y-3">
+                                    <div className="flex justify-between text-gray-600">
+                                        <span>Subtotal</span>
+                                        <span className="font-medium">{formatCurrency(budget.subtotal || budget.total)}</span>
                                     </div>
-                                    <div className="bg-yellow-50/50 p-4 rounded-xl border border-yellow-100 text-sm text-gray-700 whitespace-pre-wrap italic">
-                                        {budget.notes}
+                                    <div className="flex justify-between text-gray-600">
+                                        <span>Desconto</span>
+                                        <span className="font-medium">R$ 0,00</span>
                                     </div>
-                                </section>
-                            )}
+                                    <div className="border-t pt-4 flex justify-between">
+                                        <span className="text-xl font-bold">Total</span>
+                                        <span className="text-2xl font-black text-primary">{formatCurrency(budget.total)}</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Lista de Itens */}
-                    <section className="mt-10">
-                        <div className="flex items-center space-x-2 text-primary font-semibold mb-4 border-b pb-2">
-                            <ShoppingBag className="w-4 h-4" />
-                            <h4>Itens do Orçamento</h4>
-                        </div>
-                        <div className="overflow-x-auto rounded-xl border shadow-sm">
+                    {/* Itens do Orçamento */}
+                    <div className="mt-8">
+                        <h3 className="font-bold text-gray-900 flex items-center border-b pb-2 mb-4">
+                            <Package className="w-4 h-4 mr-2 text-primary" />
+                            Itens do Orçamento ({budget.items.length})
+                        </h3>
+                        <div className="overflow-hidden border rounded-xl shadow-sm">
                             <table className="w-full text-sm text-left">
-                                <thead className="bg-gray-50 text-gray-600 uppercase text-[10px] font-bold tracking-wider">
+                                <thead className="bg-gray-50 border-b text-gray-700 uppercase">
                                     <tr>
-                                        <th className="px-4 py-3">Item</th>
-                                        <th className="px-4 py-3 text-center">Qtd</th>
-                                        <th className="px-4 py-3">Dimensões</th>
-                                        <th className="px-4 py-3 text-right">Unitário</th>
-                                        <th className="px-4 py-3 text-right">Subtotal</th>
+                                        <th className="px-4 py-3 font-bold">Item</th>
+                                        <th className="px-4 py-3 text-center font-bold">Qtd</th>
+                                        <th className="px-4 py-3 text-right font-bold">Unitário</th>
+                                        <th className="px-4 py-3 text-right font-bold">Subtotal</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y">
-                                    {budget.items.map((item, index) => (
-                                        <tr key={item.id || index} className="hover:bg-gray-50/50 transition-colors">
+                                <tbody className="divide-y bg-white">
+                                    {budget.items.map((item) => (
+                                        <tr key={item.id} className="hover:bg-gray-50">
                                             <td className="px-4 py-4">
-                                                <p className="font-bold text-gray-900">{item.product?.name || 'Produto'}</p>
-                                                {item.notes && <p className="text-xs text-gray-500 mt-1">{item.notes}</p>}
-                                                {item.itemType === 'SERVICE' && (
-                                                    <span className="inline-block mt-1 px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] uppercase font-bold">Serviço</span>
-                                                )}
+                                                <p className="font-bold text-gray-900">{item.product.name}</p>
+                                                {item.notes && <p className="text-xs text-muted-foreground mt-1 italic">"{item.notes}"</p>}
                                             </td>
                                             <td className="px-4 py-4 text-center font-medium">{item.quantity}</td>
-                                            <td className="px-4 py-4 text-gray-600 font-mono text-xs">
-                                                {item.width && item.height && Number(item.width) > 0 ? (
-                                                    `${Number(item.width)} x ${Number(item.height)} mm`
-                                                ) : item.isCustomSize ? (
-                                                    item.customSizeName || 'Medida Especial'
-                                                ) : (
-                                                    '--'
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-4 text-right tabular-nums">{formatCurrency(Number(item.unitPrice))}</td>
-                                            <td className="px-4 py-4 text-right font-bold tabular-nums text-primary">{formatCurrency(Number(item.totalPrice))}</td>
+                                            <td className="px-4 py-4 text-right font-medium">{formatCurrency(item.unitPrice)}</td>
+                                            <td className="px-4 py-4 text-right font-bold text-primary">{formatCurrency(item.totalPrice)}</td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
                         </div>
-                    </section>
+                    </div>
+
+                    {/* Observações */}
+                    {budget.notes && (
+                        <div className="mt-8 space-y-2">
+                            <h3 className="font-bold text-gray-900 flex items-center">
+                                <FileText className="w-4 h-4 mr-2 text-primary" />
+                                Observações
+                            </h3>
+                            <div className="bg-gray-50 p-4 rounded-lg border text-sm text-gray-700 leading-relaxed">
+                                {budget.notes}
+                            </div>
+                        </div>
+                    )}
                 </CardContent>
 
                 <div className="border-t p-4 bg-gray-50 flex justify-end space-x-3 gap-2 rounded-b-xl">
-                    <Button variant="outline" onClick={onClose} className="hover:bg-gray-100">
+                    <Button variant="outline" onClick={onClose} className="hover:bg-gray-100" disabled={isRecalculating}>
                         Fechar
                     </Button>
-                    <Button onClick={() => window.location.href = `/orcamentos/criar?edit=${budget.id}`}>
+                    <Button 
+                        variant="secondary"
+                        onClick={handleRecalculate}
+                        disabled={isRecalculating || !isExpired}
+                        className={!isExpired ? 'hidden' : ''}
+                    >
+                        {isRecalculating ? (
+                            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                            <RefreshCw className="w-4 h-4 mr-2" />
+                        )}
+                        Recalcular Orçamento
+                    </Button>
+                    <Button onClick={() => window.location.href = `/orcamentos/criar?edit=${budget.id}`} disabled={isRecalculating}>
                         Editar Orçamento
                     </Button>
                 </div>

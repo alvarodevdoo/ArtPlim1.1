@@ -16,6 +16,12 @@ export interface Produto {
     pricingMode: 'SIMPLE_AREA' | 'SIMPLE_UNIT' | 'DYNAMIC_ENGINEER';
     salePrice?: number;
     standardSizes?: StandardSize[];
+    pricingRule?: {
+        id: string;
+        name: string;
+        formula?: any;
+    };
+    pricingRuleId?: string;
 }
 
 export interface Cliente {
@@ -38,6 +44,7 @@ export interface ItemPedido {
     totalPrice: number;
     notes?: string;
     attributes?: Record<string, any>;
+    pricingRuleId?: string;
 
     // Legacy fields/Specific fields
     area?: number;

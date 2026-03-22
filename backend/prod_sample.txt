@@ -1,0 +1,27 @@
+[
+  {
+    "id": "09865cfb-5d80-4d85-a64d-7ad02db07102",
+    "name": "Adesivo Vinil",
+    "pricingRuleId": "cb71d193-ac88-4df1-bc72-b4cb38a556bb"
+  },
+  {
+    "id": "516f71d4-81f1-4f48-a938-2b75b8045cfe",
+    "name": "Impress├úo 3d",
+    "pricingRuleId": "84833597-02c0-4231-b614-a5eecbf40c91"
+  },
+  {
+    "id": "567b3db2-79ef-4c54-85d3-8ec478e84667",
+    "name": "Painel",
+    "pricingRuleId": "cb71d193-ac88-4df1-bc72-b4cb38a556bb"
+  },
+  {
+    "id": "bcfd460c-d81e-4c75-a792-8f1850d4ea45",
+    "name": "Banner em Lona",
+    "pricingRuleId": "cb71d193-ac88-4df1-bc72-b4cb38a556bb"
+  },
+  {
+    "id": "fb57a48a-efbb-4824-b2cb-220ecf3bb324",
+    "name": "Carimbo C20",
+    "pricingRuleId": null
+  }
+]
