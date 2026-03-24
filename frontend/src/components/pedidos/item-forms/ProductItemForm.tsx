@@ -49,7 +49,6 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
     const [simulatingPrice, setSimulatingPrice] = useState(false);
     const [materiaisSelecionados, setMateriaisSelecionados] = useState<InsumoMaterialSelecionado[]>([]);
     const [dynamicVariables, setDynamicVariables] = useState<Record<string, { value: any; unit: string | null }>>({});
-    const [isInitializing, setIsInitializing] = useState(true);
     const { insumos } = useInsumos();
 
     const [configuracoes, setConfiguracoes] = useState<any[]>([]);
@@ -261,7 +260,6 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 if (isHydrated) {
                     loadedSignatureRef.current = currentItemId;
                 }
-                setIsInitializing(false);
             }
         };
 

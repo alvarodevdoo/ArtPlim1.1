@@ -40,131 +40,159 @@ export interface CashFlowResult {
 }
 
 export class FinancialReportService {
-  constructor(private prisma: PrismaClient) {}
+  constructor(private prisma: PrismaClient) { }
 
   /**
    * DRE (Demonstrativo de Resultados) – Regime de Competência.
-   *
-   * Soma apenas transações do tipo INCOME (Receitas) e EXPENSE (Despesas),
-   * ignorando estritamente DEBIT e CREDIT (que são movimentações patrimoniais).
-   *
-   * Filtra por dueDate dentro do período informado.
+   * 
+   * - RECEITA: Valor total dos Pedidos (Orders) finalizados no período (finishedAt).
+   * - CUSTOS (CPV/CMV): Soma do costPrice * quantity dos itens dos pedidos finalizados.
+   * - DESPESAS FIXAS: Transações de EXPENSE filtradas por competenceDate.
    */
-  async getDRE(filter: DREFilter): Promise<DREResult> {
+  async generateDreReport(filter: DREFilter): Promise<DREResult> {
     const { organizationId, startDate, endDate } = filter;
-
     const dateWhere = { gte: startDate, lte: endDate };
 
-    // Agregar receitas por categoria
-    const incomeRows = await this.prisma.transaction.groupBy({
-      by: ['categoryId'],
+    // 1. Receita de Competência: Pedidos Finalizados/Entregues
+    const finishedOrders = await this.prisma.order.findMany({
       where: {
         organizationId,
-        type: TransactionType.INCOME,
-        dueDate: dateWhere
+        finishedAt: dateWhere,
+        status: { not: 'CANCELLED' }
       },
-      _sum: { amount: true }
+      select: {
+        total: true,
+        items: {
+          select: {
+            costPrice: true,
+            quantity: true
+          }
+        }
+      }
     });
 
-    // Agregar despesas por categoria
-    const expenseRows = await this.prisma.transaction.groupBy({
-      by: ['categoryId'],
+    const grossRevenue = finishedOrders.reduce((acc, order) => acc + Number(order.total), 0);
+    
+    // 2. Cálculo do CMV (Custo de Mercadoria Vendida) dos pedidos finalizados
+    let totalCMV = 0;
+    finishedOrders.forEach(order => {
+      order.items.forEach(item => {
+        totalCMV += Number(item.costPrice || 0) * (item.quantity || 1);
+      });
+    });
+
+    // 3. Despesas Operacionais / Outras Receitas por Competência
+    // Buscamos transações INCOME/EXPENSE que não sejam vinculadas a Order (para não duplicar receita)
+    // ou que sejam categorizadas como despesas administrativas/fixas.
+    const competenceTransactions = await this.prisma.transaction.findMany({
       where: {
         organizationId,
-        type: TransactionType.EXPENSE,
-        dueDate: dateWhere
+        competenceDate: dateWhere,
+        // Se for INCOME e tiver orderId, ignoramos pois a Receita Bruta já vem do finishedOrders.total
+        OR: [
+          { type: TransactionType.EXPENSE },
+          { AND: [{ type: TransactionType.INCOME }, { orderId: null }] }
+        ]
       },
-      _sum: { amount: true }
+      include: { category: true }
     });
 
-    // Buscar nomes de categorias para enriquecer o resultado
-    const categoryIds = [
-      ...new Set([
-        ...incomeRows.map(r => r.categoryId).filter(Boolean),
-        ...expenseRows.map(r => r.categoryId).filter(Boolean)
-      ])
-    ] as string[];
+    const incomeByCategoryMap = new Map<string, { categoryId: string | null, categoryName: string, total: number }>();
+    const expenseByCategoryMap = new Map<string, { categoryId: string | null, categoryName: string, total: number }>();
 
-    const categories = categoryIds.length > 0
-      ? await this.prisma.category.findMany({
-          where: { id: { in: categoryIds }, organizationId },
-          select: { id: true, name: true }
-        })
-      : [];
+    // Adicionar Receita Bruta de Pedidos no agrupamento
+    incomeByCategoryMap.set('vendas_pedidos', { 
+      categoryId: null, 
+      categoryName: 'Vendas de Produtos/Serviços', 
+      total: grossRevenue 
+    });
 
-    const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+    // Adicionar CMV no agrupamento de despesas
+    if (totalCMV > 0) {
+      expenseByCategoryMap.set('cmv', { 
+        categoryId: null, 
+        categoryName: 'Custo de Produção (CMV)', 
+        total: totalCMV 
+      });
+    }
 
-    const incomeByCategory = incomeRows.map(r => ({
-      categoryId: r.categoryId,
-      categoryName: r.categoryId ? (categoryMap.get(r.categoryId) ?? 'Sem categoria') : 'Sem categoria',
-      total: Number(r._sum.amount ?? 0)
-    }));
+    // Processar demais transações de competência
+    (competenceTransactions as any[]).forEach(tx => {
+      const catId = tx.categoryId || 'sem_categoria';
+      const catName = tx.category?.name || 'Sem Categoria';
+      const amount = Number(tx.amount);
 
-    const expenseByCategory = expenseRows.map(r => ({
-      categoryId: r.categoryId,
-      categoryName: r.categoryId ? (categoryMap.get(r.categoryId) ?? 'Sem categoria') : 'Sem categoria',
-      total: Number(r._sum.amount ?? 0)
-    }));
+      if (tx.type === TransactionType.INCOME) {
+        const existing = incomeByCategoryMap.get(catId) || { categoryId: tx.categoryId, categoryName: catName, total: 0 };
+        existing.total += amount;
+        incomeByCategoryMap.set(catId, existing);
+      } else {
+        const existing = expenseByCategoryMap.get(catId) || { categoryId: tx.categoryId, categoryName: catName, total: 0 };
+        existing.total += amount;
+        expenseByCategoryMap.set(catId, existing);
+      }
+    });
 
-    const grossRevenue = incomeByCategory.reduce((s, r) => s + r.total, 0);
-    const totalExpenses = expenseByCategory.reduce((s, r) => s + r.total, 0);
-    const netResult = grossRevenue - totalExpenses;
-    const profitMargin = grossRevenue > 0 ? (netResult / grossRevenue) * 100 : 0;
+    const incomeByCategory = Array.from(incomeByCategoryMap.values());
+    const expenseByCategory = Array.from(expenseByCategoryMap.values());
+    const totalExpenses = expenseByCategory.reduce((acc, curr) => acc + curr.total, 0);
+    const totalIncome = incomeByCategory.reduce((acc, curr) => acc + curr.total, 0);
+    
+    const netResult = totalIncome - totalExpenses;
+    const profitMargin = totalIncome > 0 ? (netResult / totalIncome) * 100 : 0;
 
-    return { grossRevenue, totalExpenses, netResult, profitMargin, incomeByCategory, expenseByCategory };
+    return {
+      grossRevenue: totalIncome,
+      totalExpenses,
+      netResult,
+      profitMargin,
+      incomeByCategory,
+      expenseByCategory
+    };
   }
 
   /**
    * Fluxo de Caixa – Regime de Caixa.
-   *
-   * Opera exclusivamente sobre as contas bancárias informadas (bankAccountIds).
-   * Separa movimentos REALIZADOS (paidAt não-nulo, status PAID) de PROJETADOS
-   * (dueDate dentro do período, status PENDING).
-   *
-   * O relatório ignora DEBIT/CREDIT para evitar dupla contagem de provisões.
+   * 
+   * Considera apenas transações PAID, filtrando por paidAt.
+   * Suporta pagamentos parcelados/fracionados naturalmente (cada parcela é uma Transaction).
    */
-  async getCashFlow(filter: CashFlowFilter): Promise<CashFlowResult> {
+  async generateCashFlowReport(filter: CashFlowFilter): Promise<CashFlowResult> {
     const { organizationId, bankAccountIds, startDate, endDate } = filter;
+    const dateWhere = { gte: startDate, lte: endDate };
 
     if (bankAccountIds.length === 0) {
-      return {
-        openingBalance: 0, paidInflows: 0, paidOutflows: 0, closingBalance: 0,
-        projectedInflows: 0, projectedOutflows: 0, projectedBalance: 0, timeline: []
-      };
+      return this.emptyCashFlow();
     }
 
-    // ── Saldo inicial das contas (antes do período) ───────────────────────────
+    // Soma saldo atual das contas
     const accounts = await this.prisma.account.findMany({
       where: { id: { in: bankAccountIds }, organizationId },
       select: { balance: true }
     });
+    const currentBalance = accounts.reduce((s, a) => s + Number(a.balance), 0);
 
-    // Movimento já realizados dentro do período
+    // Transações Realizadas (Regime de Caixa)
     const paidTransactions = await this.prisma.transaction.findMany({
       where: {
         organizationId,
         accountId: { in: bankAccountIds },
-        type: { in: [TransactionType.INCOME, TransactionType.EXPENSE] },
         status: 'PAID',
-        paidAt: { gte: startDate, lte: endDate }
+        paidAt: dateWhere
       },
       select: { type: true, amount: true, paidAt: true }
     });
 
-    // Movimentos futuros projetados dentro do período
+    // Transações Projetadas (A vencer)
     const pendingTransactions = await this.prisma.transaction.findMany({
       where: {
         organizationId,
         accountId: { in: bankAccountIds },
-        type: { in: [TransactionType.INCOME, TransactionType.EXPENSE] },
         status: { in: ['PENDING', 'OVERDUE'] },
-        dueDate: { gte: startDate, lte: endDate }
+        dueDate: dateWhere
       },
       select: { type: true, amount: true, dueDate: true }
     });
-
-    // Saldo atual das contas bancárias como ponto de partida
-    const openingBalance = accounts.reduce((s, a) => s + Number(a.balance), 0);
 
     const paidInflows = paidTransactions
       .filter(t => t.type === TransactionType.INCOME)
@@ -174,7 +202,11 @@ export class FinancialReportService {
       .filter(t => t.type === TransactionType.EXPENSE)
       .reduce((s, t) => s + Number(t.amount), 0);
 
-    const closingBalance = openingBalance + paidInflows - paidOutflows;
+    // Como o 'currentBalance' no banco reflete o agora, o openingBalance do período
+    // precisaria ser calculado retroativamente ou assumido. 
+    // Para simplificar e manter compatibilidade com o dashboard:
+    const openingBalance = currentBalance - paidInflows + paidOutflows;
+    const closingBalance = currentBalance;
 
     const projectedInflows = pendingTransactions
       .filter(t => t.type === TransactionType.INCOME)
@@ -186,39 +218,59 @@ export class FinancialReportService {
 
     const projectedBalance = closingBalance + projectedInflows - projectedOutflows;
 
-    // ── Timeline diária ───────────────────────────────────────────────────────
-    type TimelineEntry = { date: string; inflow: number; outflow: number; balance: number; isProjeted: boolean };
-    const timelineMap = new Map<string, TimelineEntry>();
-
-    for (const t of paidTransactions) {
-      const date = t.paidAt!.toISOString().split('T')[0];
-      const existing = timelineMap.get(date) ?? { date, inflow: 0, outflow: 0, balance: 0, isProjeted: false };
-      if (t.type === TransactionType.INCOME) existing.inflow += Number(t.amount);
-      else existing.outflow += Number(t.amount);
-      timelineMap.set(date, existing);
-    }
-
-    for (const t of pendingTransactions) {
-      const date = t.dueDate!.toISOString().split('T')[0];
-      const existing = timelineMap.get(date) ?? { date, inflow: 0, outflow: 0, balance: 0, isProjeted: true };
-      if (t.type === TransactionType.INCOME) existing.inflow += Number(t.amount);
-      else existing.outflow += Number(t.amount);
-      existing.isProjeted = true;
-      timelineMap.set(date, existing);
-    }
-
-    // Calcular saldo acumulado na timeline
-    let runningBalance = openingBalance;
-    const timeline = [...timelineMap.values()]
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .map(entry => {
-        runningBalance += entry.inflow - entry.outflow;
-        return { ...entry, balance: runningBalance };
-      });
+    // Timeline
+    const timeline = this.buildTimeline(openingBalance, paidTransactions, pendingTransactions);
 
     return {
-      openingBalance, paidInflows, paidOutflows, closingBalance,
-      projectedInflows, projectedOutflows, projectedBalance, timeline
+      openingBalance,
+      paidInflows,
+      paidOutflows,
+      closingBalance,
+      projectedInflows,
+      projectedOutflows,
+      projectedBalance,
+      timeline
+    };
+  }
+
+  // Métodos de compatibilidade (Legacy alias)
+  async getDRE(filter: DREFilter) { return this.generateDreReport(filter); }
+  async getCashFlow(filter: CashFlowFilter) { return this.generateCashFlowReport(filter); }
+
+  private buildTimeline(opening: number, paid: any[], pending: any[]) {
+    const timelineMap = new Map<string, { date: string, inflow: number, outflow: number, balance: number, isProjeted: boolean }>();
+
+    paid.forEach(t => {
+      const date = t.paidAt!.toISOString().split('T')[0];
+      const entry = timelineMap.get(date) || { date, inflow: 0, outflow: 0, balance: 0, isProjeted: false };
+      if (t.type === TransactionType.INCOME) entry.inflow += Number(t.amount);
+      else entry.outflow += Number(t.amount);
+      timelineMap.set(date, entry);
+    });
+
+    pending.forEach(t => {
+      const date = t.dueDate!.toISOString().split('T')[0];
+      const entry = timelineMap.get(date) || { date, inflow: 0, outflow: 0, balance: 0, isProjeted: true };
+      if (t.type === TransactionType.INCOME) entry.inflow += Number(t.amount);
+      else entry.outflow += Number(t.amount);
+      entry.isProjeted = true;
+      timelineMap.set(date, entry);
+    });
+
+    let running = opening;
+    return [...timelineMap.values()]
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map(e => {
+        running += e.inflow - e.outflow;
+        return { ...e, balance: running };
+      });
+  }
+
+  private emptyCashFlow(): CashFlowResult {
+    return {
+      openingBalance: 0, paidInflows: 0, paidOutflows: 0, closingBalance: 0,
+      projectedInflows: 0, projectedOutflows: 0, projectedBalance: 0, timeline: []
     };
   }
 }
+

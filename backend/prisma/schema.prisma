@@ -674,6 +674,7 @@ model Transaction {
   paidAt          DateTime?
   status          TransactionStatus @default(PENDING)
   createdAt       DateTime          @default(now())
+  competenceDate  DateTime?
   auditNotes      String?
   paymentMethodId String?
   payableId       String?
