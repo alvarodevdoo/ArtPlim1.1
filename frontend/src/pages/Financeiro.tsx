@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -13,7 +14,6 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
-  Eye,
   BarChart3,
   PieChart,
   ArrowUpRight,
@@ -21,7 +21,9 @@ import {
   Target,
   Activity,
   RefreshCw,
-  Trash
+  Trash,
+  UserCheck,
+  Users
 } from 'lucide-react';
 import {
   AreaChart,
@@ -40,6 +42,10 @@ import {
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { ContasAPagar } from '../features/financeiro/ContasAPagar';
+import { ContasAReceber } from '../features/financeiro/ContasAReceber';
+import { RelatorioDRE } from '../features/financeiro/RelatorioDRE';
+import { RelatorioFluxoCaixa } from '../features/financeiro/RelatorioFluxoCaixa';
 
 interface Account {
   id: string;
@@ -76,6 +82,12 @@ interface Transaction {
   order?: {
     id: string;
     orderNumber: string;
+  };
+  performedBy?: {
+    name: string;
+  };
+  profile?: {
+    name: string;
   };
 }
 
@@ -145,9 +157,11 @@ const Financeiro: React.FC = () => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [profiles, setProfiles] = useState<any[]>([]);
   const [dashboard, setDashboard] = useState<FinancialDashboard | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'dashboard');
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [showAddTransaction, setShowAddTransaction] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
@@ -169,7 +183,8 @@ const Financeiro: React.FC = () => {
     amount: '',
     description: '',
     categoryId: '',
-    dueDate: ''
+    dueDate: '',
+    profileId: ''
   });
 
   const [categoryForm, setCategoryForm] = useState({
@@ -177,6 +192,19 @@ const Financeiro: React.FC = () => {
     type: 'EXPENSE',
     color: '#EF4444'
   });
+
+  // Sincronizar tab com URL
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && tab !== activeTab) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (tabId: string) => {
+    setActiveTab(tabId);
+    setSearchParams({ tab: tabId });
+  };
 
   useEffect(() => {
     loadData();
@@ -190,17 +218,19 @@ const Financeiro: React.FC = () => {
 
   const loadData = async () => {
     try {
-      const [accountsResponse, transactionsResponse, dashboardResponse, categoriesResponse] = await Promise.all([
+      const [accountsResponse, transactionsResponse, dashboardResponse, categoriesResponse, profilesResponse] = await Promise.all([
         api.get('/api/finance/accounts'),
         api.get(`/api/finance/transactions?limit=50`),
         api.get(`/api/finance/dashboard?days=${dateRange}`),
-        api.get('/api/finance/categories')
+        api.get('/api/finance/categories'),
+        api.get('/api/profiles')
       ]);
 
       setAccounts(accountsResponse.data.data);
       setTransactions(transactionsResponse.data.data);
       setDashboard(dashboardResponse.data.data);
       setCategories(categoriesResponse.data.data);
+      setProfiles(profilesResponse.data.data);
     } catch (error) {
       toast.error('Erro ao carregar dados financeiros');
     } finally {
@@ -336,7 +366,8 @@ const Financeiro: React.FC = () => {
       amount: '',
       description: '',
       categoryId: '',
-      dueDate: ''
+      dueDate: '',
+      profileId: ''
     });
   };
 
@@ -542,20 +573,22 @@ const Financeiro: React.FC = () => {
       )}
 
       {/* Tabs */}
-      <div className="border-b border-border">
-        <nav className="flex space-x-8">
+      <div className="border-b border-border overflow-x-auto no-scrollbar">
+        <nav className="flex space-x-8 min-w-max px-4">
           {[
             { id: 'dashboard', label: 'Dashboard' },
             { id: 'accounts', label: 'Contas' },
             { id: 'categories', label: 'Categorias' },
             { id: 'transactions', label: 'Transações' },
             { id: 'receivables', label: 'A Receber' },
-            { id: 'payables', label: 'A Pagar' }
+            { id: 'payables', label: 'A Pagar' },
+            { id: 'dre', label: 'DRE' },
+            { id: 'cash-flow', label: 'Fluxo de Caixa' },
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === tab.id
+              onClick={() => handleTabChange(tab.id)}
+              className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap transition-colors ${activeTab === tab.id
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground'
                 }`}
@@ -656,11 +689,11 @@ const Financeiro: React.FC = () => {
                           paddingAngle={5}
                           dataKey="value"
                         >
-                          {dashboard.categoryStats.filter(cat => cat.type === 'EXPENSE').map((entry, index) => (
+                          {dashboard.categoryStats.filter(cat => cat.type === 'EXPENSE').map((_entry, index) => (
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                           ))}
                         </Pie>
-                        <Tooltip formatter={(value: any) => formatCurrency(Number(value) || 0)} />
+                        <Tooltip formatter={(value: any) => formatCurrency(Number(value))} />
                       </RechartsPieChart>
                     </ResponsiveContainer>
 
@@ -784,7 +817,7 @@ const Financeiro: React.FC = () => {
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={Object.entries(dashboard.accounts.balanceByType).map(([type, balance]) => ({
                     type: accountTypeConfig[type as keyof typeof accountTypeConfig]?.label || type,
-                    balance,
+                    amount: balance, // Changed from 'balance' to 'amount'
                     color: COLORS[Object.keys(dashboard.accounts.balanceByType).indexOf(type) % COLORS.length]
                   }))}>
                     <CartesianGrid strokeDasharray="3 3" />
@@ -793,9 +826,9 @@ const Financeiro: React.FC = () => {
                       tick={{ fontSize: 12 }}
                       tickFormatter={(value) => `R$ ${(value / 1000).toFixed(0)}k`}
                     />
-                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                    <Bar dataKey="balance" fill="#8884d8">
-                      {Object.entries(dashboard.accounts.balanceByType).map((entry, index) => (
+                    <Tooltip formatter={(value: any) => formatCurrency(Number(value))} />
+                    <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
+                      {Object.entries(dashboard.accounts.balanceByType).map((_entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Bar>
@@ -947,16 +980,32 @@ const Financeiro: React.FC = () => {
 
                       <div>
                         <h4 className="font-medium">{transaction.description}</h4>
-                        <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                          <span>{transaction.account.name}</span>
-                          {transaction.category && (
-                            <>
-                              <span>•</span>
-                              <span>{transaction.category.name}</span>
-                            </>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-muted-foreground">
+                          <div className="flex items-center">
+                            <span>{transaction.account.name}</span>
+                            {transaction.category && (
+                              <>
+                                <span className="mx-1.5 opacity-50">•</span>
+                                <span>{transaction.category.name}</span>
+                              </>
+                            )}
+                          </div>
+                          <div className="flex items-center">
+                            <Calendar className="w-3 h-3 mr-1 opacity-70" />
+                            <span>{formatDateTime(transaction.createdAt)}</span>
+                          </div>
+                          {transaction.performedBy && (
+                            <div className="flex items-center bg-secondary/50 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider">
+                              <UserCheck className="w-3 h-3 mr-1" />
+                              <span>Op: {transaction.performedBy.name.split(' ')[0]}</span>
+                            </div>
                           )}
-                          <span>•</span>
-                          <span>{formatDateTime(transaction.createdAt)}</span>
+                          {transaction.profile && (
+                            <div className="flex items-center text-primary font-medium">
+                              <Users className="w-3 h-3 mr-1" />
+                              <span>{transaction.profile.name}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1154,6 +1203,22 @@ const Financeiro: React.FC = () => {
                   />
                 </div>
 
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Entidade (Cliente/Fornecedor)</label>
+                  <select
+                    value={transactionForm.profileId}
+                    onChange={(e) => setTransactionForm(prev => ({ ...prev, profileId: e.target.value }))}
+                    className="w-full h-10 px-3 py-2 border border-input rounded-md bg-background"
+                  >
+                    <option value="">Nenhuma entidade vinculada</option>
+                    {profiles.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.type === 'CUSTOMER' ? 'Cliente' : 'Forn.'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="flex justify-end space-x-2 pt-4">
                   <Button
                     type="button"
@@ -1261,6 +1326,11 @@ const Financeiro: React.FC = () => {
           </CardContent>
         </Card>
       )}
+
+      {activeTab === 'payables' && <ContasAPagar />}
+      {activeTab === 'receivables' && <ContasAReceber />}
+      {activeTab === 'dre' && <RelatorioDRE />}
+      {activeTab === 'cash-flow' && <RelatorioFluxoCaixa />}
     </div>
   );
 };

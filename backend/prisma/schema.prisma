@@ -25,7 +25,6 @@ model Organization {
   configurationTemplates ConfigurationTemplate[]
   fichasTecnicas         FichaTecnicaInsumo[]
   finishes               Finish[]
-  insumos                Insumo[]
   inventoryAlerts        InventoryAlert[]
   inventoryMovements     InventoryMovement[]
   machines               Machine[]
@@ -44,6 +43,10 @@ model Organization {
   standardSizes          StandardSize[]
   transactions           Transaction[]
   users                  User[]
+  materialReceipts       MaterialReceipt[]
+  accountsPayable        AccountPayable[]
+  accountsReceivable     AccountReceivable[]
+  chartOfAccounts        ChartOfAccount[]
 
   @@map("organizations")
 }
@@ -84,6 +87,7 @@ model User {
   profile            Profile?
   organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   statusHistory      OrderStatusHistory[]
+  transactions       Transaction[]
 
   @@unique([organizationId, email])
   @@map("users")
@@ -135,8 +139,14 @@ model Profile {
   orders             Order[]
   organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user               User?              @relation(fields: [userId], references: [id])
+  MaterialReceipt    MaterialReceipt[]
+  AccountPayable     AccountPayable[]
+  AccountReceivable  AccountReceivable[] @relation("CustomerReceivables")
+  transactions       Transaction[]
+  materialSuppliers  MaterialSupplier[]
 
-  @@unique([organizationId, document])
+  @@unique([organizationId, name], name: "organizationId_name")
+  @@unique([organizationId, document], name: "organizationId_document")
   @@map("profiles")
 }
 
@@ -144,6 +154,7 @@ model Material {
   id               String             @id @default(uuid())
   organizationId   String
   name             String
+  category         String             @default("Outros")
   description      String?
   format           MaterialFormat
   costPerUnit      Decimal            @db.Decimal(10, 4)
@@ -158,7 +169,30 @@ model Material {
   organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   components       ProductComponent[]
   productionWastes ProductionWaste[]
+  fichasTecnicas   FichaTecnicaInsumo[]
+  fornecedores     InsumoFornecedor[]
+  suppliers        MaterialSupplier[]
+  receiptItems     MaterialReceiptItem[]
 
+  // Regras de Consumo Padrão
+  defaultConsumptionRule   ConsumptionRule  @default(FIXED)
+  defaultConsumptionFactor Decimal          @default(1.0) @db.Decimal(10, 4)
+
+  // Vínculos Contábeis (Plano de Contas)
+  inventoryAccountId       String?          // Conta de Ativo (Onde o valor entra na compra)
+  expenseAccountId         String?          // Conta de Despesa/CPV (Para onde o valor vai no consumo)
+  
+  inventoryAccount         ChartOfAccount?  @relation("MaterialInventoryAccount", fields: [inventoryAccountId], references: [id])
+  expenseAccount           ChartOfAccount?  @relation("MaterialExpenseAccount", fields: [expenseAccountId], references: [id])
+
+  // Controle de Estoque
+  minStockQuantity         Float?
+  sellWithoutStock         Boolean          @default(true)
+
+  @@unique([organizationId, name], name: "organizationId_name")
+  @@index([organizationId])
+  @@index([organizationId, category])
+  @@index([organizationId, active])
   @@map("materials")
 }
 
@@ -199,6 +233,7 @@ model Product {
   stockQuantity    Float?
   stockUnit        String?
   trackStock       Boolean                @default(false)
+  sellWithoutStock Boolean                @default(true)
   formulaData      Json?
   localFormulaId   String?
   customFormula    String?
@@ -213,6 +248,7 @@ model Product {
   organization     Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   pricingRule      PricingRule?           @relation(fields: [pricingRuleId], references: [id])
 
+  @@unique([organizationId, name], name: "organizationId_name")
   @@map("products")
 }
 
@@ -396,6 +432,7 @@ model Order {
   productionWastes          ProductionWaste[]
   transactions              Transaction[]
   statusHistory             OrderStatusHistory[]
+  accountsReceivable        AccountReceivable[]
 
   @@unique([organizationId, orderNumber])
   @@map("orders")
@@ -606,20 +643,21 @@ model Machine {
 }
 
 model Account {
-  id             String        @id @default(uuid())
+  id             String          @id @default(uuid())
   organizationId String
   name           String
   type           AccountType
-  balance        Decimal       @default(0) @db.Decimal(15, 2)
+  balance        Decimal         @default(0) @db.Decimal(15, 2)
   bank           String?
   agency         String?
   accountNumber  String?
-  active         Boolean       @default(true)
-  createdAt      DateTime      @default(now())
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  active         Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   transactions   Transaction[]
   paymentMethods PaymentMethod[]
 
+  @@unique([organizationId, name], name: "organizationId_name")
   @@map("accounts")
 }
 
@@ -638,11 +676,19 @@ model Transaction {
   createdAt       DateTime          @default(now())
   auditNotes      String?
   paymentMethodId String?
-  account         Account           @relation(fields: [accountId], references: [id])
-  category        Category?         @relation(fields: [categoryId], references: [id])
-  order           Order?            @relation(fields: [orderId], references: [id])
-  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  paymentMethod   PaymentMethod?    @relation(fields: [paymentMethodId], references: [id])
+  payableId       String?
+  receivableId    String?
+  userId          String?
+  profileId       String?
+  account         Account             @relation(fields: [accountId], references: [id])
+  category        Category?           @relation(fields: [categoryId], references: [id])
+  order           Order?              @relation(fields: [orderId], references: [id])
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  paymentMethod   PaymentMethod?      @relation(fields: [paymentMethodId], references: [id])
+  payable         AccountPayable?     @relation(fields: [payableId], references: [id])
+  receivable      AccountReceivable?  @relation(fields: [receivableId], references: [id])
+  performedBy     User?               @relation(fields: [userId], references: [id])
+  profile         Profile?            @relation(fields: [profileId], references: [id])
 
   @@map("transactions")
 }
@@ -852,28 +898,8 @@ model PricingRule {
   orderItems     OrderItem[]
   BudgetItem     BudgetItem[]
 
+  @@unique([organizationId, name], name: "organizationId_name")
   @@map("pricing_rules")
-}
-
-/// Matéria-prima usada no motor de cálculo de orçamentos dinâmicos
-model Insumo {
-  id             String               @id @default(uuid())
-  organizationId String
-  nome           String
-  categoria      String
-  unidadeBase    UnidadeBase
-  custoUnitario  Decimal              @db.Decimal(10, 4)
-  ativo          Boolean              @default(true)
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  fichasTecnicas FichaTecnicaInsumo[]
-  fornecedores   InsumoFornecedor[]
-  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([organizationId])
-  @@index([organizationId, categoria])
-  @@index([organizationId, ativo])
-  @@map("insumos")
 }
 
 /// Relação de quantidade de insumos associados a um Produto Base ou a uma Opção de Variação
@@ -885,14 +911,16 @@ model FichaTecnicaInsumo {
   configurationOptionId String?
   quantidade            Float
   custoCalculado        Decimal              @db.Decimal(10, 4)
+  linkedVariable        String?
+  linkedQuantityVariable String?
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
   option                ConfigurationOption? @relation(fields: [configurationOptionId], references: [id], onDelete: Cascade)
-  insumo                Insumo               @relation(fields: [insumoId], references: [id])
+  material              Material             @relation(fields: [insumoId], references: [id])
   organization          Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   product               Product?             @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  @@index([productId])
+  @@unique([productId, insumoId], name: "productId_insumoId")
   @@index([configurationOptionId])
   @@map("ficha_tecnica_insumos")
 }
@@ -907,7 +935,7 @@ model InsumoFornecedor {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   fornecedor   Profile  @relation(fields: [fornecedorId], references: [id])
-  insumo       Insumo   @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+  material     Material @relation(fields: [insumoId], references: [id], onDelete: Cascade)
 
   @@unique([insumoId, fornecedorId])
   @@map("insumo_fornecedores")
@@ -1029,6 +1057,8 @@ enum TransactionType {
   INCOME
   EXPENSE
   TRANSFER
+  DEBIT  // Partidas Dobradas: Débito contábil (aumenta Ativo / reduz Passivo)
+  CREDIT // Partidas Dobradas: Crédito contábil (aumenta Passivo / reduz Ativo)
 }
 
 enum TransactionStatus {
@@ -1076,11 +1106,146 @@ enum StatusScope {
   BOTH
 }
 
-/// Unidade de medida base do insumo
-enum UnidadeBase {
-  KG
-  M2
-  M
-  UN
-  LITRO
+enum ReceiptStatus {
+  PENDING
+  BILLED
+}
+
+enum PayableStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+model MaterialReceipt {
+  id             String        @id @default(uuid())
+  organizationId String
+  supplierId     String
+  invoiceNumber  String?
+  totalAmount    Decimal       @db.Decimal(15, 2)
+  issueDate      DateTime      @default(now())
+  status         ReceiptStatus @default(PENDING)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  payableId      String?
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier     Profile         @relation(fields: [supplierId], references: [id])
+  payable      AccountPayable? @relation(fields: [payableId], references: [id])
+  items        MaterialReceiptItem[]
+
+  @@map("material_receipts")
+}
+
+model MaterialSupplier {
+  id             String    @id @default(uuid())
+  materialId     String
+  supplierId     String
+  supplierCode   String?
+  costPrice      Decimal   @db.Decimal(10, 4)
+  notes          String?
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  material       Material  @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  supplier       Profile   @relation(fields: [supplierId], references: [id])
+
+  @@unique([materialId, supplierId])
+  @@map("material_suppliers")
+}
+
+model MaterialReceiptItem {
+  id             String          @id @default(uuid())
+  receiptId      String
+  materialId     String
+  quantity       Decimal         @db.Decimal(10, 4)
+  unitPrice      Decimal         @db.Decimal(10, 4)
+  totalPrice     Decimal         @db.Decimal(15, 2)
+  notes          String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  receipt        MaterialReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  material       Material        @relation(fields: [materialId], references: [id])
+
+  @@map("material_receipt_items")
+}
+
+model AccountPayable {
+  id             String        @id @default(uuid())
+  organizationId String
+  supplierId     String
+  amount         Decimal       @db.Decimal(15, 2)
+  dueDate        DateTime
+  status         PayableStatus @default(PENDING)
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier     Profile           @relation(fields: [supplierId], references: [id])
+  receipts     MaterialReceipt[]
+  transactions Transaction[]
+
+  @@map("accounts_payable")
+}
+
+enum ReceivableStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+model AccountReceivable {
+  id             String            @id @default(uuid())
+  organizationId String
+  customerId     String
+  orderId        String?
+  amount         Decimal           @db.Decimal(15, 2)
+  dueDate        DateTime
+  status         ReceivableStatus  @default(PENDING)
+  notes          String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     Profile       @relation("CustomerReceivables", fields: [customerId], references: [id])
+  order        Order?        @relation(fields: [orderId], references: [id])
+  transactions Transaction[]
+
+  @@map("accounts_receivable")
+}
+
+model ChartOfAccount {
+  id               String               @id @default(uuid())
+  organizationId   String
+  name             String
+  code             String?
+  type             ChartOfAccountType
+  active           Boolean              @default(true)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inventoryMaterials Material[]         @relation("MaterialInventoryAccount")
+  expenseMaterials   Material[]         @relation("MaterialExpenseAccount")
+  
+  @@unique([organizationId, code], name: "organizationId_code")
+  @@map("chart_of_accounts")
+}
+
+enum ChartOfAccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum ConsumptionRule {
+  AREA
+  PERIMETER
+  SPACING
+  FIXED
 }

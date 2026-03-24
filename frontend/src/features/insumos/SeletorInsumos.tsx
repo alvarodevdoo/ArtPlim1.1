@@ -31,6 +31,8 @@ interface SeletorInsumosProps {
   onMaterialsChange: (materiais: InsumoMaterialSelecionado[]) => void;
   materiaisIniciais?: InsumoMaterialSelecionado[];
   somenteLeitura?: boolean;
+  availableVariables?: string[];
+  variableValues?: Record<string, any>;
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
@@ -40,6 +42,8 @@ export function SeletorInsumos({
   onMaterialsChange,
   materiaisIniciais = [],
   somenteLeitura = false,
+  availableVariables = [],
+  variableValues = {},
 }: SeletorInsumosProps) {
   // ── Estado principal: array de materiais adicionados à peça ────────────────
   // Este é o array que alimenta o motor de cálculo (calcularCustoInsumos).
@@ -76,8 +80,8 @@ export function SeletorInsumos({
 
   // Cálculo em tempo real usando mathjs
   const resultado = useMemo(
-    () => calcularCustoInsumos(materiaisAdicionados),
-    [materiaisAdicionados],
+    () => calcularCustoInsumos(materiaisAdicionados, variableValues),
+    [materiaisAdicionados, variableValues],
   );
 
   // Insumo selecionado no <select>
@@ -132,6 +136,23 @@ export function SeletorInsumos({
     setMateriais(
       materiaisAdicionados.map((m) =>
         m.insumoId === insumoId ? { ...m, quantidadeUtilizada: qtd } : m,
+      ),
+    );
+  }
+
+  // ── Alterar vínculo de variável de um item já adicionado ─────────────────
+  function handleAlterarViculoVariable(insumoId: string, variable: string) {
+    setMateriais(
+      materiaisAdicionados.map((m) =>
+        m.insumoId === insumoId ? { ...m, linkedVariable: variable || undefined } : m,
+      ),
+    );
+  }
+
+  function handleAlterarViculoQuantidadeVariable(insumoId: string, variable: string) {
+    setMateriais(
+      materiaisAdicionados.map((m) =>
+        m.insumoId === insumoId ? { ...m, linkedQuantityVariable: variable || undefined } : m,
       ),
     );
   }
@@ -222,7 +243,8 @@ export function SeletorInsumos({
           {/* Cabeçalho */}
           <div style={{ ...styles.listaRow, ...styles.listaHeader }}>
             <span style={{ flex: 3 }}>Insumo</span>
-            <span style={{ flex: 1, textAlign: 'right' }}>Qtd / Un.</span>
+            {availableVariables.length > 0 && <span style={{ flex: 1.5 }}>Vínculo Fórmula</span>}
+            <span style={{ flex: 1.5, textAlign: 'right' }}>Qtd / Área</span>
             <span style={{ flex: 1, textAlign: 'right' }}>Preço Base</span>
             <span style={{ flex: 1, textAlign: 'right' }}>Subtotal</span>
             {!somenteLeitura && <span style={{ width: 36 }} />}
@@ -235,22 +257,105 @@ export function SeletorInsumos({
               <div key={m.insumoId} style={styles.listaRow}>
                 <span style={{ flex: 3, fontWeight: 500, color: '#0f172a' }}>{m.nome}</span>
 
-                {/* Quantidade editável */}
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
-                  {somenteLeitura ? (
-                    <span style={styles.cell}>
-                      {m.quantidadeUtilizada} {m.unidadeBase}
-                    </span>
-                  ) : (
-                    <input
-                      type="number"
-                      value={m.quantidadeUtilizada}
-                      min="0.001"
-                      step="0.001"
-                      onChange={(e) => handleAlterarQuantidade(m.insumoId, e.target.value)}
-                      style={styles.qtdInput}
-                    />
-                  )}
+                {/* Seletor de Variável da Fórmula (Preço) */}
+                {availableVariables.length > 0 && (
+                  <div style={{ flex: 1.5 }}>
+                    <select
+                      value={m.linkedVariable || ''}
+                      onChange={(e) => handleAlterarViculoVariable(m.insumoId, e.target.value)}
+                      style={{ ...styles.select, padding: '4px 6px', fontSize: 11, height: 26 }}
+                      disabled={somenteLeitura}
+                    >
+                      <option value="">— Sem Vínculo —</option>
+                      {availableVariables.map(v => (
+                        <option key={v} value={v}>{v}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Quantidade editável com indicadores automáticos */}
+                <div style={{ flex: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+                  {(() => {
+                    const unit = m.unidadeBase?.toUpperCase();
+                    const isAuto = !m.linkedQuantityVariable && (
+                      (unit === 'M2' && variableValues['AREA_TOTAL'] !== undefined) ||
+                      ((unit === 'M' || unit === 'CM' || unit === 'MM') && variableValues['COMPRIMENTO_TOTAL'] !== undefined)
+                    );
+
+                    const displayValue = isAuto 
+                      ? (unit === 'M2' ? variableValues['AREA_TOTAL'] : variableValues['COMPRIMENTO_TOTAL'])
+                      : m.quantidadeUtilizada;
+
+                    return (
+                      <>
+                        {isAuto && (
+                          <span 
+                            title="Calculado automaticamente" 
+                            style={{ fontSize: 9, color: '#059669', fontWeight: 'bold', background: '#ecfdf5', padding: '2px 4px', borderRadius: 4 }}
+                          >
+                            AUTO
+                          </span>
+                        )}
+                        {m.linkedQuantityVariable && (
+                          <span 
+                            title={`Vinculado a: ${m.linkedQuantityVariable}`}
+                            style={{ fontSize: 9, color: '#2563eb', fontWeight: 'bold', background: '#eff6ff', padding: '2px 4px', borderRadius: 4 }}
+                          >
+                            🔗 {m.linkedQuantityVariable}
+                          </span>
+                        )}
+                        <input
+                          type="number"
+                          step="0.001"
+                          value={isAuto ? Number(displayValue).toFixed(3) : (m.quantidadeUtilizada || 0)}
+                          onChange={(e) => handleAlterarQuantidade(m.insumoId, e.target.value)}
+                          style={{
+                            ...styles.qtdInput,
+                            width: 60,
+                            height: 24,
+                            textAlign: 'right',
+                            fontSize: 12,
+                            backgroundColor: (isAuto || m.linkedQuantityVariable) ? '#f8fafc' : '#fff',
+                            color: (isAuto || m.linkedQuantityVariable) ? '#64748b' : '#000',
+                            border: '1px solid #e2e8f0',
+                            padding: '0 4px',
+                            cursor: (isAuto || m.linkedQuantityVariable) ? 'not-allowed' : 'text'
+                          }}
+                          disabled={somenteLeitura || isAuto || !!m.linkedQuantityVariable}
+                        />
+                        
+                        {/* Botão discreto para vincular quantidade manualmente (ex: Ilhós) */}
+                        {!somenteLeitura && !isAuto && !m.linkedQuantityVariable && (
+                          <div className="group relative">
+                            <select
+                              value=""
+                              onChange={(e) => handleAlterarViculoQuantidadeVariable(m.insumoId, e.target.value)}
+                              style={{ width: 14, height: 14, opacity: 0.3, cursor: 'pointer', border: 'none', background: 'transparent' }}
+                              title="Vincular quantidade à variável"
+                            >
+                              <option value="">🔗</option>
+                              {availableVariables.map(v => (
+                                <option key={v} value={v}>{v}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
+                        {/* Botão para romper vínculo */}
+                        {!somenteLeitura && (m.linkedQuantityVariable) && (
+                          <button
+                            type="button"
+                            onClick={() => handleAlterarViculoQuantidadeVariable(m.insumoId, '')}
+                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, color: '#ef4444', fontSize: 10 }}
+                            title="Voltar para manual"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
                   <span style={styles.unidadeLabel}>{m.unidadeBase}</span>
                 </div>
 
@@ -278,8 +383,8 @@ export function SeletorInsumos({
 
           {/* Linha de total */}
           <div style={{ ...styles.listaRow, borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 8 }}>
-            <span style={{ flex: 5, textAlign: 'right', color: '#64748b', fontSize: 12 }}>Total de Insumos:</span>
-            <span style={{ flex: 1, textAlign: 'right', color: '#059669', fontWeight: 700, fontSize: 15 }}>
+            <span style={{ flex: availableVariables.length > 0 ? 7 : 5, textAlign: 'right', color: '#64748b', fontSize: 12 }}>Total de Insumos:</span>
+            <span style={{ flex: 1, textAlign: 'right' , color: '#059669', fontWeight: 700, fontSize: 15 }}>
               {resultado.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
             </span>
             {!somenteLeitura && <span style={{ width: 36 }} />}

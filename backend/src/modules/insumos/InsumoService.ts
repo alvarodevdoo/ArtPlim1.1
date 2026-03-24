@@ -7,7 +7,7 @@
  * Padrão: Package by Feature – src/modules/insumos/
  */
 
-import { PrismaClient, UnidadeBase } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { AppError } from '../../shared/infrastructure/errors/AppError';
 
 // ─── Tipos de dados ───────────────────────────────────────────────────────────
@@ -16,7 +16,7 @@ export interface CreateInsumoData {
   organizationId: string;
   nome: string;
   categoria: string;
-  unidadeBase: UnidadeBase;
+  unidadeBase: string; // Mudou de enum para string
   custoUnitario: number;
   ativo?: boolean;
 }
@@ -24,7 +24,7 @@ export interface CreateInsumoData {
 export interface UpdateInsumoData {
   nome?: string;
   categoria?: string;
-  unidadeBase?: UnidadeBase;
+  unidadeBase?: string;
   custoUnitario?: number;
   ativo?: boolean;
 }
@@ -40,123 +40,137 @@ export class InsumoService {
   constructor(private prisma: any) {}
 
   /**
-   * Lista todos os insumos de uma organização.
-   * Suporta filtragem por categoria e status ativo/inativo.
+   * Lista todos os materiais (antigos insumos) de uma organização.
    */
   async list(organizationId: string, filtros: ListInsumosFilter = {}) {
     const where: any = { organizationId };
 
     if (filtros.categoria) {
-      where.categoria = filtros.categoria;
+      where.category = filtros.categoria;
     }
 
-    // Se `ativo` não foi informado, retorna apenas os ativos por padrão
     if (filtros.ativo !== undefined) {
-      where.ativo = filtros.ativo;
+      where.active = filtros.ativo;
     }
 
-    return this.prisma.insumo.findMany({
+    const materials = await this.prisma.material.findMany({
       where,
-      orderBy: [{ categoria: 'asc' }, { nome: 'asc' }],
+      orderBy: [{ category: 'asc' }, { name: 'asc' }],
     });
+
+    // Mapear de volta para o formato esperado pelo frontend legado se necessário
+    return materials.map((m: any) => ({
+      ...m,
+      nome: m.name,
+      categoria: m.category,
+      unidadeBase: m.unit,
+      custoUnitario: m.costPerUnit,
+      ativo: m.active
+    }));
   }
 
   /**
-   * Retorna as categorias distintas cadastradas (para popular o <select> do form).
+   * Retorna as categorias distintas cadastradas.
    */
   async listCategorias(organizationId: string): Promise<string[]> {
-    const result = await this.prisma.insumo.findMany({
+    const result = await this.prisma.material.findMany({
       where: { organizationId },
-      select: { categoria: true },
-      distinct: ['categoria'],
-      orderBy: { categoria: 'asc' },
+      select: { category: true },
+      distinct: ['category'],
+      orderBy: { category: 'asc' },
     });
-    return result.map((r) => r.categoria);
+    return result.map((r: any) => r.category);
   }
 
   /**
-   * Busca um insumo pelo ID garantindo que pertence à organização.
+   * Busca um material pelo ID.
    */
   async findById(id: string, organizationId: string) {
-    const insumo = await this.prisma.insumo.findFirst({
+    const material = await this.prisma.material.findFirst({
       where: { id, organizationId },
     });
 
-    if (!insumo) {
-      throw new AppError('Insumo não encontrado.', 404);
+    if (!material) {
+      throw new AppError('Insumo/Material não encontrado.', 404);
     }
 
-    return insumo;
+    return {
+      ...material,
+      nome: material.name,
+      categoria: material.category,
+      unidadeBase: material.unit,
+      custoUnitario: material.costPerUnit,
+      ativo: material.active
+    };
   }
 
   /**
-   * Cria um novo insumo.
+   * Cria um novo material via interface de insumos.
    */
   async create(data: CreateInsumoData) {
-    return this.prisma.insumo.create({
+    // Determinar formato simplificado
+    let format = 'UNIT';
+    if (data.unidadeBase.toUpperCase() === 'M2') format = 'SHEET';
+    if (data.unidadeBase.toUpperCase() === 'M') format = 'ROLL';
+
+    return this.prisma.material.create({
       data: {
         organizationId: data.organizationId,
-        nome: data.nome,
-        categoria: data.categoria,
-        unidadeBase: data.unidadeBase,
-        // Prisma aceita number ou Decimal—passamos como string para evitar perda de precisão
-        custoUnitario: data.custoUnitario,
-        ativo: data.ativo ?? true,
+        name: data.nome,
+        category: data.categoria,
+        unit: data.unidadeBase.toLowerCase(),
+        costPerUnit: data.custoUnitario,
+        active: data.ativo ?? true,
+        format: format as any,
+        defaultConsumptionRule: 'FIXED',
+        defaultConsumptionFactor: 1.0
       },
     });
   }
 
   /**
-   * Atualiza os dados de um insumo existente.
-   * Útil para atualização de preço (custo_unitario) sem precisar
-   * reenviar todos os campos.
+   * Atualiza os dados de um material.
    */
   async update(id: string, organizationId: string, data: UpdateInsumoData) {
-    // Garantir que o insumo existe e pertence à organização
     await this.findById(id, organizationId);
 
-    return this.prisma.insumo.update({
+    return this.prisma.material.update({
       where: { id },
       data: {
-        ...(data.nome !== undefined && { nome: data.nome }),
-        ...(data.categoria !== undefined && { categoria: data.categoria }),
-        ...(data.unidadeBase !== undefined && { unidadeBase: data.unidadeBase }),
-        ...(data.custoUnitario !== undefined && { custoUnitario: data.custoUnitario }),
-        ...(data.ativo !== undefined && { ativo: data.ativo }),
+        ...(data.nome !== undefined && { name: data.nome }),
+        ...(data.categoria !== undefined && { category: data.categoria }),
+        ...(data.unidadeBase !== undefined && { unit: data.unidadeBase.toLowerCase() }),
+        ...(data.custoUnitario !== undefined && { costPerUnit: data.custoUnitario }),
+        ...(data.ativo !== undefined && { active: data.ativo }),
       },
     });
   }
 
   /**
-   * Alterna o status ativo/inativo de um insumo.
+   * Alterna o status ativo/inativo.
    */
   async toggleStatus(id: string, organizationId: string) {
-    const insumo = await this.findById(id, organizationId);
+    const material = await this.findById(id, organizationId);
 
-    return this.prisma.insumo.update({
+    return this.prisma.material.update({
       where: { id },
-      data: { ativo: !insumo.ativo },
+      data: { active: !material.ativo },
     });
   }
 
   /**
-   * Remove permanentemente um insumo.
-   * ⚠ Prefer `toggleStatus` para desativação suave.
+   * Remove permanentemente.
    */
   async delete(id: string, organizationId: string) {
     await this.findById(id, organizationId);
-    return this.prisma.insumo.delete({ where: { id } });
+    return this.prisma.material.delete({ where: { id } });
   }
 
   // ─── Fornecedores ──────────────────────────────────────────────────────────
 
-  /**
-   * Vincula um fornecedor a um insumo.
-   */
   async addFornecedor(insumoId: string, organizationId: string, data: { fornecedorId: string, precoCusto?: number, referencia?: string, ativo?: boolean }) {
     await this.findById(insumoId, organizationId);
 
-    // Se estiver definindo como ativo, desativa os outros deste insumo
     if (data.ativo) {
       await this.prisma.insumoFornecedor.updateMany({
         where: { insumoId },
@@ -186,9 +200,6 @@ export class InsumoService {
     });
   }
 
-  /**
-   * Lista fornecedores vinculados ao insumo.
-   */
   async listFornecedores(insumoId: string, organizationId: string) {
     await this.findById(insumoId, organizationId);
 
@@ -203,28 +214,20 @@ export class InsumoService {
     });
   }
 
-  /**
-   * Define um fornecedor como o ativo/principal.
-   */
   async setFornecedorAtivo(insumoId: string, relationId: string, organizationId: string) {
     await this.findById(insumoId, organizationId);
 
-    // Desativa todos
     await this.prisma.insumoFornecedor.updateMany({
       where: { insumoId },
       data: { ativo: false }
     });
 
-    // Ativa o selecionado
     return this.prisma.insumoFornecedor.update({
       where: { id: relationId },
       data: { ativo: true }
     });
   }
 
-  /**
-   * Remove vínculo com fornecedor.
-   */
   async removeFornecedor(insumoId: string, relationId: string, organizationId: string) {
     await this.findById(insumoId, organizationId);
     return this.prisma.insumoFornecedor.delete({ where: { id: relationId } });

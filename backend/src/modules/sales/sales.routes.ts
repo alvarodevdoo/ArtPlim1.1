@@ -315,7 +315,9 @@ export async function salesRoutes(fastify: FastifyInstance) {
           type: 'INCOME',
           amount: p.amount,
           description: `Pagamento Pedido ${orderNumber}`,
-          orderId: order.id
+          orderId: order.id,
+          userId: request.user!.userId,
+          profileId: body.customerId
         });
 
         // Adicionar informações extras antes de aprovar
@@ -514,7 +516,9 @@ export async function salesRoutes(fastify: FastifyInstance) {
             type: 'INCOME',
             amount: p.amount,
             description: `Pagamento Adicional Pedido ${existingOrder.orderNumber}`,
-            orderId: existingOrder.id
+            orderId: existingOrder.id,
+            userId: request.user!.userId,
+            profileId: existingOrder.customerId
           });
 
           // Adicionar informações extras

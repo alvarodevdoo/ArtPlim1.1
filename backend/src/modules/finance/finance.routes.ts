@@ -4,6 +4,10 @@ import { getTenantClient } from '../../shared/infrastructure/database/tenant';
 import { AccountService } from './services/AccountService';
 import { TransactionService } from './services/TransactionService';
 import { CategoryService } from './services/CategoryService';
+import { AccountPayableService } from './services/AccountPayableService';
+import { PaymentService } from './services/PaymentService';
+import { ReceivableService } from './services/ReceivableService';
+import { FinancialReportService } from './services/FinancialReportService';
 import { AccountType, TransactionType, CategoryType } from '@prisma/client';
 
 const listQuerySchema = z.object({
@@ -40,7 +44,8 @@ const createTransactionSchema = z.object({
   description: z.string(),
   categoryId: z.string().optional().nullable(),
   orderId: z.string().optional().nullable(),
-  dueDate: z.string().optional().nullable()
+  dueDate: z.string().optional().nullable(),
+  profileId: z.string().optional().nullable()
 });
 
 export async function financeRoutes(fastify: FastifyInstance) {
@@ -52,6 +57,15 @@ export async function financeRoutes(fastify: FastifyInstance) {
     const accountService = new AccountService(prisma);
     const accounts = await accountService.list(request.user!.organizationId);
     return reply.send({ success: true, data: accounts });
+  });
+
+  fastify.get('/chart-of-accounts', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const prisma = getTenantClient(request.user!.organizationId);
+    const chartOfAccounts = await prisma.chartOfAccount.findMany({
+      where: { organizationId: request.user!.organizationId, active: true },
+      orderBy: { name: 'asc' }
+    });
+    return reply.send({ success: true, data: chartOfAccounts });
   });
 
   fastify.post('/accounts', { preHandler: [fastify.authenticate] }, async (request, reply) => {
@@ -148,7 +162,9 @@ export async function financeRoutes(fastify: FastifyInstance) {
       organizationId: request.user!.organizationId,
       categoryId: data.categoryId || undefined,
       orderId: data.orderId || undefined,
-      dueDate: data.dueDate || undefined
+      dueDate: data.dueDate || undefined,
+      userId: request.user!.userId,
+      profileId: data.profileId || undefined
     });
 
     return reply.code(201).send({ success: true, data: transaction });
@@ -181,5 +197,128 @@ export async function financeRoutes(fastify: FastifyInstance) {
     });
 
     return reply.send({ success: true, data: dashboard });
+  });
+
+  // ========== CONTAS A PAGAR (FORNECEDORES) ==========
+  const payBillSchema = z.object({
+    paymentAccountId: z.string().uuid('Conta bancária inválida'),
+    supplierAccountId: z.string().uuid('Conta do fornecedor inválida'),
+    paymentMethodId: z.string().optional(),
+    amountPaid: z.number().positive(),
+    notes: z.string().optional(),
+    categoryId: z.string().optional()
+  });
+
+  fastify.get('/payables', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const prisma = getTenantClient(request.user!.organizationId);
+    const payableService = new AccountPayableService(prisma);
+    const payables = await payableService.listPayables(request.user!.organizationId);
+    return reply.send({ success: true, data: payables });
+  });
+
+  fastify.post('/payables/:id/pay', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = payBillSchema.parse(request.body);
+    const prisma = getTenantClient(request.user!.organizationId);
+    const paymentService = new PaymentService(prisma);
+
+    const updatedPayable = await paymentService.payBill({
+      organizationId: request.user!.organizationId,
+      payableId: id,
+      paymentAccountId: body.paymentAccountId,
+      supplierAccountId: body.supplierAccountId,
+      paymentMethodId: body.paymentMethodId,
+      amountPaid: body.amountPaid,
+      notes: body.notes,
+      categoryId: body.categoryId,
+      userId: request.user!.userId
+    });
+
+    return reply.send({ success: true, data: updatedPayable });
+  });
+
+  // ========== CONTAS A RECEBER ==========
+
+  const createReceivableSchema = z.object({
+    customerId: z.string().uuid('Cliente inválido'),
+    orderId: z.string().uuid().optional(),
+    amount: z.number().positive('Valor deve ser positivo'),
+    dueDate: z.string(),
+    receivableAccountId: z.string().uuid('Conta de Ativo inválida'),
+    revenueAccountId: z.string().uuid('Conta de Receita inválida'),
+    notes: z.string().optional(),
+    categoryId: z.string().optional()
+  });
+
+  fastify.post('/receivables', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const body = createReceivableSchema.parse(request.body);
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new ReceivableService(prisma);
+
+    const receivable = await service.createReceivableFromOrder({
+      organizationId: request.user!.organizationId,
+      customerId: body.customerId,
+      orderId: body.orderId,
+      amount: body.amount,
+      dueDate: new Date(body.dueDate),
+      receivableAccountId: body.receivableAccountId,
+      revenueAccountId: body.revenueAccountId,
+      notes: body.notes,
+      categoryId: body.categoryId,
+      userId: request.user!.userId
+    });
+
+    return reply.code(201).send({ success: true, data: receivable });
+  });
+
+  fastify.get('/receivables', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new ReceivableService(prisma);
+    const receivables = await service.listReceivables(request.user!.organizationId);
+    return reply.send({ success: true, data: receivables });
+  });
+
+  // ========== RELATÓRIOS FINANCEIROS ==========
+
+  const periodQuerySchema = z.object({
+    startDate: z.string(),
+    endDate: z.string()
+  });
+
+  const cashFlowQuerySchema = periodQuerySchema.extend({
+    bankAccountIds: z.string() // CSV de IDs: ?bankAccountIds=id1,id2
+  });
+
+  // GET /api/finance/reports/dre?startDate=2025-01-01&endDate=2025-12-31
+  fastify.get('/reports/dre', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const query = periodQuerySchema.parse(request.query);
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new FinancialReportService(prisma);
+
+    const dre = await service.getDRE({
+      organizationId: request.user!.organizationId,
+      startDate: new Date(query.startDate),
+      endDate: new Date(query.endDate)
+    });
+
+    return reply.send({ success: true, data: dre });
+  });
+
+  // GET /api/finance/reports/cash-flow?startDate=...&endDate=...&bankAccountIds=id1,id2
+  fastify.get('/reports/cash-flow', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const query = cashFlowQuerySchema.parse(request.query);
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new FinancialReportService(prisma);
+
+    const bankAccountIds = query.bankAccountIds.split(',').map(id => id.trim()).filter(Boolean);
+
+    const cashFlow = await service.getCashFlow({
+      organizationId: request.user!.organizationId,
+      bankAccountIds,
+      startDate: new Date(query.startDate),
+      endDate: new Date(query.endDate)
+    });
+
+    return reply.send({ success: true, data: cashFlow });
   });
 }

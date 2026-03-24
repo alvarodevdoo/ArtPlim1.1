@@ -49,6 +49,7 @@ const math = create(all, {
  */
 export function calcularCustoInsumos(
   materiais: InsumoMaterialSelecionado[],
+  variableValues: Record<string, any> = {},
 ): ResultadoCustoInsumos {
   // Sem materiais → custo zero
   if (!materiais || materiais.length === 0) {
@@ -61,11 +62,28 @@ export function calcularCustoInsumos(
 
   // ── Iteração sobre cada material ────────────────────────────────────────────
   materiais.forEach((material) => {
-    // ① Monta a string da fórmula:
+    // ① Determina a quantidade real (estática ou dinâmica via variável ou padrão inteligente)
+    let qtdEfetiva = material.quantidadeUtilizada;
+    let isDynamic = false;
+
+    if (material.linkedQuantityVariable && variableValues[material.linkedQuantityVariable] !== undefined) {
+      qtdEfetiva = Number(variableValues[material.linkedQuantityVariable]) || 0;
+      isDynamic = true;
+    } else {
+      // PADRÕES INTELIGENTES: Se a unidade do material for área ou linear, e houver cálculo na regra
+      const unit = material.unidadeBase?.toString().toUpperCase();
+      if (unit === 'M2' && variableValues['AREA_TOTAL'] !== undefined) {
+        qtdEfetiva = Number(variableValues['AREA_TOTAL']) || 0;
+        isDynamic = true;
+      } else if ((unit === 'M' || unit === 'CM' || unit === 'MM') && variableValues['COMPRIMENTO_TOTAL'] !== undefined) {
+        qtdEfetiva = Number(variableValues['COMPRIMENTO_TOTAL']) || 0;
+        isDynamic = true;
+      }
+    }
+
+    // ② Monta a string da fórmula:
     //    "(quantidade * custo_unitario)"
-    //    O nome vai como comentário via "#" que mathjs ignora,
-    //    funcionando como label para o tooltip/log.
-    const formulaStr = `(${material.quantidadeUtilizada} * ${material.precoBase})`;
+    const formulaStr = `(${qtdEfetiva} * ${material.precoBase})`;
 
     try {
       // ② Avalia a fórmula com mathjs (sem eval() nativo—seguro)
@@ -85,12 +103,12 @@ export function calcularCustoInsumos(
       detalhamento.push({
         insumoId: material.insumoId,
         nome: material.nome,
-        quantidade: material.quantidadeUtilizada,
+        quantidade: qtdEfetiva,
         precoBase: material.precoBase,
         unidadeBase: material.unidadeBase,
         subtotal,
         // A string usada no mathjs (útil para debug e tooltip de fórmula)
-        formula: `${material.quantidadeUtilizada} × R$${material.precoBase.toFixed(4)} = R$${subtotal.toFixed(4)}  # ${material.nome}`,
+        formula: `${isDynamic ? `[${material.linkedQuantityVariable}=${qtdEfetiva}]` : qtdEfetiva} × R$${material.precoBase.toFixed(4)} = R$${subtotal.toFixed(4)}  # ${material.nome}`,
       });
     } catch (err) {
       // Material com erro não bloqueia o cálculo dos demais

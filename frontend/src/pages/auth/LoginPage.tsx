@@ -133,8 +133,8 @@ const LoginPage: React.FC = () => {
                   variant="outline"
                   className="w-full"
                   onClick={() => setFormData({
-                    email: 'admin@artplim.com',
-                    password: '123456',
+                    email: 'admin@artplim.com.br',
+                    password: 'admin123',
                     organizationSlug: 'artplim'
                   })}
                 >
@@ -145,8 +145,8 @@ const LoginPage: React.FC = () => {
                   variant="outline"
                   className="w-full"
                   onClick={() => setFormData({
-                    email: 'kesia@artplim.com.br',
-                    password: '123456',
+                    email: 'operador@artplim.com.br',
+                    password: 'web123456',
                     organizationSlug: 'artplim'
                   })}
                 >

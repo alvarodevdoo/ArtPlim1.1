@@ -76,6 +76,10 @@ export interface InsumoMaterialSelecionado {
   quantidadeUtilizada: number;
   /** Unidade base do insumo */
   unidadeBase: UnidadeBase;
+  /** Variável da fórmula que este insumo preenche (para o preço/valor) */
+  linkedVariable?: string;
+  /** Variável da fórmula que define a quantidade deste insumo no pedido */
+  linkedQuantityVariable?: string;
 }
 
 // ─── Resultado do Cálculo ─────────────────────────────────────────────────────

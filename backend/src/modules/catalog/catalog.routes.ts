@@ -28,6 +28,7 @@ const createProductSchema = z.object({
   costPrice: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional()),
   // Controle de estoque
   trackStock: z.boolean().optional().default(false),
+  sellWithoutStock: z.boolean().optional().default(true),
   stockQuantity: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional().nullable()),
   stockMinQuantity: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional().nullable()),
   stockUnit: z.string().optional().nullable(),
@@ -38,12 +39,24 @@ const updateProductSchema = createProductSchema.partial();
 
 const createMaterialSchema = z.object({
   name: z.string().min(2),
+  category: z.string().optional().default("Outros"),
   description: z.string().optional(),
   format: z.enum(['ROLL', 'SHEET', 'UNIT']),
   costPerUnit: z.number().positive(),
   unit: z.string().min(1),
   standardWidth: z.number().positive().optional(),
-  standardLength: z.number().positive().optional()
+  standardLength: z.number().positive().optional(),
+  defaultConsumptionRule: z.enum(['AREA', 'PERIMETER', 'SPACING', 'FIXED']).optional(),
+  defaultConsumptionFactor: z.number().optional(),
+  inventoryAccountId: z.string().uuid().optional().nullable(),
+  expenseAccountId: z.string().uuid().optional().nullable(),
+  minStockQuantity: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional().nullable()),
+  sellWithoutStock: z.boolean().optional().default(true),
+  suppliers: z.array(z.object({
+    supplierId: z.string().uuid(),
+    costPrice: z.number().min(0),
+    supplierCode: z.string().optional()
+  })).optional()
 });
 
 const createComponentSchema = z.object({
@@ -238,6 +251,23 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const materialService = new MaterialService(prisma);
 
     const material = await materialService.findById(id);
+
+    return reply.send({
+      success: true,
+      data: material
+    });
+  });
+
+  // Atualizar material
+  fastify.put('/materials/:id', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = createMaterialSchema.partial().parse(request.body);
+    const prisma = getTenantClient(request.user!.organizationId);
+    const materialService = new MaterialService(prisma);
+
+    const material = await materialService.update(id, body);
 
     return reply.send({
       success: true,

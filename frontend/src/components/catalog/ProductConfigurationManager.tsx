@@ -82,45 +82,13 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
     displayOrder: ''
   });
 
-  // Estado para Ficha Técnica do Produto Base
-  const [showBaseFicha, setShowBaseFicha] = useState(false);
-  const [fichaBase, setFichaBase] = useState<InsumoMaterialSelecionado[]>([]);
+
 
   useEffect(() => {
     loadConfigurations();
-    loadBaseFicha();
   }, [productId]);
 
-  const loadBaseFicha = async () => {
-    try {
-      const resp = await api.get(`/api/catalog/products/${productId}/ficha-tecnica`);
-      const items = resp.data.data.map((item: any) => ({
-        insumoId: item.insumoId,
-        nome: item.insumo.nome,
-        precoBase: Number(item.insumo.custoUnitario),
-        quantidadeUtilizada: item.quantidade,
-        unidadeBase: item.insumo.unidadeBase
-      }));
-      setFichaBase(items);
-    } catch (err) {
-      console.error('Erro ao carregar ficha técnica base:', err);
-    }
-  };
 
-  const handleSaveBaseFicha = async () => {
-    try {
-      await api.post(`/api/catalog/products/${productId}/ficha-tecnica`, {
-        items: fichaBase.map(f => ({
-          insumoId: f.insumoId,
-          quantidade: f.quantidadeUtilizada
-        }))
-      });
-      toast.success('Ficha técnica base salva com sucesso!');
-      setShowBaseFicha(false);
-    } catch (err: any) {
-      toast.error(err.response?.data?.error?.message || 'Erro ao salvar ficha técnica base');
-    }
-  };
 
   const loadConfigurations = async () => {
     try {
@@ -370,10 +338,7 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
           </p>
         </div>
         <div className="flex space-x-2">
-          <Button variant="outline" onClick={() => setShowBaseFicha(true)}>
-            <Settings className="w-4 h-4 mr-2" />
-            Ficha Técnica Base
-          </Button>
+
           <Button onClick={() => setShowForm(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Nova Configuração
@@ -685,36 +650,7 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
         </div>
       )}
 
-      {/* Base Ficha Técnica Modal */}
-      {showBaseFicha && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <CardHeader>
-              <CardTitle>Ficha Técnica Base - {productName}</CardTitle>
-              <CardDescription>
-                Materiais que compõem este produto independentemente das opções selecionadas.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <SeletorInsumos 
-                  insumos={insumos}
-                  materiaisIniciais={fichaBase}
-                  onMaterialsChange={(mats) => setFichaBase(mats)}
-                />
-                <div className="flex justify-end space-x-2 pt-4 border-t">
-                  <Button variant="outline" onClick={() => setShowBaseFicha(false)}>
-                    Cancelar
-                  </Button>
-                  <Button onClick={handleSaveBaseFicha}>
-                    Salvar Ficha Técnica Base
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+
 
       {/* Configurations List */}
       {configurations.length > 0 ? (

@@ -49,19 +49,13 @@ export const getProductDisplayInfo = (produto: any): DisplayInfo => {
       const variables = formula.variables || [];
       const referenceValues = formula.referenceValues || {};
 
-      // Mesclar com overrides do produto e garantir quantidade padrão 1
+      // 2. Mesclar com overrides do produto e garantir quantidade padrão 1
       const activeValues: Record<string, any> = { QTDE: 1, QUANTIDADE: 1, ...referenceValues };
       let hasProductOverride = false;
       if (produto.formulaData) {
-        Object.keys(produto.formulaData).forEach(k => {
-          const val = produto.formulaData[k];
-          const isEmpty = val === '' || val === 0 || val === '0' || val === null || val === undefined;
-          if (!isEmpty && !k.endsWith('_unit') && !k.endsWith('_locked')) {
-            activeValues[k] = val;
-            hasProductOverride = true;
-            if (produto.formulaData[`${k}_unit`]) activeValues[`${k}_unit`] = produto.formulaData[`${k}_unit`];
-          }
-        });
+        const formulaData = typeof produto.formulaData === 'string' ? JSON.parse(produto.formulaData) : produto.formulaData;
+        Object.assign(activeValues, formulaData);
+        hasProductOverride = true;
       }
 
       // Calcula Preço de Venda

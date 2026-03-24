@@ -22,7 +22,6 @@ import Configuracoes from '@/pages/Configuracoes';
 import Estoque from '@/pages/Estoque';
 import Producao from '@/pages/Producao';
 import Financeiro from '@/pages/Financeiro';
-import InsumosPage from '@/pages/Insumos';
 
 // Criar QueryClient
 const queryClient = new QueryClient({
@@ -160,13 +159,7 @@ function App() {
                 </ProtectedRoute>
               } />
 
-              <Route path="/insumos" element={
-                <ProtectedRoute>
-                  <Layout>
-                    <InsumosPage />
-                  </Layout>
-                </ProtectedRoute>
-              } />
+              <Route path="/insumos" element={<Navigate to="/materiais" replace />} />
 
 
               {/* Redirect para dashboard se logado */}

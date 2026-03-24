@@ -19,8 +19,8 @@ export class PricingRuleService {
                 organizationId: data.organizationId,
                 name: data.name,
                 type: data.type,
-                formula: typeof data.formula === 'string' ? data.formula : JSON.stringify(data.formula),
-                config: data.config ? (typeof data.config === 'string' ? data.config : JSON.stringify(data.config)) : null,
+                formula: data.formula,
+                config: data.config || null,
                 active: data.active ?? true
             }
         });
@@ -88,8 +88,8 @@ export class PricingRuleService {
                         parentId: currentRule.parentId || currentRule.id, // Vínculo com a raiz
                         name: data.name || currentRule.name,
                         type: data.type || currentRule.type,
-                        formula: data.formula ? (typeof data.formula === 'string' ? data.formula : JSON.stringify(data.formula)) : currentRule.formula,
-                        config: data.config ? (typeof data.config === 'string' ? data.config : JSON.stringify(data.config)) : currentRule.config,
+                        formula: data.formula || currentRule.formula,
+                        config: data.config || currentRule.config,
                         active: data.active ?? currentRule.active,
                         version: (currentRule.version || 1) + 1,
                         isLatest: true
@@ -109,18 +109,6 @@ export class PricingRuleService {
         // 3. Caso contrário, atualizar a regra existente normalmente
         const updateData: any = { ...data };
         
-        if (updateData.formula) {
-            updateData.formula = typeof updateData.formula === 'string' 
-                ? updateData.formula 
-                : JSON.stringify(updateData.formula);
-        }
-
-        if (updateData.config) {
-            updateData.config = typeof updateData.config === 'string'
-                ? updateData.config
-                : JSON.stringify(updateData.config);
-        }
-
         const { organizationId: _orgId, ...finalUpdateData } = updateData;
 
         return this.prisma.pricingRule.update({

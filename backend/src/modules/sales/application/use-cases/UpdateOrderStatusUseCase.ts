@@ -2,7 +2,7 @@ import { Order } from '../../domain/entities/Order';
 import { OrderStatus, OrderStatusEnum } from '../../domain/value-objects/OrderStatus';
 import { OrderRepository } from '../../domain/repositories/OrderRepository';
 import { NotFoundError, ValidationError } from '../../../../shared/infrastructure/errors/AppError';
-import { ProcessStatusService } from '../../../../organization/services/ProcessStatusService';
+import { ProcessStatusService } from '../../../organization/services/ProcessStatusService';
 
 export class UpdateOrderStatusUseCase {
   constructor(
@@ -90,7 +90,9 @@ export class UpdateOrderStatusUseCase {
             description: `Estorno de Cancelamento - Pedido #${order.orderNumber.value}`,
             orderId: order.id,
             status: 'PAID',
-            paidAt: new Date()
+            paidAt: new Date(),
+            userId: details.userId,
+            profileId: order.customerId
           }
         });
 

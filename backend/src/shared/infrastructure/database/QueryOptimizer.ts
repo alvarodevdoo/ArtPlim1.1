@@ -166,10 +166,11 @@ export class QueryOptimizer {
   // Otimizar consulta de materiais com estoque
   async getOptimizedMaterials(organizationId: string) {
     return await this.prisma.material.findMany({
-      where: { organizationId },
+      where: { organizationId, active: true },
       select: {
         id: true,
         name: true,
+        category: true,
         description: true,
         format: true,
         costPerUnit: true,
@@ -177,6 +178,16 @@ export class QueryOptimizer {
         standardWidth: true,
         standardLength: true,
         active: true,
+        defaultConsumptionRule: true,
+        defaultConsumptionFactor: true,
+        inventoryAccountId: true,
+        expenseAccountId: true,
+        inventoryAccount: {
+          select: { id: true, name: true, code: true }
+        },
+        expenseAccount: {
+          select: { id: true, name: true, code: true }
+        },
         _count: {
           select: {
             components: true,

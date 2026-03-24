@@ -29,10 +29,23 @@ export async function authMiddleware(request: FastifyRequest, reply: FastifyRepl
     }
 
     const decoded = request.server.jwt.verify(token) as JWTPayload;
+    
+    // Verificação de segurança: O registro ainda existe no banco após um possível reset?
+    const { prisma } = await import('../database/prisma');
+    const userExists = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: { id: true, active: true }
+    });
+
+    if (!userExists || !userExists.active) {
+      throw new UnauthorizedError('Sessão expirada ou usuário desativado');
+    }
+
     request.user = decoded;
     
   } catch (error) {
-    throw new UnauthorizedError('Token inválido');
+    if (error instanceof UnauthorizedError) throw error;
+    throw new UnauthorizedError('Token inválido ou sessão expirada');
   }
 }
 

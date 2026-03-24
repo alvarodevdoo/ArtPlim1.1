@@ -17,6 +17,7 @@ import {
 import { formatCurrency } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { EntradasMaterial } from '../features/estoque/EntradasMaterial';
 
 interface InventoryItem {
   id: string;
@@ -52,6 +53,7 @@ interface StockAlert {
 }
 
 const Estoque: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'estoque' | 'entradas'>('estoque');
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [alerts, setAlerts] = useState<StockAlert[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,6 +132,7 @@ const Estoque: React.FC = () => {
   };
 
   const filteredInventory = inventory.filter(item => {
+    if (!item?.material) return false;
     const matchesSearch = 
       item.material.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.location?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -143,10 +146,10 @@ const Estoque: React.FC = () => {
   });
 
   const totalItems = inventory.length;
-  const normalStock = inventory.filter(item => !item.isOffcut).length;
-  const offcuts = inventory.filter(item => item.isOffcut).length;
+  const normalStock = inventory.filter(item => item?.material && !item.isOffcut).length;
+  const offcuts = inventory.filter(item => item?.material && item.isOffcut).length;
   const totalValue = inventory.reduce((sum, item) => 
-    sum + (item.quantity * Number(item.material.costPerUnit)), 0
+    sum + ((item?.quantity || 0) * (item?.material?.costPerUnit ? Number(item.material.costPerUnit) : 0)), 0
   );
 
   if (loading) {
@@ -167,13 +170,31 @@ const Estoque: React.FC = () => {
             Gestão avançada de materiais, rolos e retalhos
           </p>
         </div>
-        <Button onClick={() => setShowAddForm(true)}>
+        <Button onClick={() => setShowAddForm(true)} className={activeTab === 'entradas' ? 'hidden' : ''}>
           <Plus className="w-4 h-4 mr-2" />
           Adicionar Item
         </Button>
       </div>
 
-      {/* Stats Cards */}
+      {/* Tabs */}
+      <div className="flex border-b border-border">
+        <button
+          className={`pb-2 px-4 text-sm font-medium transition-colors border-b-2 ${activeTab === 'estoque' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'}`}
+          onClick={() => setActiveTab('estoque')}
+        >
+          Estoque Atual
+        </button>
+        <button
+          className={`pb-2 px-4 text-sm font-medium transition-colors border-b-2 ${activeTab === 'entradas' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'}`}
+          onClick={() => setActiveTab('entradas')}
+        >
+          Entradas e Recibos
+        </button>
+      </div>
+
+      {activeTab === 'estoque' && (
+        <div className="space-y-6">
+          {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardContent className="p-6">
@@ -473,6 +494,10 @@ const Estoque: React.FC = () => {
           </CardContent>
         </Card>
       )}
+        </div>
+      )}
+
+      {activeTab === 'entradas' && <EntradasMaterial />}
     </div>
   );
 };

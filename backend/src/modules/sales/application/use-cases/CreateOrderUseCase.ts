@@ -127,6 +127,56 @@ export class CreateOrderUseCase {
       orderItems.push(orderItem);
     }
 
+    // ─── VALIDAÇÃO DE ESTOQUE (Bulk Query — não recalcula a BOM) ──────────────
+    // Acumular consumo total de materiais de todos os itens do pedido
+    const materialConsumptionMap = new Map<string, number>();
+    for (const orderItem of orderItems) {
+      const snap: any[] = (orderItem.attributes as any)?.insumos_snapshot || [];
+      for (const insumo of snap) {
+        if (!insumo?.id) continue;
+        const prev = materialConsumptionMap.get(insumo.id) || 0;
+        materialConsumptionMap.set(insumo.id, prev + (insumo.quantidade || 0));
+      }
+    }
+
+    if (materialConsumptionMap.size > 0) {
+      // Busca todos os materiais relevantes + seu estoque em UMA query
+      const materialIds = Array.from(materialConsumptionMap.keys());
+      const materials = await (this as any).prisma?.material.findMany({
+        where: { id: { in: materialIds } },
+        select: {
+          id: true,
+          name: true,
+          sellWithoutStock: true,
+          inventoryItems: {
+            select: { quantity: true }
+          }
+        }
+      });
+
+      if (materials) {
+        const ruptures: string[] = [];
+        for (const mat of materials) {
+          if (mat.sellWithoutStock) continue; // Permissão de venda sem estoque
+          const estoqueAtual = mat.inventoryItems.reduce(
+            (sum: number, item: any) => sum + (item.quantity || 0), 0
+          );
+          const consumo = materialConsumptionMap.get(mat.id) || 0;
+          if (estoqueAtual < consumo) {
+            ruptures.push(
+              `"${mat.name}" (estoque: ${estoqueAtual}, necessário: ${consumo.toFixed(2)})`
+            );
+          }
+        }
+        if (ruptures.length > 0) {
+          throw new Error(
+            `Estoque insuficiente para concluir o pedido. Material(is) bloqueado(s): ${ruptures.join('; ')}`
+          );
+        }
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Calcular subtotal
     const subtotal = orderItems.reduce(
       (sum, item) => sum.add(item.totalPrice),

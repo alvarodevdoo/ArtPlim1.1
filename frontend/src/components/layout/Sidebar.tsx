@@ -16,7 +16,8 @@ import {
   Warehouse,
   Factory,
   DollarSign,
-  FlaskConical
+  FlaskConical,
+  TrendingUp
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -76,12 +77,6 @@ const allMenuItems: MenuItem[] = [
     alwaysVisible: true
   },
   {
-    title: 'Insumos / Custos',
-    href: '/insumos',
-    icon: FlaskConical,
-    permission: 'inventory.view'
-  },
-  {
     title: 'Estoque',
     href: '/estoque',
     icon: Warehouse,
@@ -98,6 +93,24 @@ const allMenuItems: MenuItem[] = [
     href: '/financeiro',
     icon: DollarSign,
     permission: 'finance.view'
+  },
+  {
+    title: 'A Receber',
+    href: '/financeiro?tab=receivables',
+    icon: DollarSign,
+    permission: 'finance.view'
+  },
+  {
+    title: 'DRE',
+    href: '/financeiro?tab=dre',
+    icon: BarChart3,
+    permission: 'finance.reports'
+  },
+  {
+    title: 'Fluxo de Caixa',
+    href: '/financeiro?tab=cash-flow',
+    icon: TrendingUp,
+    permission: 'finance.reports'
   },
   {
     title: 'Relatórios',

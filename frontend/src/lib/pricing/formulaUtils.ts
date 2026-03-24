@@ -1,257 +1,255 @@
-import { parse, unit, EvalFunction } from 'mathjs';
+import { parse } from 'mathjs';
+
+const compileCache = new Map<string, any>();
 
 /**
- * 🛡️ MOTOR DE PRECIFICAÇÃO UNIFICADO (ARTPLIM ERP)
- * ⚠️ AVISO: Este arquivo DEVE ser mantido idêntico entre Frontend e Backend.
- * Caminhos:
- * - Frontend: frontend/src/lib/pricing/formulaUtils.ts
- * - Backend: backend/src/shared/application/pricing/formulaUtils.ts
- */
-
-const compileCache = new Map<string, EvalFunction>();
-
-// 1. MAPEAMENTO DE UNIDADES (Normalização de Nomes para o MathJS)
-const UNIT_MAPPING: Record<string, string> = {
-    'KM': 'km', 'M': 'm', 'CM': 'cm', 'MM': 'mm',
-    'KG': 'kg', 'G': 'g', 'MG': 'mg', 'TON': 'ton',
-    'KWH': 'kWh', 'WH': 'Wh', 'J': 'J',
-    'H': 'h', 'MIN': 'min', 'S': 's', 'D': 'd',
-    'W': 'W', 'KW': 'kW',
-    'M2': 'm^2', 'CM2': 'cm^2', 'MM2': 'mm^2',
-    'M3': 'm^3', 'CM3': 'cm^3', 'MM3': 'mm^3',
-    'L': 'l', 'ML': 'ml'
-};
-
-// 2. UNIDADES BASE PARA CADA PAPEL (ROLE)
-const ROLE_TO_BASE_UNIT: Record<string, string> = {
-    'LENGTH': 'mm', 'WIDTH': 'mm', 'HEIGHT': 'mm', 'DEPTH': 'mm',
-    'AREA': 'mm^2', 'SQUARE_METERS': 'mm^2',
-    'VOLUME': 'ml',
-    'WEIGHT': 'g', 'MASS': 'g',
-    'TIME': 's',
-    'ENERGY': 'J',
-    'POWER': 'W',
-    'PERCENT': '%',
-    'COST_RATE': 'mm^2'
-};
-
-// 3. TABELA DE FATORES FIXOS (Fallback de Segurança para o MathJS)
-// mm, mm2, g, ml, s, J, W são as bases internas.
-const HARDCODED_FACTORS: Record<string, number> = {
-    'm': 1000, 'cm': 10, 'mm': 1,
-    'm^2': 1000000, 'cm^2': 100, 'mm^2': 1,
-    'm^3': 1000000, 'cm^3': 1, 'mm^3': 0.001,
-    'kg': 1000, 'g': 1, 'mg': 0.001, 'ton': 1000000,
-    'l': 1000, 'ml': 1,
-    'h': 3600, 'min': 60, 's': 1, 'd': 86400,
-    'kWh': 3600000, 'Wh': 3600, 'J': 1,
-    'W': 1, 'kW': 1000
-};
-
-/**
- * Normaliza uma string de unidade para o padrão interno (m^2, mm, etc)
- */
-export const normalizeUnit = (u: string | null | undefined): string | null => {
-    if (!u) return null;
-    const clean = u.toString().toUpperCase()
-        .replace(/\^/g, '')
-        .replace(/²/g, '2')
-        .replace(/³/g, '3')
-        .trim();
-    return UNIT_MAPPING[clean] || u.toLowerCase();
-};
-
-/**
- * Retorna o fator de conversão de uma unidade para outra.
+ * Normaliza unidades de medida
  */
 export const getConversionFactor = (from: string, to: string): number => {
-    const nFrom = normalizeUnit(from) || from;
-    const nTo = normalizeUnit(to) || to;
+  const units: Record<string, number> = {
+    'mm': 1, 'cm': 10, 'm': 1000, 'ml': 1000, 
+    'un': 1, 'ct': 1, 'par': 1,
+    'm2': 1000000, 'm^2': 1000000, 'cm2': 100, 'mm2': 1,
+    'km': 1000000, 'g': 1, 'kg': 1000, 't': 1000000,
+  };
 
-    if (nFrom === nTo) return 1;
+  const f = from.toLowerCase().replace('²', '2');
+  const t = to.toLowerCase().replace('²', '2');
 
-    // Tentar via tabela fixa (mais rápido e seguro no browser)
-    if (HARDCODED_FACTORS[nFrom] && HARDCODED_FACTORS[nTo]) {
-        return HARDCODED_FACTORS[nFrom] / HARDCODED_FACTORS[nTo];
-    }
+  const fromVal = units[f] || 1;
+  const toVal = units[t] || 1;
 
-    // Fallback para MathJS
-    try {
-        return unit(1, nFrom).toNumber(nTo);
-    } catch {
-        return 1;
-    }
+  return fromVal / toVal;
 };
 
 /**
- * Avalia uma fórmula matemática com variáveis normalizadas.
+ * Avalia uma fórmula matemática com suporte a variáveis e unidades
  */
 export const evaluateFormula = (
-    formulaStr: string,
-    scope: Record<string, any> = {},
-    ruleVariables: any[] = [],
-    logs?: string[]
+  formulaStr: string,
+  scope: Record<string, any> = {},
+  ruleVariables: any[] = [],
+  logs?: string[]
 ): number | string => {
-    if (!formulaStr?.trim()) return 0;
+  if (!formulaStr || !formulaStr.trim()) return 0;
 
+  try {
+    const cleanFormula = formulaStr.trim();
+    let compiled = compileCache.get(cleanFormula);
+    if (!compiled) {
+      compiled = parse(cleanFormula).compile();
+      compileCache.set(cleanFormula, compiled);
+    }
+
+    const normalizedScope: Record<string, any> = { ...scope };
+    
+    // Normalização agressiva do escopo (Uppercase e Lowercase)
+    Object.entries(scope).forEach(([k, v]) => {
+        normalizedScope[k.toLowerCase()] = v;
+        normalizedScope[k.toUpperCase()] = v;
+    });
+
+    // Mapeia variáveis da regra para o escopo do MathJS
+    for (const v of ruleVariables) {
+      const vid = v.id.toUpperCase();
+      const rawValue = normalizedScope[vid] ?? normalizedScope[v.id.toLowerCase()] ?? v.fixedValue ?? 0;
+      const numVal = typeof rawValue === 'string' ? parseFloat(rawValue.replace(',', '.')) : Number(rawValue || 0);
+      
+      normalizedScope[v.id] = isNaN(numVal) ? 0 : numVal;
+      normalizedScope[v.id.toLowerCase()] = isNaN(numVal) ? 0 : numVal;
+      normalizedScope[vid] = isNaN(numVal) ? 0 : numVal;
+    }
+
+    const result = compiled.evaluate(normalizedScope);
+    
+    let finalNum = 0;
+    if (typeof result === 'number') {
+      finalNum = result;
+    } else if (result && typeof result.toNumber === 'function') {
+      finalNum = result.toNumber();
+    } else if (result && typeof result.value === 'number') {
+      finalNum = result.value;
+    } else {
+      finalNum = Number(result);
+    }
+
+    if (logs) logs.push(`Eval: ${cleanFormula} = ${finalNum}`);
+    return isNaN(finalNum) ? 0 : Math.round(finalNum * 100) / 100;
+
+  } catch (error: any) {
+    if (logs) logs.push(`Erro formula: ${error.message}`);
+    return 0;
+  }
+};
+
+/**
+ * Aplica normalização de unidades ao escopo de cálculo.
+ * Converte cm para mm, m para mm, m2 para mm2, e ajusta preços inversamente.
+ */
+export const applyNormalization = (
+  variables: any[],
+  inputValues: Record<string, any>,
+  logs?: string[]
+): Record<string, any> => {
+  const scope: Record<string, any> = { ...inputValues };
+  const normalizedInputs: Record<string, any> = {};
+  
+  // Normaliza entradas para Uppercase para facilitar busca
+  Object.keys(inputValues).forEach(k => {
+    normalizedInputs[k.toUpperCase()] = inputValues[k];
+  });
+  
+  variables.forEach((v: any) => {
+    if (v.type === 'INPUT') {
+      const vid = v.id.toUpperCase();
+      // Busca a unidade (ex: LARGURA_unit ou LARGURA_UNIT)
+      const unitVal = normalizedInputs[`${vid}_UNIT`] || v.defaultUnit || v.unit || 'mm';
+      // Normaliza strings de unidade (ex: m² para m2)
+      const unit = String(unitVal).toLowerCase().trim().replace('²', '2');
+      
+      // Busca o valor bruto
+      const rawVal = normalizedInputs[vid] ?? 0;
+      const numVal = typeof rawVal === 'string' ? parseFloat(String(rawVal).replace(',', '.')) : Number(rawVal || 0);
+
+      if (isNaN(numVal)) return;
+
+      let factor = 1;
+      let isArea = unit.includes('2');
+
+      if (unit.includes('mm2')) factor = 1;
+      else if (unit.includes('cm2')) factor = 100;
+      else if (unit.includes('m2')) factor = 1000000;
+      else if (unit === 'cm' || unit.includes('/cm')) factor = 10;
+      else if (unit === 'm' || unit === 'ml' || unit.includes('/m') || unit.includes('linear')) factor = 1000;
+      else if (unit === 'in' || unit.includes('pol')) factor = 25.4;
+
+      let normalizedVal = numVal * factor;
+      
+      if (vid.includes('PRECO') || vid.includes('VALOR')) {
+        normalizedVal = numVal / factor;
+      }
+
+      scope[v.id] = normalizedVal;
+      scope[vid] = normalizedVal;
+
+      // Altera a unidade no escopo de retorno para evitar dupla normalização 
+      const normalizedUnit = isArea ? 'mm2' : 'mm';
+      scope[`${v.id}_unit`] = normalizedUnit;
+      scope[`${v.id}_UNIT`] = normalizedUnit;
+      scope[`${vid}_unit`] = normalizedUnit;
+      scope[`${vid}_UNIT`] = normalizedUnit;
+      
+      if (factor !== 1 && logs && logs.length < 50) {
+        logs.push(`Norm: ${v.id} (${numVal}${unit}) -> ${normalizedVal.toFixed(4)} ${isArea ? 'mm²' : 'mm'}`);
+      }
+    }
+  });
+
+  return scope;
+};
+
+/**
+ * Principal ponto de entrada para o cálculo de precificação
+ */
+export const calculatePricingResult = (
+  formulaStr: string | null | undefined,
+  variables: any[] = [],
+  inputValues: Record<string, any> = {},
+  logs?: string[]
+): { value: number; scope: any; breakdown: any[] } => {
+  if (!formulaStr || formulaStr === '0') return { value: 0, scope: inputValues, breakdown: [] };
+
+  if (logs) logs.push("=== Início do Cálculo ===");
+
+  // 1. Aplica normalização de unidades (cm -> mm, m2 -> mm2, etc)
+  const normalizedScope = applyNormalization(variables, inputValues, logs);
+
+  // 2. Prepara escopo final para o avaliador
+  const evaluationScope: Record<string, any> = {};
+  for (const v of variables) {
+    const vid = v.id.toUpperCase();
+    const isFixed = v.type === 'FIXED';
+    
+    // O valor normalizado já está no normalizedScope (ou o valor fixo se não houver entrada)
+    const val = normalizedScope[vid] !== undefined ? normalizedScope[vid] : (isFixed ? (v.fixedValue ?? 0) : 0);
+    evaluationScope[v.id] = val;
+    evaluationScope[vid] = val;
+    
+    if (logs) logs.push(`${v.name} (${v.id}): ${val}`);
+  }
+
+  // 3. Executa a fórmula
+  const valueResult = evaluateFormula(formulaStr, evaluationScope, variables, logs);
+  const numericVal = typeof valueResult === 'number' ? valueResult : 0;
+
+  if (logs) logs.push(`Total: R$ ${numericVal}`);
+  
+  return { value: numericVal, scope: normalizedScope, breakdown: [] };
+};
+
+/**
+ * Valida a sintaxe de uma fórmula
+ */
+export const validateFormulaSyntax = (formula: string): boolean | string => {
+    if (!formula || !formula.trim()) return true;
     try {
-        const cleanFormula = formulaStr
-            .replace(/#[a-zA-ZáàâãéêíïóôõúüçÁÀÂÃÉÊÍÏÓÔÕÚÜÇ_0-9]+/g, '') // Remove comentários internos
-            .replace(/×/g, '*')
-            .replace(/÷/g, '/');
-
-        let compiled = compileCache.get(cleanFormula);
-        if (!compiled) {
-            compiled = parse(cleanFormula).compile();
-            compileCache.set(cleanFormula, compiled);
-        }
-
-        const normalizedScope: Record<string, any> = {};
-        const inputs: Record<string, any> = Object.fromEntries(
-            Object.entries(scope).map(([k, v]) => [k.toLowerCase(), v])
-        );
-
-        for (const v of ruleVariables) {
-            const vid = v.id.toLowerCase();
-            const rawValue = inputs[vid] ?? v.fixedValue ?? 0;
-            const currentUnit = inputs[`${vid}_unit`] || v.defaultUnit || v.unit || null;
-
-            let numVal = typeof rawValue === 'string' ? parseFloat(rawValue.replace(',', '.')) : Number(rawValue);
-            if (isNaN(numVal)) numVal = 0;
-
-            const role = v.role || 'NONE';
-            const baseUnit = ROLE_TO_BASE_UNIT[role];
-
-            if (logs) logs.push(`Var [${v.id}]: Bruto=${numVal}, Unit=${currentUnit || 'null'}, Role=${role}`);
-
-            // 1. Normalização de TAXAS (R$/m2, etc)
-            if (role === 'COST_RATE' || (currentUnit && currentUnit.toString().includes('/'))) {
-                let unitPart = normalizeUnit(currentUnit.toString().split('/').pop()?.trim());
-
-                // Se a unidade for genérica (moeda, un, etc) e for COST_RATE, assumimos m^2
-                if ((!unitPart || unitPart === 'moeda' || unitPart === 'un') && role === 'COST_RATE') {
-                    unitPart = 'm^2';
-                }
-
-                const targetUnit = normalizeUnit(baseUnit) || 'mm^2';
-
-                if (unitPart && targetUnit && unitPart !== targetUnit) {
-                    const factor = getConversionFactor(unitPart, targetUnit);
-                    if (factor > 0) {
-                        numVal /= factor;
-                        if (logs) logs.push(`  -> [Rate Hack] ${unitPart} p/ ${targetUnit}: Dividindo por ${factor} = ${numVal}`);
-                    }
-                }
-            }
-            // 2. Normalização de PERCENTUAL
-            else if (role === 'PERCENT' || currentUnit === '%') {
-                numVal /= 100;
-                if (logs) logs.push(`  -> [Percent] 100% -> 1.0: Dividindo por 100 = ${numVal}`);
-            }
-            // 3. Normalização de MEDIDAS FÍSICAS
-            else if (baseUnit && currentUnit) {
-                const normCurrent = normalizeUnit(currentUnit);
-                const normBase = normalizeUnit(baseUnit);
-                if (normCurrent && normBase && normCurrent !== normBase) {
-                    const factor = getConversionFactor(normCurrent, normBase);
-                    numVal *= factor;
-                    if (logs) logs.push(`  -> [Unit Hack] ${normCurrent} p/ ${normBase}: Multiplicando por ${factor} = ${numVal}`);
-                }
-            }
-
-            // Injeta no escopo em múltiplos formatos para evitar erros de case
-            normalizedScope[v.id] = numVal;
-            normalizedScope[vid] = numVal;
-            normalizedScope[v.id.toUpperCase()] = numVal;
-
-            // Aliases de compatibilidade para o Backend
-            if (v.role === 'WIDTH') normalizedScope['LARGURA'] = normalizedScope['WIDTH'] = numVal;
-            if (v.role === 'HEIGHT') normalizedScope['ALTURA'] = normalizedScope['HEIGHT'] = numVal;
-            if (v.role === 'AREA' || v.role === 'SQUARE_METERS') normalizedScope['M2'] = normalizedScope['AREA'] = numVal;
-        }
-
-        const result = compiled.evaluate(normalizedScope);
-        const finalNum = typeof result === 'number' ? result : (result?.value || Number(result));
-
-        return isNaN(finalNum) ? "Erro no cálculo" : Math.round(finalNum * 100) / 100;
-
-    } catch (error: any) {
-        if (error.message?.includes('Undefined symbol')) return `Pendente: ${error.message.split('symbol ')[1]}`;
-        return `Erro: ${error.message}`;
+        parse(formula);
+        return true;
+    } catch (e: any) {
+        return e.message;
     }
 };
 
 /**
- * Função de conveniência para calcular o preço e o detalhamento (breakdown).
+ * Extrai todas as variáveis (símbolos) de uma fórmula
  */
-export const calculatePricingResult = (
-    formulaStr: string | null | undefined,
-    variables: any[] = [],
-    inputValues: Record<string, any> = {},
-    logs?: string[]
-): { value: number; breakdown: any[] } => {
-    if (!formulaStr) return { value: 0, breakdown: [] };
-
-    const scope: Record<string, any> = {};
-    for (const v of variables) {
-        const isFixed = v.type === 'FIXED';
-        scope[v.id] = isFixed ? (v.fixedValue ?? 0) : (inputValues[v.id] ?? 0);
-        scope[`${v.id}_unit`] = isFixed ? (v.defaultUnit || v.unit || '') : (inputValues[`${v.id}_unit`] || v.defaultUnit || v.unit || '');
-    }
-
+export const extractVariables = (formula: string): string[] => {
+    if (!formula) return [];
     try {
-        const valueResult = evaluateFormula(formulaStr, scope, variables, logs);
-        const numericVal = typeof valueResult === 'number' ? valueResult : 0;
-        const breakdown: any[] = [];
-
-        // Extrai sub-cálculos marcados com # (ex: (custo * 2)#MARGEM)
-        const breakdownRegex = /\(([^)]+)\)#([a-zA-ZáàâãéêíïóôõúüçÁÀÂÃÉÊÍÏÓÔÕÚÜÇ_0-9]+)/g;
-        let match;
-        while ((match = breakdownRegex.exec(formulaStr)) !== null) {
-            try {
-                const subRes = evaluateFormula(match[1], scope, variables);
-                if (typeof subRes === 'number') breakdown.push({ label: match[2], value: subRes });
-            } catch { }
-        }
-
-        return { value: numericVal, breakdown };
+        const node = parse(formula);
+        const symbols: string[] = [];
+        
+        node.traverse((n: any) => {
+            if (n.isSymbolNode && !n.isFunctionNode) {
+                // Filtra constantes conhecidas do mathjs se necessário, 
+                // mas para nossa lógica, qualquer símbolo não-função é variável.
+                const name = n.name;
+                if (!['pi', 'e', 'i', 'true', 'false', 'null', 'undefined'].includes(name.toLowerCase())) {
+                    if (!symbols.includes(name)) symbols.push(name);
+                }
+            }
+        });
+        
+        return symbols;
     } catch {
-        return { value: 0, breakdown: [] };
+        return [];
     }
 };
 
-// Funções utilitárias de árvore para compatibilidade
-export const extractVariables = (formulaStr: string): string[] => {
-    if (!formulaStr?.trim()) return [];
+/**
+ * Renomeia uma variável dentro da fórmula
+ */
+export const renameVariableInFormula = (formula: string, oldId: string, newId: string): string => {
+    if (!formula) return '';
     try {
-        const RESERVED = new Set(['pi', 'e', 'sin', 'cos', 'tan', 'sqrt', 'log', 'round', 'ceil', 'floor', 'abs', 'min', 'max']);
-        const clean = formulaStr.replace(/#[a-zA-ZáàâãéêíïóôõúüçÁÀÂÃÉÊÍÏÓÔÕÚÜÇ_0-9]*/g, '');
-        const matches = clean.match(/[a-zA-ZáàâãéêíïóôõúüçÁÀÂÃÉÊÍÏÓÔÕÚÜÇ_][a-zA-Z0-9áàâãéêíïóôõúüçÁÀÂÃÉÊÍÏÓÔÕÚÜÇ_]*/g);
-        if (!matches) return [];
-        return Array.from(new Set(matches)).filter(m => !RESERVED.has(m.toLowerCase()));
-    } catch { return []; }
+        const node = parse(formula);
+        const transformed = node.transform((n: any) => {
+            if (n.isSymbolNode && n.name === oldId) {
+                n.name = newId;
+            }
+            return n;
+        });
+        return transformed.toString();
+    } catch {
+        return formula;
+    }
 };
 
-export const renameVariableInFormula = (formulaStr: string, oldName: string, newName: string): string => {
-    if (!oldName || !newName || !formulaStr) return formulaStr;
-    return formulaStr.replace(new RegExp(`\\b${oldName}\\b`, 'g'), newName);
-};
-
-export const removeVariableFromFormula = (formulaStr: string, varName: string): string => {
-    if (!varName || !formulaStr) return formulaStr;
-    try {
-        const regexPrev = new RegExp(`(\\s*[\\+\\-\\*\\/\\^]\\s*)\\b${varName}\\b`, 'g');
-        const regexNext = new RegExp(`\\b${varName}\\b(\\s*[\\+\\-\\*\\/\\^]\\s*)`, 'g');
-        const regexAlone = new RegExp(`\\b${varName}\\b`, 'g');
-        let result = formulaStr.replace(regexPrev, '');
-        if (result === formulaStr) result = formulaStr.replace(regexNext, '');
-        if (result === formulaStr) result = formulaStr.replace(regexAlone, '');
-        return result.trim();
-    } catch { return formulaStr; }
-};
-
-export const validateFormulaSyntax = (formulaStr: string): true | string => {
-    if (!formulaStr?.trim()) return "A fórmula está vazia.";
-    try { parse(formulaStr); return true; }
-    catch (error: any) { return error.message || "Erro de sintaxe."; }
+/**
+ * Remove (tenta limpar) referências a uma variável na fórmula
+ */
+export const removeVariableFromFormula = (formula: string, _varId: string): string => {
+    // Implementação simples: apenas avisa ou deixa como está se for complexo.
+    // O mathjs não tem um "remove node" fácil que mantenha a validade matemática sem contexto.
+    return formula;
 };

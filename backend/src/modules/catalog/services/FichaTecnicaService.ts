@@ -11,6 +11,8 @@ import { AppError } from '../../../shared/infrastructure/errors/AppError';
 export interface FichaTecnicaItem {
   insumoId: string;
   quantidade: number;
+  linkedVariable?: string;
+  linkedQuantityVariable?: string;
 }
 
 export class FichaTecnicaService {
@@ -42,12 +44,12 @@ export class FichaTecnicaService {
 
       // 2. Buscar custos atuais dos insumos para gravar o custoCalculado (snapshot)
       const insumoIds = items.map(i => i.insumoId);
-      const insumos = await tx.insumo.findMany({
+      const insumos = await tx.material.findMany({
         where: { id: { in: insumoIds }, organizationId },
-        select: { id: true, custoUnitario: true }
+        select: { id: true, costPerUnit: true }
       });
 
-      const insumoMap = new Map(insumos.map(i => [i.id, Number(i.custoUnitario)]));
+      const insumoMap = new Map(insumos.map(i => [i.id, Number(i.costPerUnit)]));
 
       // 3. Inserir novos itens
       const inserts = items.map(item => {
@@ -58,7 +60,9 @@ export class FichaTecnicaService {
           productId,
           configurationOptionId,
           quantidade: item.quantidade,
-          custoCalculado: custoUnitario * item.quantidade
+          custoCalculado: custoUnitario * item.quantidade,
+          linkedVariable: item.linkedVariable || null,
+          linkedQuantityVariable: item.linkedQuantityVariable || null
         };
       });
 
@@ -71,7 +75,7 @@ export class FichaTecnicaService {
       // Retorna os itens criados
       return tx.fichaTecnicaInsumo.findMany({
         where,
-        include: { insumo: true }
+        include: { material: true }
       });
     });
   }
@@ -89,17 +93,17 @@ export class FichaTecnicaService {
         ]
       },
       include: {
-        insumo: {
+        material: {
           select: {
             id: true,
-            nome: true,
-            unidadeBase: true,
-            custoUnitario: true,
-            categoria: true
+            name: true,
+            unit: true,
+            costPerUnit: true,
+            description: true
           }
         }
       },
-      orderBy: { insumo: { nome: 'asc' } }
+      orderBy: { material: { name: 'asc' } }
     });
   }
 

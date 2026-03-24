@@ -46,6 +46,40 @@ async function main() {
 
     console.log('✅ Configurações garantidas');
 
+    // ── Plano de Contas Básico ──
+    console.log('📊 Criando plano de contas básico...');
+    const contasBase = [
+        { code: '1.1.01', name: 'Estoque de Materiais', type: 'ASSET' },
+        { code: '1.1.02', name: 'Estoque de Produtos Acabados', type: 'ASSET' },
+        { code: '3.1.01', name: 'Venda de Produtos', type: 'REVENUE' },
+        { code: '4.1.01', name: 'Custo de Materiais (CPV)', type: 'EXPENSE' },
+        { code: '4.1.02', name: 'Despesas Operacionais', type: 'EXPENSE' },
+    ];
+
+    for (const conta of contasBase) {
+        await prisma.chartOfAccount.upsert({
+            where: { 
+                organizationId_code: { 
+                    organizationId: organization.id, 
+                    code: conta.code 
+                } 
+            },
+            update: {
+                name: conta.name,
+                type: conta.type as any,
+                active: true
+            },
+            create: {
+                organizationId: organization.id,
+                code: conta.code,
+                name: conta.name,
+                type: conta.type as any,
+                active: true
+            }
+        });
+    }
+    console.log('✅ Plano de contas garantido');
+
     // Criar usuário admin (com upsert)
     const hashedPassword = await bcrypt.hash('123456', 10);
 
@@ -74,45 +108,48 @@ async function main() {
 
     console.log('✅ Usuário admin garantido:', adminUser.email);
 
-    // ── Insumos Iniciais ──
-    console.log('🌱 Inserindo insumos...');
-    const insumosIniciais = [
-        { nome: 'Lona Brilho 440g', categoria: 'Comunicação Visual', unidadeBase: 'M2', custoUnitario: 18.50 },
-        { nome: 'Adesivo Vinil Branco', categoria: 'Comunicação Visual', unidadeBase: 'M2', custoUnitario: 14.00 },
-        { nome: 'MDF 3mm', categoria: 'Chapas', unidadeBase: 'M2', custoUnitario: 25.50 },
-        { nome: 'Ilhós Metálico', categoria: 'Acabamentos', unidadeBase: 'UN', custoUnitario: 0.15 },
-        { nome: 'Tinta Solvente CMYK', categoria: 'Tintas', unidadeBase: 'LITRO', custoUnitario: 140.00 },
+    // ── Materiais Iniciais ──
+    console.log('🌱 Inserindo materiais...');
+    const materiaisIniciais = [
+        { name: 'Lona Brilho 440g', category: 'Comunicação Visual', unit: 'm2', format: 'ROLL', costPerUnit: 18.50 },
+        { name: 'Adesivo Vinil Branco', category: 'Comunicação Visual', unit: 'm2', format: 'ROLL', costPerUnit: 14.00 },
+        { name: 'MDF 3mm', category: 'Chapas', unit: 'm2', format: 'SHEET', costPerUnit: 25.50 },
+        { name: 'Ilhós Metálico', category: 'Acabamentos', unit: 'un', format: 'UNIT', costPerUnit: 0.15 },
+        { name: 'Tinta Solvente CMYK', category: 'Tintas', unit: 'litro', format: 'UNIT', costPerUnit: 140.00 },
     ];
 
-    const createdInsumos = [];
-    for (const insumo of insumosIniciais) {
-        let existing = await prisma.insumo.findFirst({
-            where: { organizationId: organization.id, nome: insumo.nome }
+    const createdMaterials = [];
+    for (const mat of materiaisIniciais) {
+        let existing = await prisma.material.findFirst({
+            where: { organizationId: organization.id, name: mat.name }
         });
 
         if (existing) {
-            existing = await prisma.insumo.update({
+            existing = await prisma.material.update({
                 where: { id: existing.id },
                 data: {
-                    categoria: insumo.categoria,
-                    unidadeBase: insumo.unidadeBase as any,
-                    custoUnitario: insumo.custoUnitario,
-                    ativo: true
+                    category: mat.category,
+                    unit: mat.unit,
+                    format: mat.format as any,
+                    costPerUnit: mat.costPerUnit,
+                    active: true
                 }
             });
         } else {
-            existing = await prisma.insumo.create({
+            existing = await prisma.material.create({
                 data: {
-                    ...insumo,
-                    unidadeBase: insumo.unidadeBase as any,
+                    ...mat,
+                    format: mat.format as any,
                     organizationId: organization.id,
-                    ativo: true
+                    active: true,
+                    defaultConsumptionRule: 'FIXED',
+                    defaultConsumptionFactor: 1.0
                 }
             });
         }
-        createdInsumos.push(existing);
+        createdMaterials.push(existing);
     }
-    console.log(`✅ ${createdInsumos.length} insumos garantidos`);
+    console.log(`✅ ${createdMaterials.length} materiais garantidos`);
 
     // ── Regras de Precificação ──
     console.log('📈 Criando regras de precificação detalhadas...');
@@ -203,9 +240,9 @@ async function main() {
                     largura: "100",
                     largura_unit: "cm",
                     ValorVenda: 0,
-                    ValorVenda_unit: "R$/m²",
+                    ValorVenda_unit: "m²",
                     ValorCusto: 0,
-                    ValorCusto_unit: "R$/m²"
+                    ValorCusto_unit: "m²"
                 },
                 variables: [
                   {
@@ -232,8 +269,8 @@ async function main() {
                     role: "COST_RATE",
                     type: "INPUT",
                     visible: true,
-                    defaultUnit: "R$/m²",
-                    allowedUnits: ["R$/m²", "R$/cm²", "R$/mm²"]
+                    defaultUnit: "m²",
+                    allowedUnits: ["m²", "cm²", "mm²"]
                   },
                   {
                     id: "ValorCusto",
@@ -241,8 +278,8 @@ async function main() {
                     role: "COST_RATE",
                     type: "INPUT",
                     visible: true,
-                    defaultUnit: "R$/m²",
-                    allowedUnits: ["R$/m²", "R$/cm²", "R$/mm²"]
+                    defaultUnit: "m²",
+                    allowedUnits: ["m²", "cm²", "mm²"]
                   }
                 ]
             },
@@ -262,9 +299,9 @@ async function main() {
                     largura: "100",
                     largura_unit: "cm",
                     ValorVenda: 0,
-                    ValorVenda_unit: "R$/m²",
+                    ValorVenda_unit: "m²",
                     ValorCusto: 0,
-                    ValorCusto_unit: "R$/m²"
+                    ValorCusto_unit: "m²"
                 },
                 variables: [
                   {
@@ -291,8 +328,8 @@ async function main() {
                     role: "COST_RATE",
                     type: "INPUT",
                     visible: true,
-                    defaultUnit: "R$/m²",
-                    allowedUnits: ["R$/m²", "R$/cm²", "R$/mm²"]
+                    defaultUnit: "m²",
+                    allowedUnits: ["m²", "cm²", "mm²"]
                   },
                   {
                     id: "ValorCusto",
@@ -300,8 +337,8 @@ async function main() {
                     role: "COST_RATE",
                     type: "INPUT",
                     visible: true,
-                    defaultUnit: "R$/m²",
-                    allowedUnits: ["R$/m²", "R$/cm²", "R$/mm²"]
+                    defaultUnit: "m²",
+                    allowedUnits: ["m²", "cm²", "mm²"]
                   }
                 ]
             },

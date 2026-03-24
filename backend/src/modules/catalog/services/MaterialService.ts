@@ -3,12 +3,20 @@ import { NotFoundError } from '../../../shared/infrastructure/errors/AppError';
 
 interface CreateMaterialInput {
   name: string;
+  category?: string;
   description?: string;
   format: MaterialFormat;
   costPerUnit: number;
   unit: string;
   standardWidth?: number;
   standardLength?: number;
+  defaultConsumptionRule?: any;
+  defaultConsumptionFactor?: number;
+  inventoryAccountId?: string | null;
+  expenseAccountId?: string | null;
+  minStockQuantity?: number | null;
+  sellWithoutStock?: boolean;
+  suppliers?: { supplierId: string; costPrice: number; supplierCode?: string }[];
 }
 
 export class MaterialService {
@@ -18,12 +26,26 @@ export class MaterialService {
     const material = await this.prisma.material.create({
       data: {
         name: data.name,
+        category: data.category || "Outros",
         description: data.description,
         format: data.format,
         costPerUnit: data.costPerUnit,
         unit: data.unit,
         standardWidth: data.standardWidth,
-        standardLength: data.standardLength
+        standardLength: data.standardLength,
+        defaultConsumptionRule: data.defaultConsumptionRule,
+        defaultConsumptionFactor: data.defaultConsumptionFactor,
+        inventoryAccountId: data.inventoryAccountId,
+        expenseAccountId: data.expenseAccountId,
+        minStockQuantity: data.minStockQuantity,
+        sellWithoutStock: data.sellWithoutStock,
+        suppliers: data.suppliers?.length ? {
+          create: data.suppliers.map(s => ({
+            supplierId: s.supplierId,
+            costPrice: s.costPrice,
+            supplierCode: s.supplierCode
+          }))
+        } : undefined
       }
     });
 
@@ -69,6 +91,24 @@ export class MaterialService {
             createdAt: 'desc'
           }
         },
+        suppliers: {
+          include: {
+            supplier: true
+          }
+        },
+        receiptItems: {
+          include: {
+            receipt: {
+              include: {
+                supplier: true
+              }
+            }
+          },
+          orderBy: {
+            createdAt: 'desc'
+          },
+          take: 20
+        },
         components: {
           include: {
             product: {
@@ -90,11 +130,29 @@ export class MaterialService {
   }
 
   async update(id: string, data: Partial<CreateMaterialInput>) {
+    const { suppliers, ...updateData } = data;
+    
+    // Se enviou array de fornecedores, recria os vínculos
+    if (suppliers !== undefined) {
+      await this.prisma.materialSupplier.deleteMany({
+        where: { materialId: id }
+      });
+    }
+
     const material = await this.prisma.material.update({
       where: { id },
       data: {
-        ...data,
-        updatedAt: new Date()
+        ...updateData,
+        updatedAt: new Date(),
+        ...(suppliers !== undefined ? {
+          suppliers: {
+            create: suppliers.map(s => ({
+              supplierId: s.supplierId,
+              costPrice: s.costPrice,
+              supplierCode: s.supplierCode
+            }))
+          }
+        } : {})
       }
     });
 

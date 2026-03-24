@@ -10,6 +10,8 @@ interface CreateTransactionInput {
   categoryId?: string;
   orderId?: string;
   dueDate?: string;
+  userId?: string;
+  profileId?: string;
 }
 
 interface TransactionFilters {
@@ -39,7 +41,9 @@ export class TransactionService {
         categoryId: data.categoryId,
         orderId: data.orderId,
         dueDate: data.dueDate ? new Date(data.dueDate) : null,
-        status: 'PENDING'
+        status: 'PENDING',
+        userId: data.userId,
+        profileId: data.profileId
       },
       include: {
         account: {
@@ -60,6 +64,16 @@ export class TransactionService {
           select: {
             id: true,
             orderNumber: true
+          }
+        },
+        performedBy: {
+          select: {
+            name: true
+          }
+        },
+        profile: {
+          select: {
+            name: true
           }
         }
       }
@@ -118,6 +132,16 @@ export class TransactionService {
           select: {
             id: true,
             orderNumber: true
+          }
+        },
+        performedBy: {
+          select: {
+            name: true
+          }
+        },
+        profile: {
+          select: {
+            name: true
           }
         }
       },
@@ -561,6 +585,16 @@ export class TransactionService {
               }
             }
           }
+        },
+        performedBy: {
+          select: {
+            name: true
+          }
+        },
+        profile: {
+          select: {
+            name: true
+          }
         }
       },
       orderBy: {
@@ -597,7 +631,7 @@ export class TransactionService {
     });
   }
 
-  async createFromOrder(orderId: string, organizationId: string) {
+  async createFromOrder(orderId: string, organizationId: string, userId?: string) {
     // Buscar pedido
     const order = await this.prisma.order.findFirst({
       where: { id: orderId, organizationId },
@@ -631,7 +665,9 @@ export class TransactionService {
       type: 'INCOME',
       amount: Number(order.total),
       description: `Venda - Pedido ${order.orderNumber} - ${order.customer.name}`,
-      orderId: order.id
+      orderId: order.id,
+      userId,
+      profileId: order.customerId
     });
 
     return transaction;

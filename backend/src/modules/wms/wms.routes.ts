@@ -1,9 +1,13 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { InventoryService } from './services/InventoryService';
+import { prisma } from '../../shared/infrastructure/database/tenant';
 
 const listQuerySchema = z.object({
   limit: z.string().transform(val => parseInt(val) || 50).optional(),
-  search: z.string().optional()
+  search: z.string().optional(),
+  location: z.string().optional(),
+  isOffcut: z.string().transform(val => val === 'true').optional()
 });
 
 export async function wmsRoutes(fastify: FastifyInstance) {
@@ -14,33 +18,13 @@ export async function wmsRoutes(fastify: FastifyInstance) {
   fastify.get('/inventory', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const query = listQuerySchema.parse(request.query);
+    const filters = listQuerySchema.parse(request.query);
+    const inventoryService = new InventoryService(prisma);
     
-    // Implementação temporária - retorna dados mock
-    const inventory = [
-      {
-        id: '1',
-        materialId: 'mat-1',
-        materialName: 'Papel Couché 300g',
-        quantity: 500,
-        unit: 'folhas',
-        location: 'A1-01',
-        minStock: 100,
-        maxStock: 1000,
-        lastMovement: new Date().toISOString()
-      },
-      {
-        id: '2',
-        materialId: 'mat-2',
-        materialName: 'Tinta Cyan',
-        quantity: 25,
-        unit: 'litros',
-        location: 'B2-03',
-        minStock: 10,
-        maxStock: 50,
-        lastMovement: new Date(Date.now() - 86400000).toISOString()
-      }
-    ].slice(0, query.limit || 50);
+    const inventory = await inventoryService.list({
+      location: filters.location,
+      isOffcut: filters.isOffcut
+    });
     
     return reply.send({
       success: true,
@@ -56,35 +40,25 @@ export async function wmsRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const query = listQuerySchema.parse(request.query);
     
-    // Implementação temporária - retorna dados mock
-    const movements = [
-      {
-        id: '1',
-        materialId: 'mat-1',
-        materialName: 'Papel Couché 300g',
-        type: 'IN',
-        quantity: 100,
-        unit: 'folhas',
-        reason: 'Compra',
-        date: new Date().toISOString(),
-        user: 'João Silva'
+    // Implementação real simplificada ou manter mock se não houver service
+    // Por enquanto, vamos retornar vazio se não houver lógica, mas no formato correto
+    const inventoryService = new InventoryService(prisma);
+    const data = await prisma.inventoryMovement.findMany({
+      take: query.limit || 50,
+      include: {
+        inventoryItem: {
+          include: {
+            material: true
+          }
+        },
+        user: { select: { name: true } }
       },
-      {
-        id: '2',
-        materialId: 'mat-1',
-        materialName: 'Papel Couché 300g',
-        type: 'OUT',
-        quantity: 50,
-        unit: 'folhas',
-        reason: 'Produção - Pedido #001',
-        date: new Date(Date.now() - 3600000).toISOString(),
-        user: 'Maria Santos'
-      }
-    ].slice(0, query.limit || 50);
+      orderBy: { createdAt: 'desc' }
+    });
     
     return reply.send({
       success: true,
-      data: movements
+      data
     });
   });
 
@@ -94,33 +68,37 @@ export async function wmsRoutes(fastify: FastifyInstance) {
   fastify.get('/alerts', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    // Implementação temporária - retorna dados mock
-    const alerts = [
-      {
-        id: '1',
-        type: 'LOW_STOCK',
-        materialId: 'mat-3',
-        materialName: 'Papel A4 75g',
-        currentStock: 15,
-        minStock: 50,
-        severity: 'HIGH',
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: '2',
-        type: 'OUT_OF_STOCK',
-        materialId: 'mat-4',
-        materialName: 'Tinta Magenta',
-        currentStock: 0,
-        minStock: 10,
-        severity: 'CRITICAL',
-        createdAt: new Date(Date.now() - 1800000).toISOString()
-      }
-    ];
+    const inventoryService = new InventoryService(prisma);
+    const alerts = await inventoryService.getAlerts();
     
     return reply.send({
       success: true,
       data: alerts
+    });
+  });
+
+  // ========== ADICIONAR ITEM ==========
+  const addItemSchema = z.object({
+    materialId: z.string().uuid(),
+    width: z.number(),
+    length: z.number().optional(),
+    height: z.number().optional(),
+    quantity: z.number().min(1),
+    location: z.string().optional(),
+    isOffcut: z.boolean().default(false)
+  });
+
+  fastify.post('/inventory', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const data = addItemSchema.parse(request.body);
+    const inventoryService = new InventoryService(prisma);
+    
+    const item = await inventoryService.addItem(data as any);
+    
+    return reply.code(201).send({
+      success: true,
+      data: item
     });
   });
 }

@@ -37,7 +37,7 @@ export class PricingEngine {
       where: { id: productId },
       include: {
         fichasTecnicas: {
-          include: { insumo: true }
+          include: { material: true }
         },
         pricingRule: true
       }
@@ -63,10 +63,25 @@ export class PricingEngine {
       formulaDataRaw = rawFormula;
     }
 
-    const ruleVariables = formulaDataRaw?.variables || [];
+    const ruleVariables = (formulaDataRaw?.variables || []) as any[];
+    
+    // 2. Resolver Insumos Vinculados ao Produto (Mapeamento de Variáveis na Ficha Técnica)
+    // Isso permite que a mesma fórmula seja usada para diferentes materiais, 
+    // definindo qual material ocupa qual variável no cadastro do produto.
+    product.fichasTecnicas.forEach(ft => {
+      if (ft.linkedVariable) {
+        const varName = ft.linkedVariable;
+        const price = Number(ft.material.costPerUnit);
+        
+        // Injeta no escopo de entrada para o evaluateFormula
+        if (!variables[varName]) {
+          variables[varName] = { value: price, unit: ft.material.unit };
+          logs.push(`[Sync] Variável '${varName}' vinculada ao Material '${ft.material.name}' do produto (Preço: R$ ${price})`);
+        }
+      }
+    });
 
     // O evaluateFormula já cuida de toda a normalização de unidades físicas e taxas
-    // e popula o normalizedScope com tudo o que é necessário.
     const result = formulaUtils.evaluateFormula(
       formulaDataRaw.formulaString || "0",
       variables,
@@ -109,22 +124,27 @@ export class PricingEngine {
       const unitAlias = v.baseUnit ? formulaUtils.normalizeUnit(v.baseUnit) : null;
 
       try {
-        if (v.role === 'SQUARE_METERS' || v.role === 'AREA') {
+        const vid = (v.id || '').toUpperCase();
+        const vname = (v.name || '').toUpperCase();
+
+        if (v.role === 'SQUARE_METERS' || v.role === 'AREA' || vid === 'AREA' || vname === 'AREA') {
             BOM_M2 = val * formulaUtils.getConversionFactor(unitAlias || 'm^2', 'm^2');
-        }
-        if (v.role === 'LINEAR_METERS' || v.role === 'LENGTH') {
+        } else if (v.role === 'LINEAR_METERS' || v.role === 'LENGTH' || vid === 'LINEAR' || vname === 'LINEAR') {
             BOM_M = val * formulaUtils.getConversionFactor(unitAlias || 'm', 'm');
-        }
-        if (v.role === 'WIDTH') {
-            physicalWidthMm = val * formulaUtils.getConversionFactor(unitAlias || 'mm', 'mm');
-        }
-        if (v.role === 'HEIGHT') {
-            physicalHeightMm = val * formulaUtils.getConversionFactor(unitAlias || 'mm', 'mm');
+        } else if (v.role === 'WIDTH' || vid === 'LARGURA' || vid === 'WIDTH' || vname === 'LARGURA' || vname === 'WIDTH') {
+            if (physicalWidthMm === 0) physicalWidthMm = val * formulaUtils.getConversionFactor(unitAlias || 'mm', 'mm');
+        } else if (v.role === 'HEIGHT' || vid === 'ALTURA' || vid === 'HEIGHT' || vname === 'ALTURA' || vname === 'HEIGHT') {
+            if (physicalHeightMm === 0) physicalHeightMm = val * formulaUtils.getConversionFactor(unitAlias || 'mm', 'mm');
         }
       } catch (e: any) {
         logs.push(`⚠️ Erro BOM física [${v.name}]: ${e.message}`);
       }
     }
+
+    // FALLBACK ROBUSTO: Se as dimensões físicas não foram extraídas das variáveis, 
+    // usamos os parâmetros width/height passados (que vêm dos campos padrão do produto)
+    if (physicalWidthMm === 0 && width) physicalWidthMm = width;
+    if (physicalHeightMm === 0 && height) physicalHeightMm = height;
 
 
 
@@ -138,6 +158,12 @@ export class PricingEngine {
       BOM_M = Math.max(physicalWidthMm, physicalHeightMm) / 1000;
     }
 
+    // Injetar variáveis virtuais para vínculo de Ficha Técnica
+    normalizedScope['AREA_TOTAL'] = BOM_M2;
+    normalizedScope['COMPRIMENTO_TOTAL'] = BOM_M;
+    normalizedScope['LARGURA_TOTAL'] = physicalWidthMm / 1000;
+    normalizedScope['ALTURA_TOTAL'] = physicalHeightMm / 1000;
+
     // 4. Coletar e Calcular Itens de Ficha Técnica (BOM)
     const todosItensFicha = [...product.fichasTecnicas];
 
@@ -147,34 +173,51 @@ export class PricingEngine {
           configurationOptionId: { in: selectedOptionIds },
           organizationId
         },
-        include: { insumo: true }
+        include: { material: true }
       });
       todosItensFicha.push(...itensOpcoes);
     }
 
     for (const item of todosItensFicha) {
-      const insumo = item.insumo;
+      const material = item.material;
       let custoItem = 0;
       let qtdReal = Number(item.quantidade);
 
-      switch (insumo.unidadeBase) {
+      // NOVO: Se a quantidade estiver vinculada a uma variável, usamos o valor dela resolvido na fórmula
+      const itemAny = item as any;
+      if (itemAny.linkedQuantityVariable && normalizedScope[itemAny.linkedQuantityVariable] !== undefined) {
+        qtdReal = Number(normalizedScope[itemAny.linkedQuantityVariable]);
+        logs.push(`[BOM] Quantidade do Material '${material.name}' vinculada à variável '${itemAny.linkedQuantityVariable}' resolvido para ${qtdReal}`);
+      } else {
+        // PADRÕES INTELIGENTES: Se não houver vínculo manual, tenta detectar automático pela unidade
+        const unit = material.unit.toString().toUpperCase();
+        if (unit === 'M2' && BOM_M2 > 0) {
+          qtdReal = BOM_M2;
+          logs.push(`[BOM] Quantidade do Material '${material.name}' (${unit}) associada automaticamente à ÁREA da peça (${qtdReal})`);
+        } else if ((unit === 'M' || unit === 'CM' || unit === 'MM') && BOM_M > 0) {
+          qtdReal = BOM_M;
+          logs.push(`[BOM] Quantidade do Material '${material.name}' (${unit}) associada automaticamente ao COMPRIMENTO da peça (${qtdReal})`);
+        }
+      }
+
+      switch (material.unit.toUpperCase()) {
         case 'M2':
-          custoItem = BOM_M2 * Number(insumo.custoUnitario) * qtdReal;
+          custoItem = BOM_M2 * Number(material.costPerUnit) * qtdReal;
           break;
         case 'M':
-          custoItem = BOM_M * Number(insumo.custoUnitario) * qtdReal;
+          custoItem = BOM_M * Number(material.costPerUnit) * qtdReal;
           break;
         default:
-          custoItem = Number(insumo.custoUnitario) * qtdReal;
+          custoItem = Number(material.costPerUnit) * qtdReal;
       }
 
       totalMaterialCost += custoItem;
       insumosCalculados.push({
-        id: insumo.id,
-        nome: insumo.nome,
+        id: material.id,
+        nome: material.name,
         quantidade: qtdReal,
-        unidade: insumo.unidadeBase,
-        custoUnitario: Number(insumo.custoUnitario),
+        unidade: material.unit,
+        custoUnitario: Number(material.costPerUnit),
         custoTotal: custoItem
       });
     }
