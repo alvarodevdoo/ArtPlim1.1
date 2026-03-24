@@ -210,11 +210,10 @@ const Pedidos: React.FC = () => {
         }}
       />
 
-      {/* Calculadora de Materiais */}
       {showMaterialCalculator && calculatorItem && hasFinancialAccess() && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
-          <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <Card>
+        <div className="modal-overlay">
+          <Card className="modal-content-card max-w-4xl">
+
               <CardHeader>
                 <div className="flex justify-between items-start">
                   <div>
@@ -234,8 +233,8 @@ const Pedidos: React.FC = () => {
               </CardContent>
             </Card>
           </div>
-        </div>
       )}
+
     </div>
   );
 };

@@ -89,8 +89,9 @@ const ItemConfigurationModal: React.FC<ItemConfigurationModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div className="modal-overlay">
+            <Card className="modal-content-card max-w-4xl">
+
                 <CardHeader>
                     <div className="flex justify-between items-start">
                         <div className="flex items-center space-x-3">

@@ -54,8 +54,28 @@ export const getProductDisplayInfo = (produto: any): DisplayInfo => {
       let hasProductOverride = false;
       if (produto.formulaData) {
         const formulaData = typeof produto.formulaData === 'string' ? JSON.parse(produto.formulaData) : produto.formulaData;
-        Object.assign(activeValues, formulaData);
+        Object.keys(formulaData).forEach(k => {
+          const val = formulaData[k];
+          if (val !== '' && val !== null && val !== undefined) {
+            activeValues[k.toUpperCase()] = val;
+            activeValues[k] = val;  // Mapeia tanto normal quanto uppercase
+          }
+        });
         hasProductOverride = true;
+      }
+
+      // 🔑 INJEÇÃO DO SALE PRICE via role (agnóstico ao nome da variável)
+      // Para produtos com salePrice > 0, injeta no slot da variável marcada com role='SALE_PRICE'
+      if (produto.salePrice && Number(produto.salePrice) > 0) {
+        variables.forEach((v: any) => {
+          if (v.role === 'SALE_PRICE') {
+            const currentVal = activeValues[v.id];
+            if (currentVal === undefined || currentVal === null || currentVal === '' || currentVal === 0) {
+              activeValues[v.id] = Number(produto.salePrice);
+              hasProductOverride = true;
+            }
+          }
+        });
       }
 
       // Calcula Preço de Venda

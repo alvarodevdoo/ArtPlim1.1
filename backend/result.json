@@ -1,0 +1,89 @@
+{
+  "id": "ec592f5e-a792-4158-ac0f-ba03ffb10e95",
+  "organizationId": "0b5c5f99-e87f-47e3-b654-3c18e61d98da",
+  "name": "Adesivo Vinil Branco Brilho",
+  "description": null,
+  "productType": "PRODUCT",
+  "pricingMode": "SIMPLE_AREA",
+  "salePrice": "40",
+  "minPrice": null,
+  "costPrice": null,
+  "markup": 2,
+  "active": true,
+  "createdAt": "2026-03-23T22:16:42.119Z",
+  "updatedAt": "2026-03-23T22:32:36.098Z",
+  "pricingRuleId": "d927ce1a-657e-44e1-bd8d-27623b3000d8",
+  "stockMinQuantity": null,
+  "stockQuantity": null,
+  "stockUnit": null,
+  "trackStock": true,
+  "sellWithoutStock": true,
+  "formulaData": null,
+  "localFormulaId": null,
+  "customFormula": null,
+  "pricingRule": {
+    "id": "d927ce1a-657e-44e1-bd8d-27623b3000d8",
+    "organizationId": "0b5c5f99-e87f-47e3-b654-3c18e61d98da",
+    "name": "C├ílculo por ├ürea (m┬▓)",
+    "active": true,
+    "type": "UNIT",
+    "parentId": null,
+    "formula": {
+      "variables": [
+        {
+          "id": "LARGURA",
+          "name": "Largura",
+          "role": "LENGTH",
+          "type": "INPUT",
+          "unit": "mm",
+          "defaultUnit": "cm",
+          "allowedUnits": [
+            "mm",
+            "cm",
+            "m"
+          ]
+        },
+        {
+          "id": "ALTURA",
+          "name": "Altura",
+          "role": "LENGTH",
+          "type": "INPUT",
+          "unit": "mm",
+          "defaultUnit": "cm",
+          "allowedUnits": [
+            "mm",
+            "cm",
+            "m"
+          ]
+        },
+        {
+          "id": "PRECO_M2",
+          "name": "Pre├ºo por",
+          "role": "AREA",
+          "type": "INPUT",
+          "fixedValue": "",
+          "defaultUnit": "m┬▓",
+          "allowedUnits": [
+            "m┬▓"
+          ]
+        }
+      ],
+      "formulaString": "(LARGURA * ALTURA) * PRECO_M2",
+      "referenceValues": {
+        "ALTURA": "100",
+        "LARGURA": "100",
+        "PRECO_M2": 0,
+        "ALTURA_unit": "cm",
+        "LARGURA_unit": "cm",
+        "PRECO_M2_unit": "R$/m┬▓"
+      },
+      "costFormulaString": "",
+      "hideReferencePrice": false
+    },
+    "config": null,
+    "version": 1,
+    "isLatest": true,
+    "createdAt": "2026-03-23T22:16:42.083Z",
+    "updatedAt": "2026-03-24T03:20:07.909Z"
+  }
+}

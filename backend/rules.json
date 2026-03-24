@@ -1,0 +1,22 @@
+[
+  {
+    "id": "9e808389-1c83-499f-aa20-49ba23befd2d",
+    "name": "C├ílculo por Unidade",
+    "type": "UNIT"
+  },
+  {
+    "id": "c5f33b49-998c-4862-9fed-f8479feeb339",
+    "name": "C├ílculo Linear (m)",
+    "type": "LASER_CUT"
+  },
+  {
+    "id": "8ab341cc-ccc6-457a-b51b-31df87dd7746",
+    "name": "Banner (├ürea + Acabamento)",
+    "type": "SQUARE_METER"
+  },
+  {
+    "id": "d927ce1a-657e-44e1-bd8d-27623b3000d8",
+    "name": "C├ílculo por ├ürea (m┬▓)",
+    "type": "UNIT"
+  }
+]

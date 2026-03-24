@@ -298,8 +298,8 @@ const Clientes: React.FC = () => {
 
       {/* Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="modal-overlay">
+          <Card className="modal-content-card max-w-2xl">
             <CardHeader>
               <CardTitle>
                 {editingCliente ? 'Editar Cliente' : 'Novo Cliente'}
@@ -308,7 +308,8 @@ const Clientes: React.FC = () => {
                 Preencha os dados do cliente
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex-1 overflow-y-auto">
+
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">

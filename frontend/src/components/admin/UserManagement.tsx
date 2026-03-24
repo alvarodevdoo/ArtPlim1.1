@@ -302,8 +302,9 @@ const UserManagement: React.FC = () => {
 
       {/* Modal de Convite */}
       {showInviteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md">
+        <div className="modal-overlay">
+          <Card className="modal-content-card max-w-md">
+
             <CardHeader>
               <CardTitle>Convidar Usuário</CardTitle>
               <CardDescription>
@@ -369,8 +370,9 @@ const UserManagement: React.FC = () => {
 
       {/* Modal de Edição */}
       {showEditModal && editingUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md">
+        <div className="modal-overlay">
+          <Card className="modal-content-card max-w-md">
+
             <CardHeader>
               <CardTitle>Editar Usuário</CardTitle>
               <CardDescription>

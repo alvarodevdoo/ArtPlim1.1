@@ -1,0 +1,304 @@
+
+> artplim-frontend@1.0.0 build
+> tsc && vite build
+
+src/components/admin/PerformanceMonitor.tsx(18,11): error TS6196: 'PerformanceMetric' is declared but never used.
+src/components/catalog/ConfigurationSelector.tsx(2,1): error TS6133: 'Button' is declared but its value is never read.
+src/components/layout/Sidebar.tsx(19,3): error TS6133: 'FlaskConical' is declared but its value is never read.
+src/components/layout/Topbar.tsx(3,1): error TS6133: 'cn' is declared but its value is never read.
+src/components/layout/Topbar.tsx(18,59): error TS6133: 'sidebarOpen' is declared but its value is never read.
+src/components/orders/PendingChangesStatus.tsx(10,3): error TS6133: 'Eye' is declared but its value is never read.
+src/components/orders/PendingChangesStatus.tsx(50,9): error TS6133: 'toast' is declared but its value is never read.
+src/components/orders/PendingChangesStatus.tsx(89,9): error TS6133: 'getStatusColor' is declared but its value is never read.
+src/components/pedidos/modals/OrderDetailsModal.tsx(7,22): error TS6133: 'CheckCircle' is declared but its value is never read.
+src/components/production/ChangeDetailsPanel.tsx(13,3): error TS6133: 'AlertTriangle' is declared but its value is never read.
+src/components/production/KanbanBoard.tsx(22,5): error TS6133: 'arrayMove' is declared but its value is never read.
+src/components/production/KanbanBoard.tsx(171,28): error TS6133: 'setRefreshTrigger' is declared but its value is never read.
+src/components/production/KanbanBoard.tsx(212,17): error TS6133: 'active' is declared but its value is never read.
+src/components/sales/BudgetDetailsModal.tsx(17,58): error TS1149: File name 'D:/www/NArtPlim/frontend/src/components/ui/card.tsx' differs from already included file name 'D:/www/NArtPlim/frontend/src/components/ui/Card.tsx' only in casing.
+  The file is in the program because:
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/pages/auth/LoginPage.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/pages/auth/RegisterPage.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/pages/DashboardSimple.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/pages/Clientes.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/pages/Funcionarios.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/pages/Produtos.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/catalog/ProductConfigurationManager.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/catalog/ProductFichaTecnicaManager.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/pages/Materiais.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/pages/Orcamentos.tsx'
+    Imported via '@/components/ui/card' from file 'D:/www/NArtPlim/frontend/src/components/sales/BudgetDetailsModal.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/pages/Pedidos.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/ui/MaterialCalculator.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/ui/OrderAutomation.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/PedidosFilters.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/PedidosStats.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/PedidosList.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/PedidosKanban.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/modals/OrderDetailsModal.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/modals/CancelOrderModal.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/modals/WhatsAppModal.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/ProductSelectionModal.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/ItemConfigurationModal.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/sales/CustomerSelection.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/sales/OrderItemsList.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/sales/OrderFinancialStatus.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/sales/OrderHistoryModal.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/pages/Relatorios.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/pages/Configuracoes.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/admin/UserManagement.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/admin/RolePermissions.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/admin/PaymentMethodSettings.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/pages/Estoque.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/features/estoque/EntradasMaterial.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/pages/Producao.tsx'
+    Imported via '../ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/production/PendingChangeCard.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/production/KanbanBoard.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/pages/Financeiro.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/features/financeiro/ContasAPagar.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/features/financeiro/ContasAReceber.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/features/financeiro/RelatorioDRE.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/features/financeiro/RelatorioFluxoCaixa.tsx'
+    Imported via '../ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/admin/PerformanceMonitor.tsx'
+    Imported via './Card' from file 'D:/www/NArtPlim/frontend/src/components/ui/loading-states.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/catalog/ConfigurationSelector.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/catalog/MaterialSelector.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/catalog/ProductComponentManager.tsx'
+    Imported via '../ui/Card' from file 'D:/www/NArtPlim/frontend/src/components/orders/PendingChangesStatus.tsx'
+    Matched by include pattern 'src' in 'D:/www/NArtPlim/frontend/tsconfig.json'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/legacy_reference/components/pedidos/AddItemForm.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/legacy_reference/components/pedidos/AddItemFormRefactored.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/legacy_reference/components/pedidos/AddItemFormSimplified.tsx'
+    Imported via '@/components/ui/Card' from file 'D:/www/NArtPlim/frontend/src/legacy_reference/pages/CriarPedidoRefactored.tsx'
+src/components/sales/OrderHistoryModal.tsx(2,1): error TS6133: 'Card' is declared but its value is never read.
+src/components/sales/PaymentSelection.tsx(47,12): error TS6133: 'isLoading' is declared but its value is never read.
+src/components/ui/animations.tsx(2,51): error TS2307: Cannot find module 'framer-motion' or its corresponding type declarations.
+src/components/ui/Calendar.tsx(55,9): error TS2353: Object literal may only specify known properties, and 'IconLeft' does not exist in type 'Partial<CustomComponents>'.
+src/components/ui/Calendar.tsx(55,20): error TS6133: 'props' is declared but its value is never read.
+src/components/ui/Calendar.tsx(56,21): error TS6133: 'props' is declared but its value is never read.
+src/components/ui/DatasOrcamento.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/components/ui/date-range-picker.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/components/ui/date-range-picker.tsx(62,13): error TS2559: Type 'Locale' has no properties in common with type 'Partial<DayPickerLocale>'.
+src/components/ui/LazyComponent.tsx(96,48): error TS2307: Cannot find module '../pages/Dashboard' or its corresponding type declarations.
+src/components/ui/LazyComponent.tsx(97,48): error TS2307: Cannot find module '../pages/Produtos' or its corresponding type declarations.
+src/components/ui/LazyComponent.tsx(98,46): error TS2307: Cannot find module '../pages/Pedidos' or its corresponding type declarations.
+src/components/ui/LazyComponent.tsx(99,47): error TS2307: Cannot find module '../pages/Producao' or its corresponding type declarations.
+src/components/ui/LazyComponent.tsx(100,50): error TS2322: Type 'Promise<typeof import("D:/www/NArtPlim/frontend/src/components/admin/PerformanceMonitor")>' is not assignable to type 'Promise<{ default: ComponentType<any>; }>'.
+  Property 'default' is missing in type 'typeof import("D:/www/NArtPlim/frontend/src/components/admin/PerformanceMonitor")' but required in type '{ default: ComponentType<any>; }'.
+src/components/ui/LazyComponent.tsx(109,8): error TS2322: Type 'PropsWithoutRef<P> & { ref: ForwardedRef<any>; }' is not assignable to type 'IntrinsicAttributes & P'.
+  Type 'PropsWithoutRef<P> & { ref: ForwardedRef<any>; }' is not assignable to type 'P'.
+    'PropsWithoutRef<P> & { ref: ForwardedRef<any>; }' is assignable to the constraint of type 'P', but 'P' could be instantiated with a different subtype of constraint 'object'.
+src/components/ui/NotificationBell.tsx(3,24): error TS1149: File name 'D:/www/NArtPlim/frontend/src/components/ui/button.tsx' differs from already included file name 'D:/www/NArtPlim/frontend/src/components/ui/Button.tsx' only in casing.
+  The file is in the program because:
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/auth/LoginPage.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/auth/RegisterPage.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/DashboardSimple.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Clientes.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Funcionarios.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Produtos.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/catalog/ProductConfigurationManager.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/catalog/ProductFichaTecnicaManager.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Materiais.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Orcamentos.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/sales/BudgetDetailsModal.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Pedidos.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/ui/MaterialCalculator.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/ui/OrderAutomation.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/PedidosFilters.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/PedidosStats.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/PedidosList.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/PedidosKanban.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/modals/OrderDetailsModal.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/modals/CancelOrderModal.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/modals/WhatsAppModal.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/CriarPedido.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/ProductSelectionModal.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/ItemConfigurationModal.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/item-forms/ProductItemForm.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/item-forms/ServiceItemForm.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/sales/CustomerSelection.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/sales/OrderItemsList.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/sales/OrderFinancialStatus.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/sales/PaymentSelection.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/sales/OrderHistoryModal.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/CriarOrcamento.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Relatorios.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Configuracoes.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/admin/UserManagement.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/admin/RolePermissions.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/admin/PaymentMethodSettings.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/admin/ProcessStatusSettings.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/admin/PricingRuleSettings.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/admin/pricing/PricingRuleEditorModal.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/admin/pricing/PricingRuleHistoryModal.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Estoque.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/features/estoque/EntradasMaterial.tsx'
+    Imported via '../ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/production/ChangeDetailsPanel.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Financeiro.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/features/financeiro/ContasAPagar.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/features/financeiro/ContasAReceber.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/features/financeiro/RelatorioDRE.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/features/financeiro/RelatorioFluxoCaixa.tsx'
+    Imported via '../ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/admin/PerformanceMonitor.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/catalog/ConfigurationSelector.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/catalog/MaterialSelector.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/catalog/ProductComponentManager.tsx'
+    Imported via '../ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/orders/PendingChangesStatus.tsx'
+    Matched by include pattern 'src' in 'D:/www/NArtPlim/frontend/tsconfig.json'
+    Imported via "./Button" from file 'D:/www/NArtPlim/frontend/src/components/ui/Calendar.tsx'
+    Imported via './button' from file 'D:/www/NArtPlim/frontend/src/components/ui/NotificationBell.tsx'
+    Imported via './button' from file 'D:/www/NArtPlim/frontend/src/components/ui/NotificationCenter.tsx'
+    Imported via "./Button" from file 'D:/www/NArtPlim/frontend/src/components/ui/date-range-picker.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/legacy_reference/components/pedidos/AddItemForm.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/legacy_reference/components/pedidos/AddItemFormRefactored.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/legacy_reference/components/pedidos/AddItemFormSimplified.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/legacy_reference/pages/CriarPedidoRefactored.tsx'
+src/components/ui/NotificationBell.tsx(12,8): error TS2307: Cannot find module './dropdown-menu' or its corresponding type declarations.
+src/components/ui/NotificationBell.tsx(37,10): error TS6133: 'showSettings' is declared but its value is never read.
+src/components/ui/NotificationBell.tsx(37,24): error TS6133: 'setShowSettings' is declared but its value is never read.
+src/components/ui/NotificationCenter.tsx(2,41): error TS2307: Cannot find module 'framer-motion' or its corresponding type declarations.
+src/components/ui/NotificationCenter.tsx(13,24): error TS1149: File name 'D:/www/NArtPlim/frontend/src/components/ui/button.tsx' differs from already included file name 'D:/www/NArtPlim/frontend/src/components/ui/Button.tsx' only in casing.
+  The file is in the program because:
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/auth/LoginPage.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/auth/RegisterPage.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/DashboardSimple.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Clientes.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Funcionarios.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Produtos.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/catalog/ProductConfigurationManager.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/catalog/ProductFichaTecnicaManager.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Materiais.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Orcamentos.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/sales/BudgetDetailsModal.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Pedidos.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/ui/MaterialCalculator.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/ui/OrderAutomation.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/PedidosFilters.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/PedidosStats.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/PedidosList.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/PedidosKanban.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/modals/OrderDetailsModal.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/modals/CancelOrderModal.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/modals/WhatsAppModal.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/CriarPedido.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/ProductSelectionModal.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/ItemConfigurationModal.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/item-forms/ProductItemForm.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/pedidos/item-forms/ServiceItemForm.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/sales/CustomerSelection.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/sales/OrderItemsList.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/sales/OrderFinancialStatus.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/sales/PaymentSelection.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/sales/OrderHistoryModal.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/CriarOrcamento.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Relatorios.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Configuracoes.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/admin/UserManagement.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/admin/RolePermissions.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/admin/PaymentMethodSettings.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/admin/ProcessStatusSettings.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/admin/PricingRuleSettings.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/admin/pricing/PricingRuleEditorModal.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/admin/pricing/PricingRuleHistoryModal.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Estoque.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/features/estoque/EntradasMaterial.tsx'
+    Imported via '../ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/production/ChangeDetailsPanel.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/pages/Financeiro.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/features/financeiro/ContasAPagar.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/features/financeiro/ContasAReceber.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/features/financeiro/RelatorioDRE.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/features/financeiro/RelatorioFluxoCaixa.tsx'
+    Imported via '../ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/admin/PerformanceMonitor.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/catalog/ConfigurationSelector.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/catalog/MaterialSelector.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/catalog/ProductComponentManager.tsx'
+    Imported via '../ui/Button' from file 'D:/www/NArtPlim/frontend/src/components/orders/PendingChangesStatus.tsx'
+    Matched by include pattern 'src' in 'D:/www/NArtPlim/frontend/tsconfig.json'
+    Imported via "./Button" from file 'D:/www/NArtPlim/frontend/src/components/ui/Calendar.tsx'
+    Imported via './button' from file 'D:/www/NArtPlim/frontend/src/components/ui/NotificationBell.tsx'
+    Imported via './button' from file 'D:/www/NArtPlim/frontend/src/components/ui/NotificationCenter.tsx'
+    Imported via "./Button" from file 'D:/www/NArtPlim/frontend/src/components/ui/date-range-picker.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/legacy_reference/components/pedidos/AddItemForm.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/legacy_reference/components/pedidos/AddItemFormRefactored.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/legacy_reference/components/pedidos/AddItemFormSimplified.tsx'
+    Imported via '@/components/ui/Button' from file 'D:/www/NArtPlim/frontend/src/legacy_reference/pages/CriarPedidoRefactored.tsx'
+src/components/ui/OptimizedImage.tsx(122,9): error TS6133: 'finalFormat' is declared but its value is never read.
+src/features/estoque/EntradasMaterial.tsx(8,38): error TS6133: 'Truck' is declared but its value is never read.
+src/features/financeiro/ContasAPagar.tsx(10,11): error TS6196: 'Supplier' is declared but never used.
+src/features/insumos/useInsumos.ts(16,30): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/hooks/useFinishesByType.ts(13,25): error TS6133: 'invalidateCache' is declared but its value is never read.
+src/hooks/useFinishesByType.ts(193,29): error TS2554: Expected 0 arguments, but got 1.
+src/hooks/useFinishesByType.ts(213,29): error TS2554: Expected 0 arguments, but got 1.
+src/hooks/useFinishesByType.ts(229,29): error TS2554: Expected 0 arguments, but got 1.
+src/hooks/useFinishesByType.ts(287,25): error TS2554: Expected 0 arguments, but got 1.
+src/hooks/useLazyLoad.ts(224,29): error TS2503: Cannot find namespace 'NodeJS'.
+src/hooks/usePerformanceMonitor.ts(185,71): error TS2339: Property 'navigationStart' does not exist on type 'PerformanceNavigationTiming'.
+src/hooks/usePerformanceMonitor.ts(190,78): error TS2339: Property 'navigationStart' does not exist on type 'PerformanceNavigationTiming'.
+src/hooks/useProductionMaterials.ts(13,25): error TS6133: 'invalidateCache' is declared but its value is never read.
+src/hooks/useProductionMaterials.ts(107,12): error TS6133: 'lowMarginMaterials' is declared but its value is never read.
+src/hooks/useProductionMaterials.ts(206,29): error TS2554: Expected 0 arguments, but got 1.
+src/hooks/useProductionMaterials.ts(226,29): error TS2554: Expected 0 arguments, but got 1.
+src/hooks/useProductionMaterials.ts(242,29): error TS2554: Expected 0 arguments, but got 1.
+src/hooks/useProductionMaterials.ts(259,29): error TS2554: Expected 0 arguments, but got 1.
+src/hooks/useProductionMaterials.ts(278,29): error TS2554: Expected 0 arguments, but got 1.
+src/hooks/useProductionMaterials.ts(297,25): error TS2554: Expected 0 arguments, but got 1.
+src/hooks/useRealTimeNotifications.ts(33,42): error TS2503: Cannot find namespace 'NodeJS'.
+src/hooks/useRealTimeNotifications.ts(36,11): error TS2339: Property 'isConnected' does not exist on type 'WebSocketHook'.
+src/hooks/useRealTimeNotifications.ts(36,24): error TS2339: Property 'sendMessage' does not exist on type 'WebSocketHook'.
+src/hooks/useRealTimeNotifications.ts(36,24): error TS6133: 'sendMessage' is declared but its value is never read.
+src/hooks/useRealTimeNotifications.ts(36,53): error TS2554: Expected 0 arguments, but got 2.
+src/hooks/useRealTimeNotifications.ts(37,17): error TS7006: Parameter 'data' implicitly has an 'any' type.
+src/hooks/useSmartCache.ts(281,29): error TS2503: Cannot find namespace 'NodeJS'.
+src/hooks/useStandardSizes.ts(13,25): error TS6133: 'invalidateCache' is declared but its value is never read.
+src/hooks/useStandardSizes.ts(157,29): error TS2554: Expected 0 arguments, but got 1.
+src/hooks/useStandardSizes.ts(177,29): error TS2554: Expected 0 arguments, but got 1.
+src/hooks/useStandardSizes.ts(193,29): error TS2554: Expected 0 arguments, but got 1.
+src/hooks/useStandardSizes.ts(210,29): error TS2554: Expected 0 arguments, but got 1.
+src/hooks/useStandardSizes.ts(229,25): error TS2554: Expected 0 arguments, but got 1.
+src/hooks/useWebSocket.ts(24,17): error TS2339: Property 'token' does not exist on type 'AuthContextType'.
+src/hooks/useWebSocket.ts(25,38): error TS2503: Cannot find namespace 'NodeJS'.
+src/hooks/useWebSocket.ts(42,19): error TS2580: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node`.
+src/hooks/useWebSocket.ts(43,19): error TS2580: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node`.
+src/legacy_reference/components/pedidos/AddItemForm.tsx(108,10): error TS6133: 'configurationPriceImpact' is declared but its value is never read.
+src/legacy_reference/components/pedidos/AddItemForm.tsx(409,9): error TS6133: 'formatarUnidadePreco' is declared but its value is never read.
+src/legacy_reference/components/pedidos/AddItemForm.tsx(751,37): error TS6133: 'result' is declared but its value is never read.
+src/legacy_reference/components/pedidos/AddItemFormSimplified.tsx(8,50): error TS2307: Cannot find module './item-forms' or its corresponding type declarations.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(1,27): error TS6133: 'useEffect' is declared but its value is never read.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(3,1): error TS6133: 'Button' is declared but its value is never read.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(4,1): error TS6133: 'Input' is declared but its value is never read.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(5,1): error TS6192: All imports in import declaration are unused.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(6,1): error TS6192: All imports in import declaration are unused.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(26,1): error TS6133: 'formatCurrency' is declared but its value is never read.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(27,1): error TS6133: 'api' is declared but its value is never read.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(28,1): error TS6133: 'toast' is declared but its value is never read.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(29,1): error TS6133: 'AddItemFormRefactored' is declared but its value is never read.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(29,35): error TS2307: Cannot find module '@/components/pedidos/AddItemFormRefactored' or its corresponding type declarations.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(30,1): error TS6192: All imports in import declaration are unused.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(50,11): error TS6133: 'navigate' is declared but its value is never read.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(53,11): error TS6133: 'isEditing' is declared but its value is never read.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(54,12): error TS6133: 'loading' is declared but its value is never read.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(54,21): error TS6133: 'setLoading' is declared but its value is never read.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(55,12): error TS6133: 'clientes' is declared but its value is never read.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(55,22): error TS6133: 'setClientes' is declared but its value is never read.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(56,12): error TS6133: 'produtos' is declared but its value is never read.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(56,22): error TS6133: 'setProdutos' is declared but its value is never read.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(59,11): error TS6133: 'clienteDropdownRef' is declared but its value is never read.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(62,12): error TS6133: 'clienteSelecionado' is declared but its value is never read.
+src/legacy_reference/pages/CriarPedidoRefactored.tsx(62,32): error TS6133: 'setClienteSelecionado' is declared but its value is never read.
+src/legacy_reference/pages/Dashboard.tsx(3,58): error TS2307: Cannot find module '../components/ui/card' or its corresponding type declarations.
+src/legacy_reference/pages/Dashboard.tsx(4,24): error TS2307: Cannot find module '../components/ui/button' or its corresponding type declarations.
+src/legacy_reference/pages/Dashboard.tsx(5,37): error TS2307: Cannot find module '../components/ui/date-range-picker' or its corresponding type declarations.
+src/legacy_reference/pages/Dashboard.tsx(6,26): error TS2307: Cannot find module '../components/ui/skeleton' or its corresponding type declarations.
+src/legacy_reference/pages/Dashboard.tsx(15,3): error TS6133: 'Calendar' is declared but its value is never read.
+src/legacy_reference/pages/Dashboard.tsx(20,18): error TS6133: 'subDays' is declared but its value is never read.
+src/legacy_reference/pages/Dashboard.tsx(22,21): error TS6133: 'Doughnut' is declared but its value is never read.
+src/legacy_reference/pages/Dashboard.tsx(258,9): error TS6133: 'materialsChartData' is declared but its value is never read.
+src/legacy_reference/pages/Dashboard.tsx(361,24): error TS7006: Parameter 'range' implicitly has an 'any' type.
+src/pages/auth/LoginPage.tsx(129,14): error TS2580: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node`.
+src/pages/Clientes.tsx(5,77): error TS6133: 'Hash' is declared but its value is never read.
+src/pages/DashboardSimple.tsx(14,3): error TS6133: 'CheckCircle' is declared but its value is never read.
+src/pages/DashboardSimple.tsx(15,3): error TS6133: 'AlertCircle' is declared but its value is never read.
+src/pages/Pedidos.tsx(123,11): error TS2322: Type '{ orders: Pedido[]; onComplete: () => Promise<void>; onRuleExecute: (_: string, orderIds: string[]) => void; }' is not assignable to type 'IntrinsicAttributes & OrderAutomationProps'.
+  Property 'onComplete' does not exist on type 'IntrinsicAttributes & OrderAutomationProps'.
+src/pages/Produtos.tsx(1,47): error TS6133: 'useCallback' is declared but its value is never read.
+src/pages/Produtos.tsx(14,34): error TS6133: 'applyNormalization' is declared but its value is never read.

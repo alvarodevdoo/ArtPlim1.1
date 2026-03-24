@@ -125,7 +125,13 @@ export const applyNormalization = (
 
       let normalizedVal = numVal * factor;
       
-      if (vid.includes('PRECO') || vid.includes('VALOR')) {
+      // 🛡️ TRATAMENTO DE PREÇOS E TAXAS:
+      // Se a variável for um multiplicador de preço (ex: R$ por m² ou R$ por cm),
+      // a normalização deve ser INVERSA (dividir pelo fator) para que ao multiplicar 
+      // pela medida normalizada (mm ou mm²), o resultado seja o valor em Reais.
+      const isPriceRole = v.role === 'SALE_PRICE' || v.role === 'MONETARY' || v.role === 'COST_RATE' || vid.includes('PRECO') || vid.includes('VALOR');
+
+      if (isPriceRole && factor > 1) {
         normalizedVal = numVal / factor;
       }
 

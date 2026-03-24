@@ -15,7 +15,7 @@ export type FormulaVariableType = 'INPUT' | 'FIXED';
 export type FormulaVariableRole =
     | 'LENGTH' | 'AREA' | 'TIME' | 'WEIGHT'
     | 'ENERGY' | 'POWER' | 'VOLUME'
-    | 'PERCENT' | 'COST_RATE' | 'NONE';
+    | 'PERCENT' | 'COST_RATE' | 'SALE_PRICE' | 'NONE';
 
 export interface FormulaVariable {
     id: string;
@@ -38,6 +38,7 @@ const UNIT_SUGGESTIONS: Record<string, string[]> = {
     POWER: ['mW', 'W', 'kW'],
     PERCENT: ['%'],
     COST_RATE: ['R$/kWh', 'R$/kg', 'R$/m', 'R$/m²', 'R$/h'],
+    SALE_PRICE: [],
     NONE: []
 };
 
@@ -52,6 +53,7 @@ export interface PricingFormulaRule {
     usageCount?: number;
     referenceValues?: Record<string, any>;
     hideReferencePrice?: boolean;
+    pricingMode?: 'SIMPLE_AREA' | 'SIMPLE_UNIT' | 'DYNAMIC_ENGINEER';
 }
 
 interface Props {
@@ -295,8 +297,9 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
     };
 
     return (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="modal-overlay">
+            <div className="modal-content-card max-w-6xl">
+
                 {/* HEAD */}
                 <div className="flex justify-between items-center p-4 border-b bg-slate-50">
                     <div className="flex items-center gap-2">
@@ -327,6 +330,35 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                                         placeholder="Ex: Adesivo Vinil"
                                         className="font-medium"
                                     />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-semibold text-slate-700 block mb-2">Comportamento (Vitrine / Cálculo)</label>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setFormData(p => ({ ...p, pricingMode: 'SIMPLE_AREA' }))}
+                                            className={`flex flex-col items-center justify-center p-2 rounded border-2 transition-all ${formData.pricingMode === 'SIMPLE_AREA' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-slate-200 hover:border-blue-200 text-slate-500'}`}
+                                        >
+                                            <span className="text-xs">Área (m²)</span>
+                                        </button>
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setFormData(p => ({ ...p, pricingMode: 'SIMPLE_UNIT' }))}
+                                            className={`flex flex-col items-center justify-center p-2 rounded border-2 transition-all ${formData.pricingMode === 'SIMPLE_UNIT' ? 'border-green-500 bg-green-50 text-green-700 font-bold' : 'border-slate-200 hover:border-green-200 text-slate-500'}`}
+                                        >
+                                            <span className="text-xs">Unidade</span>
+                                        </button>
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setFormData(p => ({ ...p, pricingMode: 'DYNAMIC_ENGINEER' }))}
+                                            className={`flex flex-col items-center justify-center p-2 rounded border-2 transition-all ${formData.pricingMode === 'DYNAMIC_ENGINEER' ? 'border-purple-500 bg-purple-50 text-purple-700 font-bold' : 'border-slate-200 hover:border-purple-200 text-slate-500'}`}
+                                        >
+                                            <span className="text-xs">Dinâmico</span>
+                                        </button>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 mt-1 mt-2">
+                                        * Define se o produto com essa regra terá variação técnica complexa (Dinâmico) ou precificação simples M²/Un.
+                                    </p>
                                 </div>
                             </div>
 
@@ -430,6 +462,7 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                                                                     <option value="POWER">Potência (Capacidade)</option>
                                                                     <option value="PERCENT">Percentual (%)</option>
                                                                     <option value="COST_RATE">Taxa de Custo (Ex: R$/kWh)</option>
+                                                                    <option value="SALE_PRICE">💰 Preço de Venda (salePrice)</option>
                                                                 </select>
                                                             </div>
                                                         </div>

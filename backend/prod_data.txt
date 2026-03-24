@@ -1,0 +1,145 @@
+[
+  {
+    "id": "52719821-fff1-4de7-9969-14d752ece5e3",
+    "name": "Adesivo Perfurado p/ Vidros de Carro",
+    "pricingMode": "SIMPLE_AREA",
+    "formulaData": {
+      "PRECO_M2": "90",
+      "PRECO_M2_locked": true
+    },
+    "salePrice": "90",
+    "pricingRuleId": "d927ce1a-657e-44e1-bd8d-27623b3000d8"
+  },
+  {
+    "id": "b8e7598b-7e96-4362-b354-b393cd5823d3",
+    "name": "Banner Backlight Translucido",
+    "pricingMode": "SIMPLE_AREA",
+    "formulaData": null,
+    "salePrice": "95",
+    "pricingRuleId": "d927ce1a-657e-44e1-bd8d-27623b3000d8"
+  },
+  {
+    "id": "ec592f5e-a792-4158-ac0f-ba03ffb10e95",
+    "name": "Adesivo Vinil Branco Brilho",
+    "pricingMode": "SIMPLE_AREA",
+    "formulaData": null,
+    "salePrice": "40",
+    "pricingRuleId": "d927ce1a-657e-44e1-bd8d-27623b3000d8"
+  },
+  {
+    "id": "abfcee70-a785-43be-9fa2-39da80a0b521",
+    "name": "Adesivo Vinil Transparente",
+    "pricingMode": "SIMPLE_AREA",
+    "formulaData": null,
+    "salePrice": "45",
+    "pricingRuleId": "d927ce1a-657e-44e1-bd8d-27623b3000d8"
+  },
+  {
+    "id": "7a25c1ed-a447-45e2-bed9-21dabd65602b",
+    "name": "Adesivo de Recorte - Letras/Logos",
+    "pricingMode": "SIMPLE_AREA",
+    "formulaData": null,
+    "salePrice": "55",
+    "pricingRuleId": "d927ce1a-657e-44e1-bd8d-27623b3000d8"
+  },
+  {
+    "id": "34df6ad2-2f7a-47c4-ac08-c7acaa1db9b5",
+    "name": "Placa PVC 1mm c/ Adesivo",
+    "pricingMode": "SIMPLE_AREA",
+    "formulaData": null,
+    "salePrice": "110",
+    "pricingRuleId": "d927ce1a-657e-44e1-bd8d-27623b3000d8"
+  },
+  {
+    "id": "ed9d1edf-e09f-434d-a61f-b33be01d542b",
+    "name": "Placa PVC 2mm c/ Adesivo",
+    "pricingMode": "SIMPLE_AREA",
+    "formulaData": null,
+    "salePrice": "145",
+    "pricingRuleId": "d927ce1a-657e-44e1-bd8d-27623b3000d8"
+  },
+  {
+    "id": "f3d304d8-d6a5-4d5d-bdc3-80ae7cb7e29c",
+    "name": "Placa de Obra (ACM)",
+    "pricingMode": "SIMPLE_AREA",
+    "formulaData": null,
+    "salePrice": "320",
+    "pricingRuleId": "d927ce1a-657e-44e1-bd8d-27623b3000d8"
+  },
+  {
+    "id": "f1a96d04-431d-4f7b-bf87-2da8b10d599b",
+    "name": "Letreiro em ACM",
+    "pricingMode": "SIMPLE_AREA",
+    "formulaData": null,
+    "salePrice": "450",
+    "pricingRuleId": "d927ce1a-657e-44e1-bd8d-27623b3000d8"
+  },
+  {
+    "id": "b9cdfa5a-865f-4a1b-9049-382785d7a8ed",
+    "name": "Adesivo Jateado p/ Vidros",
+    "pricingMode": "SIMPLE_AREA",
+    "formulaData": {
+      "PRECO_M2": "80"
+    },
+    "salePrice": "80",
+    "pricingRuleId": "d927ce1a-657e-44e1-bd8d-27623b3000d8"
+  },
+  {
+    "id": "f6ffab55-7f3d-474a-b6a9-6b7bbc9093fa",
+    "name": "Fachada em Lona c/ Estrutura",
+    "pricingMode": "SIMPLE_AREA",
+    "formulaData": null,
+    "salePrice": "165",
+    "pricingRuleId": "d927ce1a-657e-44e1-bd8d-27623b3000d8"
+  },
+  {
+    "id": "34549e5e-dd38-4f5d-b68b-084f62d5f8df",
+    "name": "Banner em Tecido Canvas",
+    "pricingMode": "SIMPLE_AREA",
+    "formulaData": null,
+    "salePrice": "150",
+    "pricingRuleId": "d927ce1a-657e-44e1-bd8d-27623b3000d8"
+  },
+  {
+    "id": "0634adc6-ad9e-4288-b5fe-dc795b1a523d",
+    "name": "Adesivo de Ch├úo Antiderrapante",
+    "pricingMode": "SIMPLE_AREA",
+    "formulaData": null,
+    "salePrice": "110",
+    "pricingRuleId": "d927ce1a-657e-44e1-bd8d-27623b3000d8"
+  },
+  {
+    "id": "10729f6f-43d9-4a5a-973f-b9a3894e6eb0",
+    "name": "Banner Lona 280g Econ├┤mico",
+    "pricingMode": "SIMPLE_AREA",
+    "formulaData": {
+      "PRECO_M2": "80"
+    },
+    "salePrice": "0",
+    "pricingRuleId": "d927ce1a-657e-44e1-bd8d-27623b3000d8"
+  },
+  {
+    "id": "a3d820d5-1c09-4e53-b9fe-f6defb233818",
+    "name": "Banner Lona 440g c/ Acabamento",
+    "pricingMode": "SIMPLE_AREA",
+    "formulaData": null,
+    "salePrice": "45",
+    "pricingRuleId": "8ab341cc-ccc6-457a-b51b-31df87dd7746"
+  },
+  {
+    "id": "0aeefa13-d936-4f1b-8a95-f6528375511d",
+    "name": "Adesivo Vinil",
+    "pricingMode": "SIMPLE_AREA",
+    "formulaData": {
+      "ALTURA": "",
+      "LARGURA": "",
+      "PRECO_M2": "80",
+      "ALTURA_unit": "cm",
+      "LARGURA_unit": "cm",
+      "ALTURA_locked": false,
+      "PRECO_M2_locked": true
+    },
+    "salePrice": "80",
+    "pricingRuleId": "d927ce1a-657e-44e1-bd8d-27623b3000d8"
+  }
+]

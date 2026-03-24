@@ -268,8 +268,8 @@ const Materiais: React.FC = () => {
 
       {/* Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="modal-overlay">
+          <Card className="modal-content-card max-w-2xl">
             <CardHeader>
               <CardTitle>
                 {editingMaterial ? 'Editar Material' : 'Novo Material'}
@@ -281,13 +281,14 @@ const Materiais: React.FC = () => {
                     ⚠️ Importante: Informações de Aquisição / Custo
                   </summary>
                   <div className="mt-2 text-amber-700 leading-relaxed border-t border-amber-200 pt-2 cursor-text">
-                    As informações cadastradas aqui referem-se aos <strong>dados de aquisição (compra)</strong> do insumo. O sistema usará este valor como <strong>CUSTO</strong>.<br/>
+                    As informações cadastradas aqui referem-se aos <strong>dados de aquisição (compra)</strong> do insumo. O sistema usará este valor como <strong>CUSTO</strong>.<br />
                     As regras de venda (preço final para o cliente) devem ser configuradas nas <strong>Fórmulas de Precificação</strong> dentro do cadastro de Produtos.
                   </div>
                 </details>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex-1 overflow-y-auto">
+
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -428,7 +429,7 @@ const Materiais: React.FC = () => {
                         <option value="SPACING">Espaçamento</option>
                       </select>
                     </div>
-                    
+
                     <div className="space-y-2">
                       <label className="text-sm font-medium flex items-center mb-1">
                         Fator/Quant. Padrão
@@ -436,7 +437,7 @@ const Materiais: React.FC = () => {
                           <Info className="w-4 h-4 ml-1 text-muted-foreground cursor-help" />
                         </span>
                       </label>
-                      <Input 
+                      <Input
                         type="number"
                         step="0.0001"
                         value={formData.defaultConsumptionFactor}
@@ -531,7 +532,7 @@ const Materiais: React.FC = () => {
 
                 <div className="mt-6 border-t pt-4">
                   <h4 className="text-sm font-semibold mb-4 text-primary">Fornecedores e Histórico</h4>
-                  
+
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <label className="text-sm font-medium flex items-center">
@@ -540,9 +541,9 @@ const Materiais: React.FC = () => {
                           <Info className="w-4 h-4 ml-1 text-muted-foreground cursor-help" />
                         </span>
                       </label>
-                      <Button 
-                        type="button" 
-                        variant="outline" 
+                      <Button
+                        type="button"
+                        variant="outline"
                         size="sm"
                         onClick={() => {
                           setFormData(prev => ({
@@ -559,7 +560,7 @@ const Materiais: React.FC = () => {
                       <div key={idx} className="flex flex-col sm:flex-row items-start sm:items-end gap-2 border p-3 rounded-md bg-muted/20">
                         <div className="flex-1 w-full space-y-1">
                           <label className="text-xs">Fornecedor</label>
-                          <select 
+                          <select
                             value={s.supplierId}
                             onChange={e => {
                               const newSuppliers = [...formData.suppliers];
@@ -709,10 +710,10 @@ const Materiais: React.FC = () => {
                 </div>
 
                 <div className="pt-2 border-t flex justify-between text-[11px] text-muted-foreground">
-                    <span>Uso em {material._count?.components || 0} produto(s)</span>
-                    <span className={material._count?.inventoryItems === 0 ? 'text-red-500 font-bold' : ''}>
-                      {material._count?.inventoryItems || 0} em estoque
-                    </span>
+                  <span>Uso em {material._count?.components || 0} produto(s)</span>
+                  <span className={material._count?.inventoryItems === 0 ? 'text-red-500 font-bold' : ''}>
+                    {material._count?.inventoryItems || 0} em estoque
+                  </span>
                 </div>
               </div>
             </CardContent>

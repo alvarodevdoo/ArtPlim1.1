@@ -1,0 +1,45 @@
+[
+  {
+    "id": "9e808389-1c83-499f-aa20-49ba23befd2d",
+    "organizationId": "0b5c5f99-e87f-47e3-b654-3c18e61d98da",
+    "name": "C├ílculo por Unidade",
+    "active": true,
+    "type": "UNIT",
+    "parentId": null,
+    "formula": {
+      "variables": [
+        {
+          "id": "QUANTIDADE",
+          "name": "Quantidade",
+          "role": "QUANTITY",
+          "type": "INPUT",
+          "unit": "un",
+          "defaultUnit": "",
+          "allowedUnits": []
+        },
+        {
+          "id": "PRECO_UN",
+          "name": "Pre├ºo Unit├írio",
+          "role": "NONE",
+          "type": "INPUT",
+          "fixedValue": 10,
+          "defaultUnit": "",
+          "allowedUnits": []
+        }
+      ],
+      "formulaString": "QUANTIDADE * PRECO_UN",
+      "referenceValues": {
+        "PRECO_UN": 0,
+        "QUANTIDADE": 0,
+        "QUANTIDADE_unit": null
+      },
+      "costFormulaString": "",
+      "hideReferencePrice": false
+    },
+    "config": null,
+    "version": 1,
+    "isLatest": true,
+    "createdAt": "2026-03-23T22:16:42.089Z",
+    "updatedAt": "2026-03-24T17:37:03.727Z"
+  }
+]

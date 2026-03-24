@@ -107,13 +107,18 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
         const hasRootDimensions = editingData?.width !== undefined || editingData?.height !== undefined;
 
         // O segredo do F5: Só consideramos "Hidratado" se os dados já vieram da API ou se for explicitamente um item novo.
-        const isHydrated = hasSavedVars || hasRootDimensions || currentItemId === 'NEW_ITEM';
+        const hasVariables = !!(parsedFormulaData?.variables && parsedFormulaData.variables.length > 0);
+        const isHydrated = (hasSavedVars || hasRootDimensions || currentItemId === 'NEW_ITEM') && (hasVariables || !(produto as any)?.pricingRuleId);
 
         const carregarDadosIniciais = async () => {
-            let productDefaults: Record<string, any> = {};
-            let initialProductDefaults = (produto as any)?.formulaData || {};
-            if (typeof initialProductDefaults === 'string') { try { initialProductDefaults = JSON.parse(initialProductDefaults); } catch { initialProductDefaults = {}; } }
-            Object.entries(initialProductDefaults).forEach(([k, v]) => productDefaults[k.toLowerCase()] = v);
+            if (!isHydrated) return;
+
+            const initialProductDefaults = typeof (produto as any)?.formulaData === 'string'
+               ? JSON.parse((produto as any).formulaData)
+               : ((produto as any)?.formulaData || {});
+
+            let productDef: Record<string, any> = {};
+            Object.entries(initialProductDefaults).forEach(([k, v]) => productDef[k.toLowerCase()] = v);
 
             const backup = formBackupCache.get(currentProdId);
             const varsToUse = hasSavedVars ? savedVars : (backup?.vars || {});
@@ -123,11 +128,17 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
 
             const buildInitialVariables = () => {
                 const initialVars: Record<string, { value: any; unit: string | null }> = {};
+
+                // Pré-computar: quais variáveis estão TRAVADAS no produto mas sem valor?
+                // O salePrice do produto é o valor que deve ser usado nessas situações.
+                const rawSalePrice = (produto as any)?.salePrice;
+                const normalizedSalePriceVal = rawSalePrice !== undefined && rawSalePrice !== null ? Number(rawSalePrice) : 0;
+
                 parsedFormulaData.variables.forEach((v: any) => {
                     const varIdLow = v.id.toLowerCase();
 
                     // Prioridade de Valor: 1. DB (JSON) | 2. DB (Raiz fallback) | 3. Cache Memória
-                    let savedVal = savedVars[v.id] ?? savedVars[varIdLow];
+                    let savedVal = varsToUse[v.id] ?? varsToUse[varIdLow];
 
                     if (savedVal === undefined && editingData) {
                         if (varIdLow === 'largura' || varIdLow === 'width') savedVal = editingData.width;
@@ -140,68 +151,106 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                     }
 
                     // Prioridade de Unidade: 1. DB | 2. Defaults do Produto | 3. Formula
-                    const unitFromProductDefaults = productDefaults[`${varIdLow}_unit`];
+                    const unitFromProductDefaults = productDef[`${varIdLow}_unit`];
                     const fallbackUnit = unitFromProductDefaults || v.defaultUnit || v.unit || v.baseUnit || (v.allowedUnits?.length ? v.allowedUnits[0] : null);
 
                     let finalValue = savedVal;
                     let finalUnit = fallbackUnit;
 
-                    if (savedVal !== undefined && savedVal !== null) {
+                    if (savedVal !== undefined && savedVal !== null && savedVal !== '') {
                         if (typeof savedVal === 'object' && 'value' in savedVal) {
                             finalValue = savedVal.value;
                             finalUnit = savedVal.unit || fallbackUnit;
                         }
                     } else {
-                        finalValue = productDefaults[varIdLow] !== undefined ? productDefaults[varIdLow] : (v.type === 'FIXED' ? v.fixedValue : (v.defaultValue ?? ''));
+                        // Sem valor salvo — tentar defaults do produto (formulaData)
+                        const productDefaultVal = productDef[varIdLow];
+                        if (productDefaultVal !== undefined && productDefaultVal !== null && productDefaultVal !== '') {
+                            finalValue = productDefaultVal;
+                        } else {
+                            finalValue = v.type === 'FIXED' ? v.fixedValue : (v.defaultValue ?? '');
+                        }
+                    }
+
+                    // 🔑 INJEÇÃO DO SALE PRICE — Sincronização com o Cadastro do Produto
+                    // O valor do cadastro (produto.salePrice) é a nossa "Verdade Absoluta" para variáveis de preço,
+                    // a menos que o usuário tenha digitado um valor específico no formulário.
+
+                    const isEmpty = finalValue === '' || finalValue === undefined || finalValue === null || finalValue === 0;
+                    const isRoleSalePrice = v.role === 'SALE_PRICE';
+                    const isLockedWithNoValue = productDef[`${varIdLow}_locked`] === true && isEmpty;
+
+                    // Se a variável é de preço de venda ou está travada e não tem valor específico, injeta o salePrice do banco
+                    if (normalizedSalePriceVal > 0 && isEmpty && (isRoleSalePrice || isLockedWithNoValue)) {
+                        finalValue = normalizedSalePriceVal;
                     }
 
                     initialVars[v.id] = { value: finalValue, unit: finalUnit };
                 });
+
+                setDynamicVariables(initialVars);
                 return initialVars;
             };
 
+            // 🚀 PRIORIDADE 1: Carregar Variáveis da Fórmula (Preço e Medidas)
+            // Fazemos isso PRIMEIRO e sincronicamente para a UI não piscar vazia.
+            if (parsedFormulaData?.variables) {
+                const initial = buildInitialVariables();
+                loadedSignatureRef.current = currentItemId;
+
+                // Dispara cálculo inicial (sem setTimeout aqui para ser atômico)
+                const priceScope: Record<string, any> = { QTDE: 1 };
+                Object.entries(initial).forEach(([k, v]) => {
+                    priceScope[k] = v.value;
+                    priceScope[`${k}_unit`] = v.unit;
+                });
+                const res = calculatePricingResult(parsedFormulaData.formulaString, parsedFormulaData.variables, priceScope);
+                setUnitPrice(res.value);
+            }
+
+            // 🚀 PRIORIDADE 2: Carregar dados de edição (se houver)
             if (editingData && editingData.productId === produto?.id) {
                 setQuantity(editingData.quantity || 1);
                 setUnitPrice(editingData.unitPrice || 0);
                 setNotes(notesToUse);
                 if (matToUse) setMateriaisSelecionados(matToUse);
                 if (optToUse) setOpcoesSelecionadas(optToUse);
-
-                if (parsedFormulaData?.variables) {
-                    setDynamicVariables(buildInitialVariables());
-                } else if (Object.keys(varsToUse).length > 0) {
-                    const normalized: Record<string, { value: any; unit: string | null }> = {};
-                    Object.entries(varsToUse).forEach(([key, val]: [string, any]) => {
-                        normalized[key] = (val && typeof val === 'object' && 'value' in val) ? val : { value: val, unit: null };
-                    });
-                    setDynamicVariables(normalized);
-                }
             } else if (produto?.id) {
                 setQuantity(1);
                 setNotes(backup?.notes || '');
-                setOpcoesSelecionadas(optToUse);
+                if (optToUse) setOpcoesSelecionadas(optToUse);
 
-                if (!matToUse) {
-                    const resFicha = await api.get(`/api/catalog/products/${produto.id}/ficha-tecnica`);
-                    if (isMounted && resFicha.data.success && resFicha.data.data) {
-                        const fichaBase = resFicha.data.data.map((item: any) => ({
-                            insumoId: item.insumoId, nome: item.insumo.nome, precoBase: Number(item.insumo.custoUnitario), quantidadeUtilizada: item.quantidade, unidadeBase: item.insumo.unidadeBase
-                        }));
-                        setMateriaisSelecionados(fichaBase);
+                // Se não for edição, tentamos carregar a Ficha Técnica padrão
+                if (!matToUse && isMounted) {
+                    try {
+                        const resFicha = await api.get(`/api/catalog/products/${produto.id}/ficha-tecnica`);
+                        if (resFicha.data.success && resFicha.data.data) {
+                            // Mapeamento seguro: aceita 'nome' ou 'name' e 'custoUnitario' ou 'costPrice'
+                            const fichaBase = resFicha.data.data.map((item: any) => {
+                                    const m = item.insumo || item.material || {};
+                                    return {
+                                        insumoId: item.insumoId || item.materialId,
+                                        nome: m.nome || m.name || 'Insumo sem nome',
+                                        precoBase: Number(m.costPrice || m.custoUnitario || 0),
+                                        quantidadeUtilizada: item.quantidade || 0,
+                                        unidadeBase: m.unidadeBase || m.unit || 'un'
+                                    };
+                            });
+                            setMateriaisSelecionados(fichaBase);
+                        }
+                    } catch (err) {
+                        console.warn('Erro ao carregar ficha técnica, continuando sem materiais:', err);
                     }
-                } else {
+                } else if (matToUse) {
                     setMateriaisSelecionados(matToUse);
-                }
-
-                if (isMounted && parsedFormulaData?.variables) {
-                    setDynamicVariables(buildInitialVariables());
                 }
             }
 
-            if (produto?.id) {
+            // 🚀 PRIORIDADE 3: Outras configurações (Configurações Pré-setadas)
+            if (produto?.id && isMounted) {
                 try {
                     const response = await api.get(`/api/catalog/products/${produto.id}/configurations`);
-                    if (isMounted && response.data.success) setConfiguracoes(response.data.data || []);
+                    if (response.data.success) setConfiguracoes(response.data.data || []);
                 } catch (error) { console.error("Erro ao carregar configurações:", error); }
             }
 
@@ -224,7 +273,7 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
 
     // 4. Motor de Precificação (Execução)
     useEffect(() => {
-        if (!parsedFormulaData?.formulaString || isInitializing) return;
+        if (!parsedFormulaData?.formulaString) return;
 
         const timer = setTimeout(() => {
             const inputs: Record<string, any> = {};
@@ -239,22 +288,24 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
             });
 
             // Materiais/Insumos
-            inputs['custo_materiais'] = materiaisSelecionados.reduce((acc, m) => acc + (m.quantidadeUtilizada * m.precoBase), 0);
+            const custoMateriais = materiaisSelecionados.reduce((acc, m) => acc + (m.quantidadeUtilizada * m.precoBase), 0);
+            inputs['custo_materiais'] = custoMateriais;
             inputs['quantidade'] = quantity;
+            inputs['QTDE'] = quantity;
 
             setSimulatingPrice(true);
             try {
                 const result = calculatePricingResult(parsedFormulaData.formulaString, parsedFormulaData.variables, inputs);
-                if (result.value !== undefined) setUnitPrice(Number(result.value));
+                setUnitPrice(Number(result.value || 0));
             } catch (err) {
                 console.error("Erro no cálculo:", err);
             } finally {
                 setSimulatingPrice(false);
             }
-        }, 300);
+        }, 500);
 
         return () => clearTimeout(timer);
-    }, [parsedFormulaData, dynamicVariables, materiaisSelecionados, quantity, isInitializing]);
+    }, [parsedFormulaData, dynamicVariables, materiaisSelecionados, quantity]);
 
     // 5. Handlers
     const handleDynamicVarChange = useCallback((id: string, field: 'value' | 'unit', val: any) => {
@@ -374,7 +425,7 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                                 {isLocked && <Lock className="w-3 h-3 text-slate-400" />}
                             </label>
                             <div className="flex gap-1">
-                                {v.defaultUnit === 'moeda' || v.role === 'MONETARY' ? (
+                                {v.defaultUnit === 'moeda' || v.role === 'MONETARY' || v.role === 'SALE_PRICE' ? (
                                     <CurrencyInput value={dynamicVariables[v.id]?.value || 0} onValueChange={(val) => handleDynamicVarChange(v.id, 'value', val || 0)} disabled={isLocked} className="flex-1" />
                                 ) : (
                                     <Input type="text" value={dynamicVariables[v.id]?.value ?? ''} onChange={(e) => handleDynamicVarChange(v.id, 'value', e.target.value)} className="h-10 border-slate-200 bg-white flex-1 font-mono text-center" disabled={isLocked} />

@@ -12,7 +12,6 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    allowedHosts: ["erp.artplim.com.br", "api.artplim.com.br"],
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

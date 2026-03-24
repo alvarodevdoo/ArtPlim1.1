@@ -1044,13 +1044,15 @@ const Financeiro: React.FC = () => {
 
       {/* Add Account Modal */}
       {showAddAccount && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <Card className="w-full max-w-md animate-in zoom-in-95">
+        <div className="modal-overlay">
+          <Card className="modal-content-card max-w-md">
+
             <CardHeader>
               <CardTitle>{editingAccountId ? 'Editar Conta' : 'Nova Conta'}</CardTitle>
               <CardDescription>{editingAccountId ? 'Atualize os dados bancários' : 'Adicione uma nova conta ao sistema'}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex-1 overflow-y-auto">
+
               <form onSubmit={handleCreateAccount} className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Nome da Conta *</label>
@@ -1115,15 +1117,16 @@ const Financeiro: React.FC = () => {
         </div>
       )}
 
-      {/* Add Transaction Modal */}
       {showAddTransaction && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md">
+        <div className="modal-overlay">
+          <Card className="modal-content-card max-w-md">
+
             <CardHeader>
               <CardTitle>Nova Transação</CardTitle>
               <CardDescription>Registre uma receita ou despesa</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex-1 overflow-y-auto">
+
               <form onSubmit={handleCreateTransaction} className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Conta *</label>
@@ -1238,15 +1241,16 @@ const Financeiro: React.FC = () => {
         </div>
       )}
 
-      {/* Add Category Modal */}
       {showAddCategory && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <Card className="w-full max-w-md animate-in zoom-in-95">
+        <div className="modal-overlay">
+          <Card className="modal-content-card max-w-md">
+
             <CardHeader>
               <CardTitle>Nova Categoria</CardTitle>
               <CardDescription>Crie uma classificação para suas transações</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex-1 overflow-y-auto">
+
               <form onSubmit={handleCreateCategory} className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Nome *</label>

@@ -1,0 +1,19 @@
+Objetivo: Otimizar a performance da página de Produtos, eliminando requisições duplicadas e reduzindo a carga no banco de dados.
+
+Contexto: A tela /src/pages/Produtos.tsx está realizando overfetching. Múltiplos componentes estão solicitando simultaneamente as rotas /api/catalog/products, /api/pricing-rules, /api/insumos e /api/insumos/categorias, resultando em chamadas duplicadas aos mesmos endpoints.
+
+Tarefas no Frontend (React/Vite):
+
+Substituir os fetches diretos em useEffect pela implementação de React Query (TanStack Query) para essas listagens.
+
+Criar hooks customizados (ex: useProducts, useCategories) configurando um staleTime adequado (ex: 5 a 10 minutos para categorias) para garantir o cache em memória no client.
+
+Identificar se os dados de insumos e categorias estão sendo carregados desnecessariamente na montagem da tela. Se pertencerem a modais ou selects, aplicar lazy fetching (ex: usando enabled: false no useQuery até a interação do usuário).
+
+Tarefas no Backend (Fastify/Node.js):
+
+Configurar o plugin @fastify/cors para incluir maxAge: 86400, reduzindo as requisições de OPTIONS (Preflight).
+
+Para as rotas de leitura estática (Categorias e Regras de Preço), propor a implementação de uma camada de cache simples em memória (ou Redis, se disponível na arquitetura) para evitar queries redundantes no banco (Prisma).
+
+Regras: Nunca remova funcionalidades ou campos existentes. Retorne o código completo otimizado dos arquivos afetados.

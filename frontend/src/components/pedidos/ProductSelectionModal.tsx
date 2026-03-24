@@ -197,27 +197,10 @@ const ProductSelectionModal: React.FC<ProductSelectionModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div
-            className="fixed"
-            style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                margin: 0,
-                padding: 0,
-                width: '100vw',
-                height: '100vh',
-                backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                zIndex: 99999,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-            }}
-        >
+        <div className="modal-overlay">
             <div className="p-4 w-full h-full flex items-center justify-center">
-                <Card className="w-full max-w-2xl max-h-[85vh] flex flex-col">
+                <Card className="modal-content-card max-w-2xl">
+
                     <CardHeader className="pb-4 flex-shrink-0">
                         <div className="flex justify-between items-start">
                             <div>

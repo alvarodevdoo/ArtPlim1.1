@@ -40,6 +40,7 @@ const PricingRuleSettings: React.FC = () => {
                     costFormulaString: formulaData?.costFormulaString || '',
                     referenceValues: formulaData?.referenceValues || {},
                     hideReferencePrice: !!formulaData?.hideReferencePrice,
+                    pricingMode: formulaData?.pricingMode,
                     variables: (formulaData?.variables || r.variables || []).map((v: any) => ({
                         ...v,
                         defaultUnit: v.defaultUnit || v.baseUnit || '',
@@ -61,7 +62,15 @@ const PricingRuleSettings: React.FC = () => {
 
     // --- AÇÕES DO CRUD ---
     const handleCreateNew = () => {
-        setEditingRule(null);
+        setEditingRule({
+            internalName: '',
+            formulaString: '',
+            costFormulaString: '',
+            variables: [],
+            active: true,
+            referenceValues: {},
+            pricingMode: 'SIMPLE_AREA' // default pre-selected
+        });
         setIsEditorOpen(true);
     };
 
@@ -96,7 +105,8 @@ const PricingRuleSettings: React.FC = () => {
                     costFormulaString: ruleData.costFormulaString,
                     variables: ruleData.variables,
                     referenceValues: ruleData.referenceValues,
-                    hideReferencePrice: ruleData.hideReferencePrice
+                    hideReferencePrice: ruleData.hideReferencePrice,
+                    pricingMode: ruleData.pricingMode
                 },
                 active: ruleData.active
             };

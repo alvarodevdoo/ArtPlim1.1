@@ -60,8 +60,9 @@ const CancelOrderModal: React.FC<CancelOrderModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
-      <Card className="w-full max-w-md">
+    <div className="modal-overlay">
+      <Card className="modal-content-card max-w-md">
+
         <CardHeader>
           <CardTitle className="text-red-600 flex items-center">
             <XCircle className="w-5 h-5 mr-2" /> 
