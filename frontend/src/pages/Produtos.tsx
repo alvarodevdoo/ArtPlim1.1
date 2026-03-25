@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ProductConfigurationManager } from '@/components/catalog/ProductConfigurationManager';
 import { ProductFichaTecnicaManager } from '@/components/catalog/ProductFichaTecnicaManager';
-import { calculatePricingResult, applyNormalization } from '@/lib/pricing/formulaUtils';
+import { calculatePricingResult } from '@/lib/pricing/formulaUtils';
 import { getProductDisplayInfo } from '@/lib/pricing/displayUtils';
 import { InsumoMaterialSelecionado } from '@/features/insumos/types';
 import { useInsumos } from '@/features/insumos/useInsumos';
@@ -62,6 +62,7 @@ type FormData = {
   stockMinQuantity: number;
   stockUnit: string;
   sellWithoutStock: boolean;
+  categoryId?: string;
 };
 
 const defaultForm: FormData = {
@@ -78,6 +79,7 @@ const defaultForm: FormData = {
   stockMinQuantity: 0,
   stockUnit: 'un',
   sellWithoutStock: true,
+  categoryId: '',
 };
 
 const Produtos: React.FC = () => {
@@ -85,6 +87,7 @@ const Produtos: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [globalRules, setGlobalRules] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   useInsumos();
   
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -96,6 +99,7 @@ const Produtos: React.FC = () => {
   useEffect(() => {
     loadProdutos();
     loadGlobalRules();
+    loadCategories();
   }, []);
 
   const refreshFichaTecnica = async (id: string) => {
@@ -245,6 +249,15 @@ const Produtos: React.FC = () => {
     }
   };
 
+  const loadCategories = async () => {
+    try {
+      const response = await api.get('/api/finance/categories');
+      setCategories(response.data.data);
+    } catch (error) {
+      console.error('Erro ao carregar categorias:', error);
+    }
+  };
+
   const resetForm = () => {
     setFormData(defaultForm);
     setFichaBase([]);
@@ -285,6 +298,7 @@ const Produtos: React.FC = () => {
       stockMinQuantity: produto.stockMinQuantity || 0,
       stockUnit: produto.stockUnit || 'un',
       sellWithoutStock: produto.sellWithoutStock ?? true,
+      categoryId: (produto as any).categoryId || '',
     });
   };
 
@@ -315,6 +329,7 @@ const Produtos: React.FC = () => {
       formulaData: formData.formulaVarValues,
       salePrice: calculatedPrices.sale,
       costPrice: calculatedPrices.cost,
+      categoryId: formData.categoryId || null,
       active: true
     };
 
@@ -563,7 +578,25 @@ const Produtos: React.FC = () => {
                               placeholder="Opcional: Detalhes extras para o catálogo"
                               className="w-full min-h-[100px] p-3 rounded-md border text-sm focus:ring-2 focus:ring-primary focus:outline-none transition-all"
                             />
+                            <div className="space-y-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Categoria Financeira</label>
+                            <select
+                              value={formData.categoryId}
+                              onChange={(e) => setFormData(prev => ({ ...prev, categoryId: e.target.value }))}
+                              className="w-full h-11 px-3 border rounded-md text-sm font-medium bg-white"
+                            >
+                              <option value="">Nenhuma categoria</option>
+                              {categories
+                                .filter(cat => cat.type === 'INCOME')
+                                .map(cat => (
+                                <option key={cat.id} value={cat.id}>
+                                  {cat.name}
+                                </option>
+                              ))}
+                            </select>
+                            <p className="text-[10px] text-muted-foreground">Classifica vendas deste item automaticamente no DRE/Fluxo.</p>
                           </div>
+                        </div>
                         </div>
                         <div className="space-y-6">
                           {formData.productType === 'PRODUCT' ? (

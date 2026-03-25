@@ -4,26 +4,10 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import {
-  Plus,
-  DollarSign,
-  TrendingUp,
-  TrendingDown,
-  CreditCard,
-  Wallet,
-  Calendar,
-  CheckCircle,
-  Clock,
-  AlertCircle,
-  BarChart3,
-  PieChart,
-  ArrowUpRight,
-  ArrowDownRight,
-  Target,
-  Activity,
-  RefreshCw,
-  Trash,
-  UserCheck,
-  Users
+  CreditCard, Wallet, Clock, CheckCircle, AlertCircle, Plus, DollarSign,
+  TrendingUp, TrendingDown, Calendar, Target, RefreshCw, Pencil, Trash, 
+  ArrowUpRight, ArrowDownRight, Activity, BarChart3, PieChart, UserCheck, Users,
+  Info
 } from 'lucide-react';
 import {
   AreaChart,
@@ -165,7 +149,13 @@ const Financeiro: React.FC = () => {
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [showAddTransaction, setShowAddTransaction] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
+  const [showAddChartAccount, setShowAddChartAccount] = useState(false);
+  const [showChartInfo, setShowChartInfo] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editingChartAccountId, setEditingChartAccountId] = useState<string | null>(null);
+  const [chartOfAccounts, setChartOfAccounts] = useState<any[]>([]);
+  const [chartAccountTab, setChartAccountTab] = useState<'categories' | 'chart'>('categories');
   const [dateRange, setDateRange] = useState('30'); // dias
 
   const [accountForm, setAccountForm] = useState({
@@ -193,6 +183,12 @@ const Financeiro: React.FC = () => {
     color: '#EF4444'
   });
 
+  const [chartAccountForm, setChartAccountForm] = useState({
+    code: '',
+    name: '',
+    type: 'EXPENSE' as any
+  });
+
   // Sincronizar tab com URL
   useEffect(() => {
     const tab = searchParams.get('tab');
@@ -218,11 +214,12 @@ const Financeiro: React.FC = () => {
 
   const loadData = async () => {
     try {
-      const [accountsResponse, transactionsResponse, dashboardResponse, categoriesResponse, profilesResponse] = await Promise.all([
+      const [accountsResponse, transactionsResponse, dashboardResponse, categoriesResponse, chartOfAccountsResponse, profilesResponse] = await Promise.all([
         api.get('/api/finance/accounts'),
         api.get(`/api/finance/transactions?limit=50`),
         api.get(`/api/finance/dashboard?days=${dateRange}`),
         api.get('/api/finance/categories'),
+        api.get('/api/finance/chart-of-accounts'),
         api.get('/api/profiles')
       ]);
 
@@ -230,6 +227,7 @@ const Financeiro: React.FC = () => {
       setTransactions(transactionsResponse.data.data);
       setDashboard(dashboardResponse.data.data);
       setCategories(categoriesResponse.data.data);
+      setChartOfAccounts(chartOfAccountsResponse.data.data);
       setProfiles(profilesResponse.data.data);
     } catch (error) {
       toast.error('Erro ao carregar dados financeiros');
@@ -316,14 +314,30 @@ const Financeiro: React.FC = () => {
   const handleCreateCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.post('/api/finance/categories', categoryForm);
-      toast.success('Categoria criada!');
+      if (editingCategoryId) {
+        await api.put(`/api/finance/categories/${editingCategoryId}`, categoryForm);
+        toast.success('Categoria atualizada!');
+      } else {
+        await api.post('/api/finance/categories', categoryForm);
+        toast.success('Categoria criada!');
+      }
       setShowAddCategory(false);
+      setEditingCategoryId(null);
       setCategoryForm({ name: '', type: 'EXPENSE', color: '#EF4444' });
       loadData();
     } catch (error: any) {
-      toast.error(error.response?.data?.error?.message || 'Erro ao criar categoria');
+      toast.error(error.response?.data?.error?.message || 'Erro ao processar categoria');
     }
+  };
+
+  const handleEditCategory = (category: any) => {
+    setEditingCategoryId(category.id);
+    setCategoryForm({
+      name: category.name,
+      type: category.type,
+      color: category.color || (category.type === 'INCOME' ? '#10B981' : '#EF4444')
+    });
+    setShowAddCategory(true);
   };
 
   const handleDeleteCategory = async (id: string) => {
@@ -345,6 +359,57 @@ const Financeiro: React.FC = () => {
     } catch (error: any) {
       toast.error(error.response?.data?.error?.message || 'Erro ao criar categorias padrão');
     }
+  };
+
+  const handleCreateChartAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      let finalCode = chartAccountForm.code.trim();
+      
+      // Auto-generate code if empty (creating new account without manual code)
+      if (!finalCode) {
+        const typePrefixMap: Record<string, string> = {
+          ASSET: '1', LIABILITY: '2', EQUITY: '3', REVENUE: '4', EXPENSE: '5'
+        };
+        const prefix = typePrefixMap[chartAccountForm.type] || '9';
+        // Prefix 99 is used to safely group all user-custom accounts without colliding with defaults
+        const groupPrefix = `${prefix}.99.`; 
+        
+        const existing = chartOfAccounts
+          .filter((a: any) => a.code && a.code.startsWith(groupPrefix))
+          .map((a: any) => parseInt(a.code.split('.')[2] || '0', 10))
+          .filter((n: number) => !isNaN(n));
+          
+        const nextNum = existing.length > 0 ? Math.max(...existing) + 1 : 1;
+        finalCode = `${groupPrefix}${nextNum.toString().padStart(2, '0')}`;
+      }
+
+      const payload = { ...chartAccountForm, code: finalCode };
+
+      if (editingChartAccountId) {
+        await api.put(`/api/finance/chart-of-accounts/${editingChartAccountId}`, payload);
+        toast.success('Conta atualizada!');
+      } else {
+        await api.post('/api/finance/chart-of-accounts', payload);
+        toast.success('Conta criada!');
+      }
+      setShowAddChartAccount(false);
+      setEditingChartAccountId(null);
+      setChartAccountForm({ code: '', name: '', type: 'EXPENSE' });
+      loadData();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Erro ao processar conta do plano');
+    }
+  };
+
+  const handleEditChartAccount = (account: any) => {
+    setEditingChartAccountId(account.id);
+    setChartAccountForm({
+      code: account.code || '',
+      name: account.name,
+      type: account.type
+    });
+    setShowAddChartAccount(true);
   };
 
   const resetAccountForm = () => {
@@ -582,6 +647,7 @@ const Financeiro: React.FC = () => {
             { id: 'transactions', label: 'Transações' },
             { id: 'receivables', label: 'A Receber' },
             { id: 'payables', label: 'A Pagar' },
+            { id: 'chart-of-accounts', label: 'Plano de Contas' },
             { id: 'dre', label: 'DRE' },
             { id: 'cash-flow', label: 'Fluxo de Caixa' },
           ].map((tab) => (
@@ -908,52 +974,226 @@ const Financeiro: React.FC = () => {
         <div className="space-y-4">
           <div className="flex justify-between items-center mb-6">
             <div>
-              <h2 className="text-xl font-semibold">Gerenciar Categorias</h2>
-              <p className="text-sm text-muted-foreground">Classifique seus lançamentos</p>
+              <h2 className="text-xl font-semibold">Gestão Estrutural</h2>
+              <p className="text-sm text-muted-foreground">Configure suas categorias e plano de contas</p>
+              <div className="flex gap-2 mt-4 bg-slate-100 p-1 rounded-lg w-fit">
+                 <button 
+                  onClick={() => setChartAccountTab('categories')}
+                  className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${chartAccountTab === 'categories' ? 'bg-white shadow-sm text-primary' : 'text-slate-500 hover:text-slate-700'}`}
+                 >Categorias</button>
+                 <button 
+                  onClick={() => setChartAccountTab('chart')}
+                  className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${chartAccountTab === 'chart' ? 'bg-white shadow-sm text-primary' : 'text-slate-500 hover:text-slate-700'}`}
+                 >Plano de Contas</button>
+              </div>
             </div>
-            <Button onClick={() => setShowAddCategory(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Nova Categoria
-            </Button>
+            {chartAccountTab === 'categories' ? (
+              <Button onClick={() => setShowAddCategory(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Nova Categoria
+              </Button>
+            ) : (
+              <Button onClick={() => setShowAddChartAccount(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Nova Conta Contábil
+              </Button>
+            )}
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader><CardTitle className="text-green-600 flex items-center gap-2"><TrendingUp className="w-5 h-5"/> Receitas</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                 {categories.filter(c => c.type === 'INCOME').length === 0 && <p className="text-sm text-muted-foreground">Nenhuma categoria encontrada.</p>}
-                 {categories.filter(c => c.type === 'INCOME').map(c => (
-                   <div key={c.id} className="flex justify-between items-center p-3 text-sm border rounded hover:bg-slate-50">
-                     <div className="flex items-center gap-3">
-                       <div className="w-4 h-4 rounded-full" style={{ backgroundColor: c.color || '#10B981' }} />
-                       <span className="font-medium">{c.name}</span>
-                     </div>
-                     <Button variant="ghost" size="icon" onClick={() => handleDeleteCategory(c.id)}>
-                        <Trash className="w-4 h-4 text-slate-400 hover:text-red-500" />
-                     </Button>
-                   </div>
-                 ))}
-              </CardContent>
-            </Card>
 
+          {chartAccountTab === 'categories' ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader><CardTitle className="text-green-600 flex items-center gap-2"><TrendingUp className="w-5 h-5" /> Receitas</CardTitle></CardHeader>
+                <CardContent className="space-y-2">
+                  {categories.filter(c => c.type === 'INCOME').length === 0 && <p className="text-sm text-muted-foreground">Nenhuma categoria encontrada.</p>}
+                  {categories.filter(c => c.type === 'INCOME').map(c => (
+                    <div key={c.id} className="flex justify-between items-center p-3 text-sm border rounded hover:bg-slate-50">
+                      <div className="flex items-center gap-3">
+                        <div className="w-4 h-4 rounded-full" style={{ backgroundColor: c.color || '#10B981' }} />
+                        <span className="font-medium">{c.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => handleEditCategory(c)}>
+                          <Pencil className="w-4 h-4 text-slate-400" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDeleteCategory(c.id)}>
+                          <Trash className="w-4 h-4 text-slate-400 hover:text-red-500" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle className="text-red-600 flex items-center gap-2"><TrendingDown className="w-5 h-5" /> Despesas</CardTitle></CardHeader>
+                <CardContent className="space-y-2">
+                  {categories.filter(c => c.type === 'EXPENSE').length === 0 && <p className="text-sm text-muted-foreground">Nenhuma categoria encontrada.</p>}
+                  {categories.filter(c => c.type === 'EXPENSE').map(c => (
+                    <div key={c.id} className="flex justify-between items-center p-3 text-sm border rounded hover:bg-slate-50">
+                      <div className="flex items-center gap-3">
+                        <div className="w-4 h-4 rounded-full" style={{ backgroundColor: c.color || '#EF4444' }} />
+                        <span className="font-medium">{c.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => handleEditCategory(c)}>
+                          <Pencil className="w-4 h-4 text-slate-400" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDeleteCategory(c.id)}>
+                          <Trash className="w-4 h-4 text-slate-400 hover:text-red-500" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
             <Card>
-              <CardHeader><CardTitle className="text-red-600 flex items-center gap-2"><TrendingDown className="w-5 h-5"/> Despesas</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                 {categories.filter(c => c.type === 'EXPENSE').length === 0 && <p className="text-sm text-muted-foreground">Nenhuma categoria encontrada.</p>}
-                 {categories.filter(c => c.type === 'EXPENSE').map(c => (
-                   <div key={c.id} className="flex justify-between items-center p-3 text-sm border rounded hover:bg-slate-50">
-                     <div className="flex items-center gap-3">
-                       <div className="w-4 h-4 rounded-full" style={{ backgroundColor: c.color || '#EF4444' }} />
-                       <span className="font-medium">{c.name}</span>
-                     </div>
-                     <Button variant="ghost" size="icon" onClick={() => handleDeleteCategory(c.id)}>
-                        <Trash className="w-4 h-4 text-slate-400 hover:text-red-500" />
-                     </Button>
-                   </div>
-                 ))}
+              <CardHeader className="bg-white">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Target className="w-5 h-5 text-primary" />
+                      Estrutura do Plano de Contas
+                      <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full text-slate-400 hover:text-primary transition-colors" onClick={() => setShowChartInfo(true)}>
+                        <Info className="w-4 h-4" />
+                      </Button>
+                    </CardTitle>
+                    <CardDescription>Hierarquia de contas para relatórios contábeis e DRE</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 border-b">
+                        <th className="text-left p-3 font-bold text-slate-600">Código</th>
+                        <th className="text-left p-3 font-bold text-slate-600">Nome da Conta</th>
+                        <th className="text-left p-3 font-bold text-slate-600">Tipo</th>
+                        <th className="text-right p-3 font-bold text-slate-600">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {chartOfAccounts.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="p-8 text-center text-muted-foreground italic">Nenhuma conta cadastrada no plano de contas.</td>
+                        </tr>
+                      )}
+                      {chartOfAccounts
+                        .sort((a, b) => {
+                          const codeA = a.code || '';
+                          const codeB = b.code || '';
+                          return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
+                        })
+                        .map(account => (
+                        <tr key={account.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="p-3 font-mono text-xs font-bold text-primary">{account.code || '—'}</td>
+                          <td className="p-3">
+                            <div className="flex items-center gap-2">
+                              {account.code?.split('.').length > 1 && (
+                                <div className="flex gap-1">
+                                  {Array.from({ length: account.code.split('.').length - 1 }).map((_, i) => (
+                                    <div key={i} className="w-4 border-l border-slate-200 h-4" />
+                                  ))}
+                                </div>
+                              )}
+                              <span className={account.code?.split('.').length === 1 ? 'font-bold' : ''}>{account.name}</span>
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${account.type === 'REVENUE' ? 'bg-green-100 text-green-700' :
+                                account.type === 'EXPENSE' ? 'bg-rose-100 text-rose-700' :
+                                  account.type === 'ASSET' ? 'bg-blue-100 text-blue-700' :
+                                    account.type === 'LIABILITY' ? 'bg-orange-100 text-orange-700' :
+                                      'bg-purple-100 text-purple-700'
+                              }`}>
+                              {account.type === 'REVENUE' ? 'Receita' :
+                                account.type === 'EXPENSE' ? 'Despesa' :
+                                  account.type === 'ASSET' ? 'Ativo' :
+                                    account.type === 'LIABILITY' ? 'Passivo' : 'Patrimônio'}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button variant="ghost" size="icon" onClick={() => handleEditChartAccount(account)}>
+                                <Pencil className="w-4 h-4 text-slate-400" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="group">
+                                <Trash className="w-4 h-4 text-slate-400 group-hover:text-red-500" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </CardContent>
             </Card>
-          </div>
+          )}
+        </div>
+      )}
+
+      {/* Chart of Accounts Tab (Direct Access) */}
+      {activeTab === 'chart-of-accounts' && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Plano de Contas</CardTitle>
+                <CardDescription>Estrutura contábil da organização</CardDescription>
+              </div>
+              <Button onClick={() => setShowAddChartAccount(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Nova Conta
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 border-b">
+                      <th className="text-left p-3 font-bold text-slate-600">Código</th>
+                      <th className="text-left p-3 font-bold text-slate-600">Nome da Conta</th>
+                      <th className="text-left p-3 font-bold text-slate-600">Tipo</th>
+                      <th className="text-right p-3 font-bold text-slate-600">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {chartOfAccounts.map(account => (
+                      <tr key={account.id} className="hover:bg-slate-50">
+                        <td className="p-3 font-mono text-xs text-primary">{account.code}</td>
+                        <td className="p-3">
+                          <div className="flex items-center gap-2">
+                             {account.code?.split('.').length > 1 && (
+                                <div className="flex gap-1">
+                                  {Array.from({ length: account.code.split('.').length - 1 }).map((_, i) => (
+                                    <div key={i} className="w-4 border-l border-slate-200 h-4" />
+                                  ))}
+                                </div>
+                              )}
+                             <span>{account.name}</span>
+                          </div>
+                        </td>
+                        <td className="p-3">
+                           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 uppercase">
+                             {account.type}
+                           </span>
+                        </td>
+                        <td className="p-3 text-right">
+                           <Button variant="ghost" size="icon" onClick={() => handleEditChartAccount(account)}>
+                             <Pencil className="w-4 h-4 text-slate-400" />
+                           </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -1246,8 +1486,8 @@ const Financeiro: React.FC = () => {
           <Card className="modal-content-card max-w-md">
 
             <CardHeader>
-              <CardTitle>Nova Categoria</CardTitle>
-              <CardDescription>Crie uma classificação para suas transações</CardDescription>
+              <CardTitle>{editingCategoryId ? 'Editar Categoria' : 'Nova Categoria'}</CardTitle>
+              <CardDescription>{editingCategoryId ? 'Atualize os dados da categoria' : 'Crie uma classificação para suas transações'}</CardDescription>
             </CardHeader>
             <CardContent className="flex-1 overflow-y-auto">
 
@@ -1289,8 +1529,76 @@ const Financeiro: React.FC = () => {
                 </div>
 
                 <div className="flex justify-end gap-2 pt-4">
-                  <Button type="button" variant="ghost" onClick={() => setShowAddCategory(false)}>Cancelar</Button>
-                  <Button type="submit">Salvar</Button>
+                  <Button type="button" variant="ghost" onClick={() => {
+                    setShowAddCategory(false);
+                    setEditingCategoryId(null);
+                    setCategoryForm({ name: '', type: 'EXPENSE', color: '#EF4444' });
+                  }}>Cancelar</Button>
+                  <Button type="submit">{editingCategoryId ? 'Salvar Alterações' : 'Salvar'}</Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {showAddChartAccount && (
+        <div className="modal-overlay">
+          <Card className="modal-content-card max-w-md">
+            <CardHeader>
+              <CardTitle>{editingChartAccountId ? 'Editar Conta' : 'Nova Conta no Plano'}</CardTitle>
+              <CardDescription>Defina a estrutura para classificação contábil</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleCreateChartAccount} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2 col-span-1">
+                    <label className="text-xs font-bold text-slate-500 flex flex-col uppercase">
+                      <span>Código</span>
+                      {!editingChartAccountId && <span className="text-[10px] text-slate-400 font-normal normal-case leading-none mt-0.5">(Opcional)</span>}
+                    </label>
+                    <Input
+                      value={chartAccountForm.code}
+                      onChange={(e) => setChartAccountForm(prev => ({ ...prev, code: e.target.value }))}
+                      placeholder={editingChartAccountId ? "" : "Automático"}
+                      disabled={!!editingChartAccountId}
+                      className={editingChartAccountId ? "bg-slate-50" : ""}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2 col-span-2 flex flex-col justify-end">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Nome da Conta</label>
+                    <Input
+                      value={chartAccountForm.name}
+                      onChange={(e) => setChartAccountForm(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="Ex: Salários, Impostos, Ferramentas..."
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Tipo Contábil base (Comportamento)</label>
+                  <select
+                    value={chartAccountForm.type}
+                    onChange={(e) => setChartAccountForm(prev => ({ ...prev, type: e.target.value }))}
+                    className="w-full h-10 px-3 border rounded-md text-sm bg-white"
+                  >
+                    <option value="ASSET">Ativo</option>
+                    <option value="LIABILITY">Passivo</option>
+                    <option value="EQUITY">Patrimônio Líquido</option>
+                    <option value="REVENUE">Receita</option>
+                    <option value="EXPENSE">Despesa</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button type="button" variant="ghost" onClick={() => {
+                    setShowAddChartAccount(false);
+                    setEditingChartAccountId(null);
+                    setChartAccountForm({ code: '', name: '', type: 'EXPENSE' });
+                  }}>Cancelar</Button>
+                  <Button type="submit">{editingChartAccountId ? 'Salvar Alterações' : 'Criar Conta'}</Button>
                 </div>
               </form>
             </CardContent>
@@ -1335,6 +1643,99 @@ const Financeiro: React.FC = () => {
       {activeTab === 'receivables' && <ContasAReceber />}
       {activeTab === 'dre' && <RelatorioDRE />}
       {activeTab === 'cash-flow' && <RelatorioFluxoCaixa />}
+
+      {/* Modal Informativo do Plano de Contas */}
+      {showChartInfo && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[9999] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col my-8">
+            <div className="p-6 border-b flex justify-between items-center bg-slate-50 rounded-t-xl sticky top-0 z-10">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-primary/10 rounded-lg text-primary">
+                  <Info className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 leading-none mb-1">O que é o Plano de Contas?</h2>
+                  <p className="text-sm text-slate-500">Entenda como organizar sua estrutura financeira</p>
+                </div>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => setShowChartInfo(false)} className="rounded-full">
+                <Plus className="w-5 h-5 rotate-45 text-slate-400" />
+              </Button>
+            </div>
+
+            <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
+              <div className="space-y-6">
+                <section>
+                  <h3 className="text-lg font-semibold text-slate-800 mb-2">Conceito Fundamental</h3>
+                  <p className="text-slate-600 leading-relaxed">
+                    O Plano de Contas é o "mapa" financeiro da sua empresa. Ele define como cada centavo que entra ou sai será classificado. Sem uma boa estrutura, é impossível saber se você está tendo lucro real ou onde estão os maiores gastos.
+                  </p>
+                </section>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-lg">
+                    <h4 className="font-bold text-emerald-800 flex items-center gap-2 mb-2">
+                      <TrendingUp className="w-4 h-4" /> Receitas (Nível 4)
+                    </h4>
+                    <p className="text-sm text-emerald-700 mb-3">Tudo o que gera entrada de dinheiro.</p>
+                    <ul className="text-xs space-y-1 text-emerald-900 font-mono bg-white/50 p-2 rounded">
+                      <li>4.1 Vendas de Produtos</li>
+                      <li>4.2 Prestação de Serviços</li>
+                      <li>4.3 Receitas Financeiras</li>
+                    </ul>
+                  </div>
+
+                  <div className="p-4 bg-rose-50 border border-rose-100 rounded-lg">
+                    <h4 className="font-bold text-rose-800 flex items-center gap-2 mb-2">
+                      <TrendingDown className="w-4 h-4" /> Custos e Despesas
+                    </h4>
+                    <p className="text-sm text-rose-700 mb-3">Saída de recursos para operação.</p>
+                    <ul className="text-xs space-y-1 text-rose-900 font-mono bg-white/50 p-2 rounded">
+                      <li className="font-bold">3 CUSTOS VARIÁVEIS</li>
+                      <li className="ml-3">3.1 Insumos e Materiais</li>
+                      <li className="font-bold mt-1">5 DESPESAS FIXAS</li>
+                      <li className="ml-3">5.1 Aluguel e Energia</li>
+                      <li className="ml-3">5.2 Folha de Pagamento</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <section className="bg-slate-50 p-4 rounded-lg border">
+                  <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                    <Activity className="w-4 h-4" /> Como a Hierarquia Funciona (Níveis)
+                  </h3>
+                  <div className="space-y-2 font-mono text-sm border-l-2 border-primary/20 ml-2 pl-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-primary font-bold">1</span>
+                      <span className="text-slate-500">- ATIVO (Seu Patrimônio)</span>
+                    </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      <span className="text-primary font-bold text-xs">1.1</span>
+                      <span className="text-slate-500 text-xs">- ATIVO CIRCULANTE (Dinheiro rápido)</span>
+                    </div>
+                    <div className="flex items-center gap-2 ml-8">
+                      <span className="text-primary font-bold text-[10px]">1.1.01</span>
+                      <span className="text-slate-500 text-[10px]">- CAIXA E BANCOS (Saldo atual)</span>
+                    </div>
+                  </div>
+                </section>
+
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-sm text-amber-800 italic">
+                    <strong>Dica de Ouro:</strong> Vincule seus produtos às categorias corretas no cadastro de produtos. Assim, o sistema alimentará este plano de contas automaticamente a cada pedido!
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t bg-slate-50 rounded-b-xl flex justify-end sticky bottom-0 z-10">
+              <Button onClick={() => setShowChartInfo(false)} className="px-8 bg-primary hover:bg-primary/90 text-white">
+                Entendi!
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

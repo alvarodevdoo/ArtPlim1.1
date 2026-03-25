@@ -12,6 +12,7 @@ interface CreateTransactionInput {
   dueDate?: string;
   userId?: string;
   profileId?: string;
+  competenceDate?: Date;
 }
 
 interface TransactionFilters {
@@ -43,7 +44,8 @@ export class TransactionService {
         dueDate: data.dueDate ? new Date(data.dueDate) : null,
         status: 'PENDING',
         userId: data.userId,
-        profileId: data.profileId
+        profileId: data.profileId,
+        competenceDate: data.competenceDate
       },
       include: {
         account: {

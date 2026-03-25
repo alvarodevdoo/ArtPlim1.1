@@ -18,6 +18,7 @@ interface CreateProductInput {
   stockUnit?: string | null;
   formulaData?: any;
   customFormula?: string | null;
+  categoryId?: string | null;
 }
 
 interface UpdateProductInput extends Partial<CreateProductInput> {
@@ -45,7 +46,8 @@ export class ProductService {
         trackStock: data.trackStock ?? false,
         stockQuantity: data.trackStock ? (data.stockQuantity ?? null) : null,
         stockMinQuantity: data.trackStock ? (data.stockMinQuantity ?? null) : null,
-        stockUnit: data.trackStock ? (data.stockUnit ?? null) : null
+        stockUnit: data.trackStock ? (data.stockUnit ?? null) : null,
+        categoryId: data.categoryId || null
       } as any
     });
 

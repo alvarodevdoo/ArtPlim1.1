@@ -8,7 +8,7 @@ import { AccountPayableService } from './services/AccountPayableService';
 import { PaymentService } from './services/PaymentService';
 import { ReceivableService } from './services/ReceivableService';
 import { FinancialReportService } from './services/FinancialReportService';
-import { AccountType, TransactionType, CategoryType } from '@prisma/client';
+import { AccountType, TransactionType, CategoryType, ChartOfAccountType } from '@prisma/client';
 
 const listQuerySchema = z.object({
   limit: z.string().transform(val => parseInt(val) || 50).optional(),
@@ -48,6 +48,12 @@ const createTransactionSchema = z.object({
   profileId: z.string().optional().nullable()
 });
 
+const createChartAccountSchema = z.object({
+  code: z.string(),
+  name: z.string(),
+  type: z.nativeEnum(ChartOfAccountType)
+});
+
 export async function financeRoutes(fastify: FastifyInstance) {
 
   // ========== CONTAS ==========
@@ -63,9 +69,64 @@ export async function financeRoutes(fastify: FastifyInstance) {
     const prisma = getTenantClient(request.user!.organizationId);
     const chartOfAccounts = await prisma.chartOfAccount.findMany({
       where: { organizationId: request.user!.organizationId, active: true },
-      orderBy: { name: 'asc' }
+      orderBy: { code: 'asc' }
     });
     return reply.send({ success: true, data: chartOfAccounts });
+  });
+
+  fastify.post('/chart-of-accounts', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const data = createChartAccountSchema.parse(request.body);
+    const prisma = getTenantClient(request.user!.organizationId);
+    try {
+      const account = await prisma.chartOfAccount.create({
+        data: {
+          code: data.code,
+          name: data.name,
+          type: data.type,
+          organizationId: request.user!.organizationId
+        }
+      });
+      return reply.code(201).send({ success: true, data: account });
+    } catch (error: any) {
+      if (error.code === 'P2002') {
+        return reply.code(400).send({ success: false, message: 'Já existe uma conta cadastrada com este código.' });
+      }
+      throw error;
+    }
+  });
+
+  fastify.put('/chart-of-accounts/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const data = createChartAccountSchema.partial().parse(request.body);
+    const prisma = getTenantClient(request.user!.organizationId);
+    
+    const updateData: any = {};
+    if (data.code !== undefined) updateData.code = data.code;
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.type !== undefined) updateData.type = data.type;
+
+    try {
+      const account = await prisma.chartOfAccount.update({
+        where: { id, organizationId: request.user!.organizationId },
+        data: updateData
+      });
+      return reply.send({ success: true, data: account });
+    } catch (error: any) {
+      if (error.code === 'P2002') {
+        return reply.code(400).send({ success: false, message: 'Já existe outra conta cadastrada com este código.' });
+      }
+      throw error;
+    }
+  });
+
+  fastify.delete('/chart-of-accounts/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const prisma = getTenantClient(request.user!.organizationId);
+    await prisma.chartOfAccount.update({
+      where: { id, organizationId: request.user!.organizationId },
+      data: { active: false }
+    });
+    return reply.send({ success: true, message: 'Conta removida' });
   });
 
   fastify.post('/accounts', { preHandler: [fastify.authenticate] }, async (request, reply) => {

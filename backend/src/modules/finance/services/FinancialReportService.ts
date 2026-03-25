@@ -73,26 +73,26 @@ export class FinancialReportService {
 
     const grossRevenue = finishedOrders.reduce((acc, order) => acc + Number(order.total), 0);
     
-    // 2. Cálculo do CMV (Custo de Mercadoria Vendida) dos pedidos finalizados
+    // 2. Cálculo do CMV (Custo de Mercadoria Vendida)
     let totalCMV = 0;
     finishedOrders.forEach(order => {
       order.items.forEach(item => {
-        totalCMV += Number(item.costPrice || 0) * (item.quantity || 1);
+        totalCMV += Number(item.costPrice || 0) * (Number(item.quantity) || 1);
       });
     });
 
-    // 3. Despesas Operacionais / Outras Receitas por Competência
-    // Buscamos transações INCOME/EXPENSE que não sejam vinculadas a Order (para não duplicar receita)
-    // ou que sejam categorizadas como despesas administrativas/fixas.
-    const competenceTransactions = await this.prisma.transaction.findMany({
+    // 3. Demais Transações de Resultado (Competência)
+    const competenceTransactions = await (this.prisma.transaction as any).findMany({
       where: {
         organizationId,
         competenceDate: dateWhere,
-        // Se for INCOME e tiver orderId, ignoramos pois a Receita Bruta já vem do finishedOrders.total
-        OR: [
-          { type: TransactionType.EXPENSE },
-          { AND: [{ type: TransactionType.INCOME }, { orderId: null }] }
-        ]
+        // Ignoramos INCOME com orderId para não duplicar a Receita Bruta (que vem dos pedidos finalizados)
+        NOT: {
+          AND: [
+            { type: TransactionType.INCOME },
+            { orderId: { not: null } }
+          ]
+        }
       },
       include: { category: true }
     });
@@ -100,14 +100,14 @@ export class FinancialReportService {
     const incomeByCategoryMap = new Map<string, { categoryId: string | null, categoryName: string, total: number }>();
     const expenseByCategoryMap = new Map<string, { categoryId: string | null, categoryName: string, total: number }>();
 
-    // Adicionar Receita Bruta de Pedidos no agrupamento
+    // Vendas de Pedidos (Receita Bruta Base)
     incomeByCategoryMap.set('vendas_pedidos', { 
       categoryId: null, 
       categoryName: 'Vendas de Produtos/Serviços', 
       total: grossRevenue 
     });
 
-    // Adicionar CMV no agrupamento de despesas
+    // CMV (Custo Base)
     if (totalCMV > 0) {
       expenseByCategoryMap.set('cmv', { 
         categoryId: null, 
@@ -116,7 +116,7 @@ export class FinancialReportService {
       });
     }
 
-    // Processar demais transações de competência
+    // Processar transações manuais (Despesas fixas, outras receitas, etc.)
     (competenceTransactions as any[]).forEach(tx => {
       const catId = tx.categoryId || 'sem_categoria';
       const catName = tx.category?.name || 'Sem Categoria';
@@ -133,10 +133,11 @@ export class FinancialReportService {
       }
     });
 
-    const incomeByCategory = Array.from(incomeByCategoryMap.values());
-    const expenseByCategory = Array.from(expenseByCategoryMap.values());
-    const totalExpenses = expenseByCategory.reduce((acc, curr) => acc + curr.total, 0);
+    const incomeByCategory = Array.from(incomeByCategoryMap.values()).sort((a, b) => b.total - a.total);
+    const expenseByCategory = Array.from(expenseByCategoryMap.values()).sort((a, b) => b.total - a.total);
+    
     const totalIncome = incomeByCategory.reduce((acc, curr) => acc + curr.total, 0);
+    const totalExpenses = expenseByCategory.reduce((acc, curr) => acc + curr.total, 0);
     
     const netResult = totalIncome - totalExpenses;
     const profitMargin = totalIncome > 0 ? (netResult / totalIncome) * 100 : 0;

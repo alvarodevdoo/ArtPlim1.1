@@ -61,6 +61,20 @@ export class UpdateOrderStatusUseCase {
       } else {
         // Se não for UUID e não for cancelado, atualiza status legado normalmente
         order.changeStatus(newStatus);
+        
+        // Se estiver finalizando o pedido, atualizar campos do regime de competência
+        if (newStatus.isFinished()) {
+          // Buscar a transação associada para pegar a competenceDate
+          const transaction = await this.prisma.transaction.findFirst({
+            where: { orderId: order.id, type: 'INCOME' },
+            orderBy: { createdAt: 'desc' }
+          });
+          
+          if (transaction?.competenceDate) {
+            console.log(`[UpdateOrderStatus] Usando competenceDate da transação: ${transaction.competenceDate}`);
+            order.finishedAt = transaction.competenceDate;
+          }
+        }
       }
     }
 

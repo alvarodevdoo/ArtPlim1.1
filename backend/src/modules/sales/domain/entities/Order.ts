@@ -180,6 +180,10 @@ export class Order {
     return this._finishedAt;
   }
 
+  set finishedAt(date: Date | undefined) {
+    this._finishedAt = date;
+  }
+
   get deliveredAt(): Date | undefined {
     return this._deliveredAt;
   }

@@ -48,7 +48,22 @@ export class StatusEngine {
     // 2. Datas de controle
     if (updateData.status === 'APPROVED' && !order.approvedAt) updateData.approvedAt = new Date();
     if (updateData.status === 'IN_PRODUCTION' && !order.inProductionAt) updateData.inProductionAt = new Date();
-    if (updateData.status === 'FINISHED' && !order.finishedAt) updateData.finishedAt = new Date();
+    
+    if (updateData.status === 'FINISHED' && !order.finishedAt) {
+      updateData.finishedAt = new Date();
+      
+      // Buscar a transação associada para sincronizar o Regime de Competência
+      const transaction = await (this.prisma.transaction as any).findFirst({
+        where: { orderId, type: 'INCOME' },
+        orderBy: { createdAt: 'desc' }
+      });
+      
+      if (transaction?.competenceDate) {
+        console.log(`[StatusEngine] Sincronizando finishedAt com competenceDate da transação: ${transaction.competenceDate}`);
+        updateData.finishedAt = transaction.competenceDate;
+      }
+    }
+    
     if (updateData.status === 'DELIVERED' && !order.deliveredAt) updateData.deliveredAt = new Date();
 
     // 3. Executa a atualização do Pedido
@@ -157,6 +172,28 @@ export class StatusEngine {
     }
 
     if (order.status !== targetStatus) {
+      const updateData: any = { 
+        status: targetStatus
+      };
+      
+      // Datas de controle
+      if (targetStatus === 'FINISHED' && !order.finishedAt) {
+        updateData.finishedAt = new Date();
+        
+        // Buscar a transação associada para sincronizar o Regime de Competência
+        const transaction = await (this.prisma.transaction as any).findFirst({
+          where: { orderId, type: 'INCOME' },
+          orderBy: { createdAt: 'desc' }
+        });
+        
+        if (transaction?.competenceDate) {
+          console.log(`[StatusEngine] syncParent - Sincronizando finishedAt com competenceDate da transação: ${transaction.competenceDate}`);
+          updateData.finishedAt = transaction.competenceDate;
+        }
+      }
+      
+      if (targetStatus === 'DELIVERED' && !order.deliveredAt) updateData.deliveredAt = new Date();
+
       // Tentar encontrar um ProcessStatus da organização que mapeie para esse targetStatus
       // com o menor displayOrder primeiro. Se for DRAFT e não achar nada mapeado, pega a PRIMEIRA etapa de todas.
       let matchingProcessStatus = await this.prisma.processStatus.findFirst({
@@ -176,12 +213,11 @@ export class StatusEngine {
         });
       }
 
+      updateData.processStatusId = matchingProcessStatus?.id || null;
+
       await this.prisma.order.update({
         where: { id: orderId },
-        data: { 
-          status: targetStatus,
-          processStatusId: matchingProcessStatus?.id || null 
-        }
+        data: updateData
       });
 
       // Logar mudança automática com nome oficial do usuário se disponível

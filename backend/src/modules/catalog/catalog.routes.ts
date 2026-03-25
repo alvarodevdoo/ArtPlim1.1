@@ -33,6 +33,7 @@ const createProductSchema = z.object({
   stockMinQuantity: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional().nullable()),
   stockUnit: z.string().optional().nullable(),
   formulaData: z.any().optional(),
+  categoryId: z.preprocess((val) => val === '' ? null : val, z.string().uuid().optional().nullable()),
 });
 
 const updateProductSchema = createProductSchema.partial();

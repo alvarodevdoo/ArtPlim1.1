@@ -18,16 +18,20 @@ model Organization {
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   accounts               Account[]
+  accountsPayable        AccountPayable[]
+  accountsReceivable     AccountReceivable[]
   auditLogs              AuditLog[]
   automationRules        AutomationRule[]
   budgets                Budget[]
   categories             Category[]
+  chartOfAccounts        ChartOfAccount[]
   configurationTemplates ConfigurationTemplate[]
   fichasTecnicas         FichaTecnicaInsumo[]
   finishes               Finish[]
   inventoryAlerts        InventoryAlert[]
   inventoryMovements     InventoryMovement[]
   machines               Machine[]
+  materialReceipts       MaterialReceipt[]
   materials              Material[]
   notifications          Notifications[]
   orders                 Order[]
@@ -43,10 +47,6 @@ model Organization {
   standardSizes          StandardSize[]
   transactions           Transaction[]
   users                  User[]
-  materialReceipts       MaterialReceipt[]
-  accountsPayable        AccountPayable[]
-  accountsReceivable     AccountReceivable[]
-  chartOfAccounts        ChartOfAccount[]
 
   @@map("organizations")
 }
@@ -81,13 +81,13 @@ model User {
   auditLogs          AuditLog[]
   inventoryMovements InventoryMovement[]
   notifications      Notifications[]
+  statusHistory      OrderStatusHistory[]
   cancelledOrders    Order[]              @relation("OrderCancelledBy")
   requestedChanges   PendingChanges[]     @relation("RequestedBy")
   reviewedChanges    PendingChanges[]     @relation("ReviewedBy")
   profile            Profile?
-  organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  statusHistory      OrderStatusHistory[]
   transactions       Transaction[]
+  organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, email])
   @@map("users")
@@ -112,7 +112,7 @@ model AuditLog {
 }
 
 model Profile {
-  id                 String             @id @default(uuid())
+  id                 String              @id @default(uuid())
   organizationId     String
   type               ProfileType
   name               String
@@ -123,27 +123,27 @@ model Profile {
   city               String?
   state              String?
   zipCode            String?
-  isCustomer         Boolean            @default(false)
-  isSupplier         Boolean            @default(false)
-  isEmployee         Boolean            @default(false)
-  creditLimit        Decimal?           @db.Decimal(10, 2)
+  isCustomer         Boolean             @default(false)
+  isSupplier         Boolean             @default(false)
+  isEmployee         Boolean             @default(false)
+  creditLimit        Decimal?            @db.Decimal(10, 2)
   paymentTerms       Int?
-  active             Boolean            @default(true)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  active             Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
   addressNumber      String?
-  balance            Decimal            @default(0) @db.Decimal(15, 2)
-  userId             String?            @unique
-  budgets            Budget[]
-  insumoFornecedores InsumoFornecedor[]
-  orders             Order[]
-  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user               User?              @relation(fields: [userId], references: [id])
-  MaterialReceipt    MaterialReceipt[]
+  balance            Decimal             @default(0) @db.Decimal(15, 2)
+  userId             String?             @unique
   AccountPayable     AccountPayable[]
   AccountReceivable  AccountReceivable[] @relation("CustomerReceivables")
-  transactions       Transaction[]
+  budgets            Budget[]
+  insumoFornecedores InsumoFornecedor[]
+  MaterialReceipt    MaterialReceipt[]
   materialSuppliers  MaterialSupplier[]
+  orders             Order[]
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user               User?               @relation(fields: [userId], references: [id])
+  transactions       Transaction[]
 
   @@unique([organizationId, name], name: "organizationId_name")
   @@unique([organizationId, document], name: "organizationId_document")
@@ -151,43 +151,36 @@ model Profile {
 }
 
 model Material {
-  id               String             @id @default(uuid())
-  organizationId   String
-  name             String
-  category         String             @default("Outros")
-  description      String?
-  format           MaterialFormat
-  costPerUnit      Decimal            @db.Decimal(10, 4)
-  unit             String
-  standardWidth    Float?
-  standardLength   Float?
-  active           Boolean            @default(true)
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  inventoryAlerts  InventoryAlert[]
-  inventoryItems   InventoryItem[]
-  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  components       ProductComponent[]
-  productionWastes ProductionWaste[]
-  fichasTecnicas   FichaTecnicaInsumo[]
-  fornecedores     InsumoFornecedor[]
-  suppliers        MaterialSupplier[]
-  receiptItems     MaterialReceiptItem[]
-
-  // Regras de Consumo Padrão
-  defaultConsumptionRule   ConsumptionRule  @default(FIXED)
-  defaultConsumptionFactor Decimal          @default(1.0) @db.Decimal(10, 4)
-
-  // Vínculos Contábeis (Plano de Contas)
-  inventoryAccountId       String?          // Conta de Ativo (Onde o valor entra na compra)
-  expenseAccountId         String?          // Conta de Despesa/CPV (Para onde o valor vai no consumo)
-  
-  inventoryAccount         ChartOfAccount?  @relation("MaterialInventoryAccount", fields: [inventoryAccountId], references: [id])
-  expenseAccount           ChartOfAccount?  @relation("MaterialExpenseAccount", fields: [expenseAccountId], references: [id])
-
-  // Controle de Estoque
+  id                       String                @id @default(uuid())
+  organizationId           String
+  name                     String
+  description              String?
+  format                   MaterialFormat
+  costPerUnit              Decimal               @db.Decimal(10, 4)
+  unit                     String
+  standardWidth            Float?
+  standardLength           Float?
+  active                   Boolean               @default(true)
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+  category                 String                @default("Outros")
+  defaultConsumptionFactor Decimal               @default(1.0) @db.Decimal(10, 4)
+  defaultConsumptionRule   ConsumptionRule       @default(FIXED)
+  expenseAccountId         String?
+  inventoryAccountId       String?
   minStockQuantity         Float?
-  sellWithoutStock         Boolean          @default(true)
+  sellWithoutStock         Boolean               @default(true)
+  fichasTecnicas           FichaTecnicaInsumo[]
+  fornecedores             InsumoFornecedor[]
+  inventoryAlerts          InventoryAlert[]
+  inventoryItems           InventoryItem[]
+  receiptItems             MaterialReceiptItem[]
+  suppliers                MaterialSupplier[]
+  expenseAccount           ChartOfAccount?       @relation("MaterialExpenseAccount", fields: [expenseAccountId], references: [id])
+  inventoryAccount         ChartOfAccount?       @relation("MaterialInventoryAccount", fields: [inventoryAccountId], references: [id])
+  organization             Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  components               ProductComponent[]
+  productionWastes         ProductionWaste[]
 
   @@unique([organizationId, name], name: "organizationId_name")
   @@index([organizationId])
@@ -233,10 +226,10 @@ model Product {
   stockQuantity    Float?
   stockUnit        String?
   trackStock       Boolean                @default(false)
-  sellWithoutStock Boolean                @default(true)
   formulaData      Json?
   localFormulaId   String?
   customFormula    String?
+  sellWithoutStock Boolean                @default(true)
   budgetItems      BudgetItem[]
   fichasTecnicas   FichaTecnicaInsumo[]
   orderItems       OrderItem[]
@@ -421,8 +414,10 @@ model Order {
   finishedAt                DateTime?
   inProductionAt            DateTime?
   processStatusId           String?
+  accountsReceivable        AccountReceivable[]
   inventoryMovements        InventoryMovement[]
   items                     OrderItem[]
+  statusHistory             OrderStatusHistory[]
   cancelledBy               User?                @relation("OrderCancelledBy", fields: [cancelledById], references: [id])
   customer                  Profile              @relation(fields: [customerId], references: [id])
   organization              Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -431,15 +426,13 @@ model Order {
   productionQueue           ProductionQueue[]
   productionWastes          ProductionWaste[]
   transactions              Transaction[]
-  statusHistory             OrderStatusHistory[]
-  accountsReceivable        AccountReceivable[]
 
   @@unique([organizationId, orderNumber])
   @@map("orders")
 }
 
 model OrderStatusHistory {
-  id                  String       @id @default(uuid())
+  id                  String         @id @default(uuid())
   orderId             String
   fromStatus          OrderStatus?
   toStatus            OrderStatus
@@ -447,12 +440,11 @@ model OrderStatusHistory {
   toProcessStatusId   String?
   notes               String?
   userId              String?
-  createdAt           DateTime     @default(now())
-
-  order             Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  user              User?          @relation(fields: [userId], references: [id])
-  fromProcessStatus ProcessStatus? @relation("FromPS", fields: [fromProcessStatusId], references: [id])
-  toProcessStatus   ProcessStatus? @relation("ToPS", fields: [toProcessStatusId], references: [id])
+  createdAt           DateTime       @default(now())
+  fromProcessStatus   ProcessStatus? @relation("FromPS", fields: [fromProcessStatusId], references: [id])
+  order               Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  toProcessStatus     ProcessStatus? @relation("ToPS", fields: [toProcessStatusId], references: [id])
+  user                User?          @relation(fields: [userId], references: [id])
 
   @@map("order_status_history")
 }
@@ -487,9 +479,9 @@ model OrderItem {
   pricingRuleId   String?
   configurations  OrderItemConfiguration[]
   order           Order                    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  pricingRule     PricingRule?             @relation(fields: [pricingRuleId], references: [id])
   processStatus   ProcessStatus?           @relation(fields: [processStatusId], references: [id])
   product         Product                  @relation(fields: [productId], references: [id])
-  pricingRule     PricingRule?             @relation(fields: [pricingRuleId], references: [id])
 
   @@map("order_items")
 }
@@ -535,8 +527,6 @@ model BudgetItem {
   machineTime     Float?
   setupTime       Float?
   complexity      String?
-  pricingRuleId   String?
-  pricingRule     PricingRule?   @relation(fields: [pricingRuleId], references: [id])
   costPrice       Decimal        @db.Decimal(10, 2)
   calculatedPrice Decimal        @db.Decimal(10, 2)
   unitPrice       Decimal        @db.Decimal(10, 2)
@@ -544,7 +534,9 @@ model BudgetItem {
   notes           String?
   processStatusId String?
   status          BudgetStatus   @default(DRAFT)
+  pricingRuleId   String?
   budget          Budget         @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  pricingRule     PricingRule?   @relation(fields: [pricingRuleId], references: [id])
   processStatus   ProcessStatus? @relation(fields: [processStatusId], references: [id])
   product         Product        @relation(fields: [productId], references: [id])
 
@@ -654,42 +646,42 @@ model Account {
   active         Boolean         @default(true)
   createdAt      DateTime        @default(now())
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  transactions   Transaction[]
   paymentMethods PaymentMethod[]
+  transactions   Transaction[]
 
   @@unique([organizationId, name], name: "organizationId_name")
   @@map("accounts")
 }
 
 model Transaction {
-  id              String            @id @default(uuid())
+  id              String             @id @default(uuid())
   organizationId  String
   accountId       String
   type            TransactionType
-  amount          Decimal           @db.Decimal(15, 2)
+  amount          Decimal            @db.Decimal(15, 2)
   description     String
   categoryId      String?
   orderId         String?
   dueDate         DateTime?
   paidAt          DateTime?
-  status          TransactionStatus @default(PENDING)
-  createdAt       DateTime          @default(now())
-  competenceDate  DateTime?
+  status          TransactionStatus  @default(PENDING)
+  createdAt       DateTime           @default(now())
   auditNotes      String?
   paymentMethodId String?
   payableId       String?
+  profileId       String?
   receivableId    String?
   userId          String?
-  profileId       String?
-  account         Account             @relation(fields: [accountId], references: [id])
-  category        Category?           @relation(fields: [categoryId], references: [id])
-  order           Order?              @relation(fields: [orderId], references: [id])
-  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  paymentMethod   PaymentMethod?      @relation(fields: [paymentMethodId], references: [id])
-  payable         AccountPayable?     @relation(fields: [payableId], references: [id])
-  receivable      AccountReceivable?  @relation(fields: [receivableId], references: [id])
-  performedBy     User?               @relation(fields: [userId], references: [id])
-  profile         Profile?            @relation(fields: [profileId], references: [id])
+  competenceDate  DateTime?
+  account         Account            @relation(fields: [accountId], references: [id])
+  category        Category?          @relation(fields: [categoryId], references: [id])
+  order           Order?             @relation(fields: [orderId], references: [id])
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payable         AccountPayable?    @relation(fields: [payableId], references: [id])
+  paymentMethod   PaymentMethod?     @relation(fields: [paymentMethodId], references: [id])
+  profile         Profile?           @relation(fields: [profileId], references: [id])
+  receivable      AccountReceivable? @relation(fields: [receivableId], references: [id])
+  performedBy     User?              @relation(fields: [userId], references: [id])
 
   @@map("transactions")
 }
@@ -717,12 +709,12 @@ model PaymentMethod {
   type             PaymentMethodType
   feePercentage    Decimal           @default(0) @db.Decimal(5, 2)
   installmentRules Json?
-  accountId        String?
   active           Boolean           @default(true)
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  accountId        String?
   account          Account?          @relation(fields: [accountId], references: [id])
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   transactions     Transaction[]
 
   @@map("payment_methods")
@@ -862,19 +854,19 @@ model ProcessStatus {
   mappedBehavior OrderStatus
   allowEdition   Boolean              @default(true)
   displayOrder   Int                  @default(1)
-  hideFromFlow   Boolean              @default(false)
   active         Boolean              @default(true)
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
   scope          StatusScope          @default(ORDER)
+  hideFromFlow   Boolean              @default(false)
   budgetItems    BudgetItem[]
   orderItems     OrderItem[]
+  fromHistory    OrderStatusHistory[] @relation("FromPS")
+  toHistory      OrderStatusHistory[] @relation("ToPS")
   orders         Order[]
   organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   parent         ProcessStatus?       @relation("StatusHierarchy", fields: [parentId], references: [id])
   children       ProcessStatus[]      @relation("StatusHierarchy")
-  fromHistory    OrderStatusHistory[] @relation("FromPS")
-  toHistory      OrderStatusHistory[] @relation("ToPS")
 
   @@map("process_statuses")
 }
@@ -885,19 +877,19 @@ model PricingRule {
   name           String
   active         Boolean       @default(true)
   type           ItemType
-  parentId       String?
   formula        Json
   config         Json?
-  version        Int           @default(1)
-  isLatest       Boolean       @default(true)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
+  isLatest       Boolean       @default(true)
+  parentId       String?
+  version        Int           @default(1)
+  BudgetItem     BudgetItem[]
+  orderItems     OrderItem[]
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   parent         PricingRule?  @relation("PricingRuleVersions", fields: [parentId], references: [id])
   versions       PricingRule[] @relation("PricingRuleVersions")
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   products       Product[]
-  orderItems     OrderItem[]
-  BudgetItem     BudgetItem[]
 
   @@unique([organizationId, name], name: "organizationId_name")
   @@map("pricing_rules")
@@ -905,21 +897,21 @@ model PricingRule {
 
 /// Relação de quantidade de insumos associados a um Produto Base ou a uma Opção de Variação
 model FichaTecnicaInsumo {
-  id                    String               @id @default(uuid())
-  organizationId        String
-  insumoId              String
-  productId             String?
-  configurationOptionId String?
-  quantidade            Float
-  custoCalculado        Decimal              @db.Decimal(10, 4)
-  linkedVariable        String?
+  id                     String               @id @default(uuid())
+  organizationId         String
+  insumoId               String
+  productId              String?
+  configurationOptionId  String?
+  quantidade             Float
+  custoCalculado         Decimal              @db.Decimal(10, 4)
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
   linkedQuantityVariable String?
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
-  option                ConfigurationOption? @relation(fields: [configurationOptionId], references: [id], onDelete: Cascade)
-  material              Material             @relation(fields: [insumoId], references: [id])
-  organization          Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  product               Product?             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  linkedVariable         String?
+  option                 ConfigurationOption? @relation(fields: [configurationOptionId], references: [id], onDelete: Cascade)
+  material               Material             @relation(fields: [insumoId], references: [id])
+  organization           Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product                Product?             @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([productId, insumoId], name: "productId_insumoId")
   @@index([configurationOptionId])
@@ -940,6 +932,112 @@ model InsumoFornecedor {
 
   @@unique([insumoId, fornecedorId])
   @@map("insumo_fornecedores")
+}
+
+model MaterialReceipt {
+  id             String                @id @default(uuid())
+  organizationId String
+  supplierId     String
+  invoiceNumber  String?
+  totalAmount    Decimal               @db.Decimal(15, 2)
+  issueDate      DateTime              @default(now())
+  status         ReceiptStatus         @default(PENDING)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  payableId      String?
+  items          MaterialReceiptItem[]
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payable        AccountPayable?       @relation(fields: [payableId], references: [id])
+  supplier       Profile               @relation(fields: [supplierId], references: [id])
+
+  @@map("material_receipts")
+}
+
+model MaterialSupplier {
+  id           String   @id @default(uuid())
+  materialId   String
+  supplierId   String
+  supplierCode String?
+  costPrice    Decimal  @db.Decimal(10, 4)
+  notes        String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  material     Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  supplier     Profile  @relation(fields: [supplierId], references: [id])
+
+  @@unique([materialId, supplierId])
+  @@map("material_suppliers")
+}
+
+model MaterialReceiptItem {
+  id         String          @id @default(uuid())
+  receiptId  String
+  materialId String
+  quantity   Decimal         @db.Decimal(10, 4)
+  unitPrice  Decimal         @db.Decimal(10, 4)
+  totalPrice Decimal         @db.Decimal(15, 2)
+  notes      String?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  material   Material        @relation(fields: [materialId], references: [id])
+  receipt    MaterialReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+
+  @@map("material_receipt_items")
+}
+
+model AccountPayable {
+  id             String            @id @default(uuid())
+  organizationId String
+  supplierId     String
+  amount         Decimal           @db.Decimal(15, 2)
+  dueDate        DateTime
+  status         PayableStatus     @default(PENDING)
+  notes          String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier       Profile           @relation(fields: [supplierId], references: [id])
+  receipts       MaterialReceipt[]
+  transactions   Transaction[]
+
+  @@map("accounts_payable")
+}
+
+model AccountReceivable {
+  id             String           @id @default(uuid())
+  organizationId String
+  customerId     String
+  orderId        String?
+  amount         Decimal          @db.Decimal(15, 2)
+  dueDate        DateTime
+  status         ReceivableStatus @default(PENDING)
+  notes          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  customer       Profile          @relation("CustomerReceivables", fields: [customerId], references: [id])
+  order          Order?           @relation(fields: [orderId], references: [id])
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  transactions   Transaction[]
+
+  @@map("accounts_receivable")
+}
+
+model ChartOfAccount {
+  id                 String             @id @default(uuid())
+  organizationId     String
+  name               String
+  code               String?
+  type               ChartOfAccountType
+  active             Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  expenseMaterials   Material[]         @relation("MaterialExpenseAccount")
+  inventoryMaterials Material[]         @relation("MaterialInventoryAccount")
+
+  @@unique([organizationId, code], name: "organizationId_code")
+  @@map("chart_of_accounts")
 }
 
 enum UserRole {
@@ -1058,8 +1156,8 @@ enum TransactionType {
   INCOME
   EXPENSE
   TRANSFER
-  DEBIT  // Partidas Dobradas: Débito contábil (aumenta Ativo / reduz Passivo)
-  CREDIT // Partidas Dobradas: Crédito contábil (aumenta Passivo / reduz Ativo)
+  DEBIT
+  CREDIT
 }
 
 enum TransactionStatus {
@@ -1118,122 +1216,10 @@ enum PayableStatus {
   CANCELLED
 }
 
-model MaterialReceipt {
-  id             String        @id @default(uuid())
-  organizationId String
-  supplierId     String
-  invoiceNumber  String?
-  totalAmount    Decimal       @db.Decimal(15, 2)
-  issueDate      DateTime      @default(now())
-  status         ReceiptStatus @default(PENDING)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  payableId      String?
-
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  supplier     Profile         @relation(fields: [supplierId], references: [id])
-  payable      AccountPayable? @relation(fields: [payableId], references: [id])
-  items        MaterialReceiptItem[]
-
-  @@map("material_receipts")
-}
-
-model MaterialSupplier {
-  id             String    @id @default(uuid())
-  materialId     String
-  supplierId     String
-  supplierCode   String?
-  costPrice      Decimal   @db.Decimal(10, 4)
-  notes          String?
-  active         Boolean   @default(true)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  material       Material  @relation(fields: [materialId], references: [id], onDelete: Cascade)
-  supplier       Profile   @relation(fields: [supplierId], references: [id])
-
-  @@unique([materialId, supplierId])
-  @@map("material_suppliers")
-}
-
-model MaterialReceiptItem {
-  id             String          @id @default(uuid())
-  receiptId      String
-  materialId     String
-  quantity       Decimal         @db.Decimal(10, 4)
-  unitPrice      Decimal         @db.Decimal(10, 4)
-  totalPrice     Decimal         @db.Decimal(15, 2)
-  notes          String?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-
-  receipt        MaterialReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
-  material       Material        @relation(fields: [materialId], references: [id])
-
-  @@map("material_receipt_items")
-}
-
-model AccountPayable {
-  id             String        @id @default(uuid())
-  organizationId String
-  supplierId     String
-  amount         Decimal       @db.Decimal(15, 2)
-  dueDate        DateTime
-  status         PayableStatus @default(PENDING)
-  notes          String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  supplier     Profile           @relation(fields: [supplierId], references: [id])
-  receipts     MaterialReceipt[]
-  transactions Transaction[]
-
-  @@map("accounts_payable")
-}
-
 enum ReceivableStatus {
   PENDING
   PAID
   CANCELLED
-}
-
-model AccountReceivable {
-  id             String            @id @default(uuid())
-  organizationId String
-  customerId     String
-  orderId        String?
-  amount         Decimal           @db.Decimal(15, 2)
-  dueDate        DateTime
-  status         ReceivableStatus  @default(PENDING)
-  notes          String?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  customer     Profile       @relation("CustomerReceivables", fields: [customerId], references: [id])
-  order        Order?        @relation(fields: [orderId], references: [id])
-  transactions Transaction[]
-
-  @@map("accounts_receivable")
-}
-
-model ChartOfAccount {
-  id               String               @id @default(uuid())
-  organizationId   String
-  name             String
-  code             String?
-  type             ChartOfAccountType
-  active           Boolean              @default(true)
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
-
-  organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  inventoryMaterials Material[]         @relation("MaterialInventoryAccount")
-  expenseMaterials   Material[]         @relation("MaterialExpenseAccount")
-  
-  @@unique([organizationId, code], name: "organizationId_code")
-  @@map("chart_of_accounts")
 }
 
 enum ChartOfAccountType {
