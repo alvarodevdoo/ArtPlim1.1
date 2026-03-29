@@ -5,6 +5,8 @@ import { GetOrderUseCase } from '../../application/use-cases/GetOrderUseCase';
 import { ListOrdersUseCase } from '../../application/use-cases/ListOrdersUseCase';
 import { UpdateOrderStatusUseCase } from '../../application/use-cases/UpdateOrderStatusUseCase';
 import { GetOrderStatsUseCase } from '../../application/use-cases/GetOrderStatsUseCase';
+import { CancelOrderItemsUseCase } from '../../application/use-cases/CancelOrderItemsUseCase';
+import { CreateDeliveryUseCase } from '../../application/use-cases/CreateDeliveryUseCase';
 import { CreateOrderDTO } from '../../application/dto/CreateOrderDTO';
 import { getTenantClient } from '../../../../shared/infrastructure/database/tenant';
 import { PrismaClient } from '@prisma/client';
@@ -16,7 +18,9 @@ export class OrderController {
     private getOrderUseCase: GetOrderUseCase,
     private listOrdersUseCase: ListOrdersUseCase,
     private updateOrderStatusUseCase: UpdateOrderStatusUseCase,
-    private getOrderStatsUseCase: GetOrderStatsUseCase
+    private getOrderStatsUseCase: GetOrderStatsUseCase,
+    private cancelOrderItemsUseCase: CancelOrderItemsUseCase,
+    private createDeliveryUseCase: CreateDeliveryUseCase
   ) { }
 
   async create(request: FastifyRequest, reply: FastifyReply) {
@@ -243,6 +247,56 @@ export class OrderController {
         success: true,
         data: order.toJSON()
       });
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
+  async cancelItems(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const { id } = request.params as { id: string };
+      const { itemIds, reason } = request.body as { itemIds: string[]; reason?: string };
+      const userId = (request as any).user?.id || 'system';
+      const organizationId = request.user?.organizationId;
+
+      if (!organizationId) {
+        return reply.status(401).send({ success: false, message: 'Organization required' });
+      }
+
+      const result = await this.cancelOrderItemsUseCase.execute({
+        orderId: id,
+        itemIds,
+        organizationId,
+        userId,
+        reason
+      });
+
+      return reply.send(result);
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
+  async createDelivery(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const { id } = request.params as { id: string };
+      const { items, notes } = request.body as { items: { orderItemId: string, quantity: number }[]; notes?: string };
+      const userId = (request as any).user?.id || 'system';
+      const organizationId = request.user?.organizationId;
+
+      if (!organizationId) {
+        return reply.status(401).send({ success: false, message: 'Organization required' });
+      }
+
+      const result = await this.createDeliveryUseCase.execute({
+        orderId: id,
+        items,
+        organizationId,
+        userId,
+        notes
+      });
+
+      return reply.status(201).send(result);
     } catch (error: any) {
       throw error;
     }

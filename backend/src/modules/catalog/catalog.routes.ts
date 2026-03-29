@@ -34,6 +34,7 @@ const createProductSchema = z.object({
   stockUnit: z.string().optional().nullable(),
   formulaData: z.any().optional(),
   categoryId: z.preprocess((val) => val === '' ? null : val, z.string().uuid().optional().nullable()),
+  revenueAccountId: z.preprocess((val) => val === '' ? null : val, z.string().uuid().optional().nullable()),
 });
 
 const updateProductSchema = createProductSchema.partial();
@@ -49,9 +50,9 @@ const createMaterialSchema = z.object({
   standardLength: z.number().positive().optional(),
   defaultConsumptionRule: z.enum(['AREA', 'PERIMETER', 'SPACING', 'FIXED']).optional(),
   defaultConsumptionFactor: z.number().optional(),
-  inventoryAccountId: z.string().uuid().optional().nullable(),
-  expenseAccountId: z.string().uuid().optional().nullable(),
-  minStockQuantity: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional().nullable()),
+  inventoryAccountId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
+  expenseAccountId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
+  minStockQuantity: z.preprocess((val) => (val === '' || val === null || val === undefined) ? null : isNaN(Number(val)) ? null : Number(val), z.number().min(0).nullable().optional()),
   sellWithoutStock: z.boolean().optional().default(true),
   suppliers: z.array(z.object({
     supplierId: z.string().uuid(),

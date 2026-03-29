@@ -6,14 +6,25 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🗑️ Limpando banco de dados...');
 
-  // Limpar todas as tabelas na ordem correta
+  // Limpar todas as tabelas na ordem correta para evitar erros de FK
+  console.log('  - Limpando transações e financeiro...');
+  await prisma.transaction.deleteMany();
+  await prisma.accountPayable.deleteMany();
+  await prisma.accountReceivable.deleteMany();
+  await prisma.category.deleteMany();
+  await prisma.account.deleteMany();
+  await prisma.chartOfAccount.deleteMany();
+  
+  console.log('  - Limpando pedidos e produtos...');
   await prisma.orderItem.deleteMany();
   await prisma.order.deleteMany();
   await prisma.productComponent.deleteMany();
   await prisma.productConfiguration.deleteMany();
   await prisma.product.deleteMany();
+  
+  console.log('  - Limpando materiais e cadastros...');
   await prisma.material.deleteMany();
-  await prisma.profile.deleteMany(); // Corrigido de customer para profile
+  await prisma.profile.deleteMany(); 
   await prisma.user.deleteMany();
   await prisma.organizationSettings.deleteMany();
   await prisma.organization.deleteMany();

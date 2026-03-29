@@ -2,12 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
-import {
-  CreditCard, Wallet, Clock, CheckCircle, AlertCircle, Plus, DollarSign,
-  TrendingUp, TrendingDown, Calendar, Target, RefreshCw, Pencil, Trash, 
-  ArrowUpRight, ArrowDownRight, Activity, BarChart3, PieChart, UserCheck, Users,
-  Info
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
+import { 
+  Plus, DollarSign, TrendingUp, TrendingDown, Calendar, Target, RefreshCw, Pencil, Trash, 
+  ArrowUpRight, ArrowDownRight, ArrowRight, Activity, BarChart3, PieChart, UserCheck, Users,
+  Info, AlertCircle, AlertTriangle, History, CheckCircle, Clock, Wallet, CreditCard
 } from 'lucide-react';
 import {
   AreaChart,
@@ -17,19 +16,23 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  PieChart as RechartsPieChart,
-  Pie,
-  Cell,
   BarChart,
-  Bar
+  Bar,
+  Cell,
+  PieChart as RechartsPieChart,
+  Pie
 } from 'recharts';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
-import api from '@/lib/api';
+import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { ContasAPagar } from '../features/financeiro/ContasAPagar';
-import { ContasAReceber } from '../features/financeiro/ContasAReceber';
-import { RelatorioDRE } from '../features/financeiro/RelatorioDRE';
-import { RelatorioFluxoCaixa } from '../features/financeiro/RelatorioFluxoCaixa';
+import { AccountEntryForm } from '@/components/chartOfAccounts/AccountEntryForm';
+import { AccountCombobox } from '@/components/chartOfAccounts/AccountCombobox';
+import { DefaultCategoriesModal } from '@/features/financeiro/DefaultCategoriesModal';
+import { DefaultChartOfAccountsModal } from '@/features/financeiro/DefaultChartOfAccountsModal';
+import { ContasAPagar } from '@/features/financeiro/ContasAPagar';
+import { ContasAReceber } from '@/features/financeiro/ContasAReceber';
+import { RelatorioDRE } from '@/features/financeiro/RelatorioDRE';
+import { RelatorioFluxoCaixa } from '@/features/financeiro/RelatorioFluxoCaixa';
 
 interface Account {
   id: string;
@@ -135,6 +138,18 @@ const transactionStatusConfig = {
   CANCELLED: { label: 'Cancelado', color: 'bg-gray-100 text-gray-800', icon: AlertCircle }
 };
 
+const accountNatureConfig = {
+  ASSET: { label: 'Ativo', colors: 'bg-blue-100 text-blue-700' },
+  LIABILITY: { label: 'Passivo', colors: 'bg-orange-100 text-orange-700' },
+  EQUITY: { label: 'Patrimônio', colors: 'bg-purple-100 text-purple-700' },
+  REVENUE: { label: 'Receita', colors: 'bg-green-100 text-green-700' },
+  REVENUE_DEDUCTION: { label: 'Dedução', colors: 'bg-red-100 text-red-700' },
+  COST: { label: 'Custo', colors: 'bg-amber-100 text-amber-700' },
+  EXPENSE: { label: 'Despesa', colors: 'bg-rose-100 text-rose-700' },
+  RESULT_CALCULATION: { label: 'Apuração', colors: 'bg-indigo-100 text-indigo-700' },
+  CONTROL: { label: 'Controle', colors: 'bg-slate-100 text-slate-700' },
+} as Record<string, { label: string; colors: string }>;
+
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
 
 const Financeiro: React.FC = () => {
@@ -149,14 +164,38 @@ const Financeiro: React.FC = () => {
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [showAddTransaction, setShowAddTransaction] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
+  const [showDefaultCategoriesModal, setShowDefaultCategoriesModal] = useState(false);
+  const [showDefaultChartModal, setShowDefaultChartModal] = useState(false);
   const [showAddChartAccount, setShowAddChartAccount] = useState(false);
   const [showChartInfo, setShowChartInfo] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
-  const [editingChartAccountId, setEditingChartAccountId] = useState<string | null>(null);
+  const [accountToEdit, setAccountToEdit] = useState<any>(null);
+  const [parentAccountForNew, setParentAccountForNew] = useState<any>(null);
+  const [accountToDeleteWithDependencies, setAccountToDeleteWithDependencies] = useState<any>(null);
+  const [deletionDependencies, setDeletionDependencies] = useState<any[]>([]);
+  const [replacementAccountId, setReplacementAccountId] = useState<string>('');
+  const [showInactiveChartAccounts, setShowInactiveChartAccounts] = useState(false);
   const [chartOfAccounts, setChartOfAccounts] = useState<any[]>([]);
-  const [chartAccountTab, setChartAccountTab] = useState<'categories' | 'chart'>('categories');
   const [dateRange, setDateRange] = useState('30'); // dias
+  const [filterAccountId, setFilterAccountId] = useState<string | null>(null);
+
+  const handleDeleteAccount = async (id: string, name: string, transactionCount: number) => {
+    const isSoftDelete = transactionCount > 0;
+    const message = isSoftDelete 
+      ? `A conta "${name}" possui ${transactionCount} transação(ões) vinculada(s). Se você confirmar, ela será DESATIVADA (soft delete) para preservar seu histórico financeiro, mas não aparecerá mais nos novos lançamentos. Confirma?`
+      : `Deseja excluir permanentemente a conta "${name}"? Esta ação não pode ser desfeita.`;
+
+    if (!confirm(message)) return;
+
+    try {
+      await api.delete(`/api/finance/accounts/${id}`);
+      toast.success(isSoftDelete ? 'Conta desativada com sucesso!' : 'Conta removida definitivamente!');
+      loadData();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Erro ao remover conta.');
+    }
+  };
 
   const [accountForm, setAccountForm] = useState({
     name: '',
@@ -179,14 +218,9 @@ const Financeiro: React.FC = () => {
 
   const [categoryForm, setCategoryForm] = useState({
     name: '',
-    type: 'EXPENSE',
-    color: '#EF4444'
-  });
-
-  const [chartAccountForm, setChartAccountForm] = useState({
-    code: '',
-    name: '',
-    type: 'EXPENSE' as any
+    type: 'EXPENSE' as 'EXPENSE' | 'INCOME',
+    color: '#EF4444',
+    chartOfAccountId: ''
   });
 
   // Sincronizar tab com URL
@@ -219,7 +253,7 @@ const Financeiro: React.FC = () => {
         api.get(`/api/finance/transactions?limit=50`),
         api.get(`/api/finance/dashboard?days=${dateRange}`),
         api.get('/api/finance/categories'),
-        api.get('/api/finance/chart-of-accounts'),
+        api.get(`/api/finance/chart-of-accounts${showInactiveChartAccounts ? '?includeInactive=true' : ''}`),
         api.get('/api/profiles')
       ]);
 
@@ -235,6 +269,16 @@ const Financeiro: React.FC = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const fetchCharts = async () => {
+      try {
+        const response = await api.get(`/api/finance/chart-of-accounts${showInactiveChartAccounts ? '?includeInactive=true' : ''}`);
+        setChartOfAccounts(response.data.data);
+      } catch (error) {}
+    };
+    fetchCharts();
+  }, [showInactiveChartAccounts]);
 
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -313,6 +357,19 @@ const Financeiro: React.FC = () => {
 
   const handleCreateCategory = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validação Obrigatória: Deve ter conta analítica no sistema e vinculada
+    const hasAnalytics = chartOfAccounts.some(acc => acc.type === 'ANALYTIC');
+    if (!hasAnalytics) {
+      toast.error('Impossível salvar: Você deve configurar o Plano de Contas primeiro.');
+      return;
+    }
+
+    if (!categoryForm.chartOfAccountId) {
+      toast.error('Selecione uma conta analítica para vincular esta categoria.');
+      return;
+    }
+
     try {
       if (editingCategoryId) {
         await api.put(`/api/finance/categories/${editingCategoryId}`, categoryForm);
@@ -323,7 +380,7 @@ const Financeiro: React.FC = () => {
       }
       setShowAddCategory(false);
       setEditingCategoryId(null);
-      setCategoryForm({ name: '', type: 'EXPENSE', color: '#EF4444' });
+      setCategoryForm({ name: '', type: 'EXPENSE', color: '#EF4444', chartOfAccountId: '' });
       loadData();
     } catch (error: any) {
       toast.error(error.response?.data?.error?.message || 'Erro ao processar categoria');
@@ -335,7 +392,8 @@ const Financeiro: React.FC = () => {
     setCategoryForm({
       name: category.name,
       type: category.type,
-      color: category.color || (category.type === 'INCOME' ? '#10B981' : '#EF4444')
+      color: category.color || (category.type === 'INCOME' ? '#10B981' : '#EF4444'),
+      chartOfAccountId: category.chartOfAccountId || ''
     });
     setShowAddCategory(true);
   };
@@ -351,65 +409,52 @@ const Financeiro: React.FC = () => {
     }
   };
 
-  const initializeDefaultCategories = async () => {
-    try {
-      await api.post('/api/finance/categories/default');
-      toast.success('Categorias padrão criadas com sucesso!');
-      loadData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error?.message || 'Erro ao criar categorias padrão');
-    }
-  };
+  // Lógica anterior do handleCreateChartAccount removida
 
-  const handleCreateChartAccount = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleDeleteChartAccount = async (id: string, replaceId?: string) => {
+    if (!replaceId && !confirm('Tem certeza que deseja remover esta conta contábil?')) return;
     try {
-      let finalCode = chartAccountForm.code.trim();
+      const query = replaceId ? `?replacementAccountId=${replaceId}` : '';
+      await api.delete(`/api/finance/v2/chart-of-accounts/${id}${query}`);
+      toast.success(replaceId ? 'Conta remanejada e desativada (soft delete) com sucesso!' : 'Conta contábil removida (soft delete)!');
       
-      // Auto-generate code if empty (creating new account without manual code)
-      if (!finalCode) {
-        const typePrefixMap: Record<string, string> = {
-          ASSET: '1', LIABILITY: '2', EQUITY: '3', REVENUE: '4', EXPENSE: '5'
-        };
-        const prefix = typePrefixMap[chartAccountForm.type] || '9';
-        // Prefix 99 is used to safely group all user-custom accounts without colliding with defaults
-        const groupPrefix = `${prefix}.99.`; 
-        
-        const existing = chartOfAccounts
-          .filter((a: any) => a.code && a.code.startsWith(groupPrefix))
-          .map((a: any) => parseInt(a.code.split('.')[2] || '0', 10))
-          .filter((n: number) => !isNaN(n));
-          
-        const nextNum = existing.length > 0 ? Math.max(...existing) + 1 : 1;
-        finalCode = `${groupPrefix}${nextNum.toString().padStart(2, '0')}`;
+      if (replaceId) {
+        setAccountToDeleteWithDependencies(null);
+        setDeletionDependencies([]);
+        setReplacementAccountId('');
       }
-
-      const payload = { ...chartAccountForm, code: finalCode };
-
-      if (editingChartAccountId) {
-        await api.put(`/api/finance/chart-of-accounts/${editingChartAccountId}`, payload);
-        toast.success('Conta atualizada!');
-      } else {
-        await api.post('/api/finance/chart-of-accounts', payload);
-        toast.success('Conta criada!');
-      }
-      setShowAddChartAccount(false);
-      setEditingChartAccountId(null);
-      setChartAccountForm({ code: '', name: '', type: 'EXPENSE' });
       loadData();
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Erro ao processar conta do plano');
+      if (error.response?.data?.code === 'HAS_DEPENDENCIES') {
+        const accountInfo = chartOfAccounts.find(c => c.id === id);
+        setAccountToDeleteWithDependencies(accountInfo);
+        setDeletionDependencies(error.response.data.dependencies?.materials || []);
+      } else {
+        toast.error(error.response?.data?.message || 'Não é possível remover a conta contábil.');
+      }
     }
   };
 
   const handleEditChartAccount = (account: any) => {
-    setEditingChartAccountId(account.id);
-    setChartAccountForm({
-      code: account.code || '',
-      name: account.name,
-      type: account.type
-    });
+    setAccountToEdit(account);
+    setParentAccountForNew(null);
     setShowAddChartAccount(true);
+  };
+
+  const handleAddChildChartAccount = (parentAccount: any) => {
+    setAccountToEdit(null);
+    setParentAccountForNew(parentAccount);
+    setShowAddChartAccount(true);
+  };
+
+  const handleRestoreChartAccount = async (id: string) => {
+    try {
+      await api.patch(`/api/finance/v2/chart-of-accounts/${id}/restore`);
+      toast.success('Conta contábil recuperada com sucesso!');
+      loadData();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Erro ao recuperar conta.');
+    }
   };
 
   const resetAccountForm = () => {
@@ -471,12 +516,10 @@ const Financeiro: React.FC = () => {
           <Button variant="outline" onClick={loadData} size="icon">
             <RefreshCw className="w-4 h-4" />
           </Button>
-          {categories.length === 0 && (
-            <Button variant="outline" onClick={initializeDefaultCategories}>
-              <Plus className="w-4 h-4 mr-2" />
-              Criar Categorias
-            </Button>
-          )}
+          <Button variant="outline" onClick={() => setShowDefaultCategoriesModal(true)} className="border-primary text-primary hover:bg-primary/5">
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Categorias Padrão
+          </Button>
           <Button variant="outline" onClick={() => setShowAddAccount(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Nova Conta
@@ -643,13 +686,13 @@ const Financeiro: React.FC = () => {
           {[
             { id: 'dashboard', label: 'Dashboard' },
             { id: 'accounts', label: 'Contas' },
-            { id: 'categories', label: 'Categorias' },
             { id: 'transactions', label: 'Transações' },
             { id: 'receivables', label: 'A Receber' },
             { id: 'payables', label: 'A Pagar' },
-            { id: 'chart-of-accounts', label: 'Plano de Contas' },
             { id: 'dre', label: 'DRE' },
             { id: 'cash-flow', label: 'Fluxo de Caixa' },
+            { id: 'categories', label: 'Categorias' },
+            { id: 'chart-of-accounts', label: 'Plano de Contas' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -930,9 +973,20 @@ const Financeiro: React.FC = () => {
                       </CardTitle>
                       <CardDescription>{typeConfig.label}</CardDescription>
                     </div>
-                    <Button size="sm" variant="outline" onClick={() => handleEditAccount(account)}>
-                      Editar
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button size="icon" variant="ghost" title="Ver Histórico" onClick={() => {
+                        setFilterAccountId(account.id);
+                        handleTabChange('transactions');
+                      }} className="h-8 w-8 text-slate-400 hover:text-primary">
+                        <History className="w-4 h-4" />
+                      </Button>
+                      <Button size="icon" variant="ghost" title="Editar Conta" onClick={() => handleEditAccount(account)} className="h-8 w-8 text-slate-400 hover:text-slate-600">
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button size="icon" variant="ghost" title="Excluir Conta" onClick={() => handleDeleteAccount(account.id, account.name, account._count.transactions)} className="h-8 w-8 text-slate-400 hover:text-red-500">
+                        <Trash className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -974,218 +1028,195 @@ const Financeiro: React.FC = () => {
         <div className="space-y-4">
           <div className="flex justify-between items-center mb-6">
             <div>
-              <h2 className="text-xl font-semibold">Gestão Estrutural</h2>
-              <p className="text-sm text-muted-foreground">Configure suas categorias e plano de contas</p>
-              <div className="flex gap-2 mt-4 bg-slate-100 p-1 rounded-lg w-fit">
-                 <button 
-                  onClick={() => setChartAccountTab('categories')}
-                  className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${chartAccountTab === 'categories' ? 'bg-white shadow-sm text-primary' : 'text-slate-500 hover:text-slate-700'}`}
-                 >Categorias</button>
-                 <button 
-                  onClick={() => setChartAccountTab('chart')}
-                  className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${chartAccountTab === 'chart' ? 'bg-white shadow-sm text-primary' : 'text-slate-500 hover:text-slate-700'}`}
-                 >Plano de Contas</button>
-              </div>
+              <h2 className="text-xl font-semibold">Gestão de Categorias</h2>
+              <p className="text-sm text-muted-foreground">Configure suas categorias operacionais de receita e despesa</p>
             </div>
-            {chartAccountTab === 'categories' ? (
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowDefaultCategoriesModal(true)} className="border-primary text-primary hover:bg-primary/5">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Gerar Categorias Padrão
+              </Button>
               <Button onClick={() => setShowAddCategory(true)}>
                 <Plus className="w-4 h-4 mr-2" />
                 Nova Categoria
               </Button>
-            ) : (
-              <Button onClick={() => setShowAddChartAccount(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                Nova Conta Contábil
-              </Button>
-            )}
+            </div>
           </div>
 
-          {chartAccountTab === 'categories' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader><CardTitle className="text-green-600 flex items-center gap-2"><TrendingUp className="w-5 h-5" /> Receitas</CardTitle></CardHeader>
-                <CardContent className="space-y-2">
-                  {categories.filter(c => c.type === 'INCOME').length === 0 && <p className="text-sm text-muted-foreground">Nenhuma categoria encontrada.</p>}
-                  {categories.filter(c => c.type === 'INCOME').map(c => (
-                    <div key={c.id} className="flex justify-between items-center p-3 text-sm border rounded hover:bg-slate-50">
-                      <div className="flex items-center gap-3">
-                        <div className="w-4 h-4 rounded-full" style={{ backgroundColor: c.color || '#10B981' }} />
-                        <span className="font-medium">{c.name}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => handleEditCategory(c)}>
-                          <Pencil className="w-4 h-4 text-slate-400" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDeleteCategory(c.id)}>
-                          <Trash className="w-4 h-4 text-slate-400 hover:text-red-500" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader><CardTitle className="text-red-600 flex items-center gap-2"><TrendingDown className="w-5 h-5" /> Despesas</CardTitle></CardHeader>
-                <CardContent className="space-y-2">
-                  {categories.filter(c => c.type === 'EXPENSE').length === 0 && <p className="text-sm text-muted-foreground">Nenhuma categoria encontrada.</p>}
-                  {categories.filter(c => c.type === 'EXPENSE').map(c => (
-                    <div key={c.id} className="flex justify-between items-center p-3 text-sm border rounded hover:bg-slate-50">
-                      <div className="flex items-center gap-3">
-                        <div className="w-4 h-4 rounded-full" style={{ backgroundColor: c.color || '#EF4444' }} />
-                        <span className="font-medium">{c.name}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => handleEditCategory(c)}>
-                          <Pencil className="w-4 h-4 text-slate-400" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDeleteCategory(c.id)}>
-                          <Trash className="w-4 h-4 text-slate-400 hover:text-red-500" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </div>
-          ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card>
-              <CardHeader className="bg-white">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <Target className="w-5 h-5 text-primary" />
-                      Estrutura do Plano de Contas
-                      <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full text-slate-400 hover:text-primary transition-colors" onClick={() => setShowChartInfo(true)}>
-                        <Info className="w-4 h-4" />
+              <CardHeader><CardTitle className="text-green-600 flex items-center gap-2"><TrendingUp className="w-5 h-5" /> Receitas</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {categories.filter(c => c.type === 'INCOME').length === 0 && <p className="text-sm text-muted-foreground">Nenhuma categoria encontrada.</p>}
+                {categories.filter(c => c.type === 'INCOME').map(c => (
+                  <div key={c.id} className="flex justify-between items-center p-3 text-sm border rounded hover:bg-slate-50">
+                    <div className="flex items-center gap-3">
+                      <div className="w-4 h-4 rounded-full" style={{ backgroundColor: c.color || '#10B981' }} />
+                      <span className="font-medium">{c.name}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => handleEditCategory(c)}>
+                        <Pencil className="w-4 h-4 text-slate-400" />
                       </Button>
-                    </CardTitle>
-                    <CardDescription>Hierarquia de contas para relatórios contábeis e DRE</CardDescription>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteCategory(c.id)}>
+                        <Trash className="w-4 h-4 text-slate-400 hover:text-red-500" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="border rounded-lg overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-slate-50 border-b">
-                        <th className="text-left p-3 font-bold text-slate-600">Código</th>
-                        <th className="text-left p-3 font-bold text-slate-600">Nome da Conta</th>
-                        <th className="text-left p-3 font-bold text-slate-600">Tipo</th>
-                        <th className="text-right p-3 font-bold text-slate-600">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {chartOfAccounts.length === 0 && (
-                        <tr>
-                          <td colSpan={4} className="p-8 text-center text-muted-foreground italic">Nenhuma conta cadastrada no plano de contas.</td>
-                        </tr>
-                      )}
-                      {chartOfAccounts
-                        .sort((a, b) => {
-                          const codeA = a.code || '';
-                          const codeB = b.code || '';
-                          return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
-                        })
-                        .map(account => (
-                        <tr key={account.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="p-3 font-mono text-xs font-bold text-primary">{account.code || '—'}</td>
-                          <td className="p-3">
-                            <div className="flex items-center gap-2">
-                              {account.code?.split('.').length > 1 && (
-                                <div className="flex gap-1">
-                                  {Array.from({ length: account.code.split('.').length - 1 }).map((_, i) => (
-                                    <div key={i} className="w-4 border-l border-slate-200 h-4" />
-                                  ))}
-                                </div>
-                              )}
-                              <span className={account.code?.split('.').length === 1 ? 'font-bold' : ''}>{account.name}</span>
-                            </div>
-                          </td>
-                          <td className="p-3">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${account.type === 'REVENUE' ? 'bg-green-100 text-green-700' :
-                                account.type === 'EXPENSE' ? 'bg-rose-100 text-rose-700' :
-                                  account.type === 'ASSET' ? 'bg-blue-100 text-blue-700' :
-                                    account.type === 'LIABILITY' ? 'bg-orange-100 text-orange-700' :
-                                      'bg-purple-100 text-purple-700'
-                              }`}>
-                              {account.type === 'REVENUE' ? 'Receita' :
-                                account.type === 'EXPENSE' ? 'Despesa' :
-                                  account.type === 'ASSET' ? 'Ativo' :
-                                    account.type === 'LIABILITY' ? 'Passivo' : 'Patrimônio'}
-                            </span>
-                          </td>
-                          <td className="p-3 text-right">
-                            <div className="flex justify-end gap-1">
-                              <Button variant="ghost" size="icon" onClick={() => handleEditChartAccount(account)}>
-                                <Pencil className="w-4 h-4 text-slate-400" />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="group">
-                                <Trash className="w-4 h-4 text-slate-400 group-hover:text-red-500" />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                ))}
               </CardContent>
             </Card>
-          )}
+
+            <Card>
+              <CardHeader><CardTitle className="text-red-600 flex items-center gap-2"><TrendingDown className="w-5 h-5" /> Despesas</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {categories.filter(c => c.type === 'EXPENSE').length === 0 && <p className="text-sm text-muted-foreground">Nenhuma categoria encontrada.</p>}
+                {categories.filter(c => c.type === 'EXPENSE').map(c => (
+                  <div key={c.id} className="flex justify-between items-center p-3 text-sm border rounded hover:bg-slate-50">
+                    <div className="flex items-center gap-3">
+                      <div className="w-4 h-4 rounded-full" style={{ backgroundColor: c.color || '#EF4444' }} />
+                      <span className="font-medium">{c.name}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => handleEditCategory(c)}>
+                        <Pencil className="w-4 h-4 text-slate-400" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteCategory(c.id)}>
+                        <Trash className="w-4 h-4 text-slate-400 hover:text-red-500" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       )}
 
       {/* Chart of Accounts Tab (Direct Access) */}
       {activeTab === 'chart-of-accounts' && (
         <div className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Plano de Contas</CardTitle>
-                <CardDescription>Estrutura contábil da organização</CardDescription>
-              </div>
-              <Button onClick={() => setShowAddChartAccount(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                Nova Conta
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-xl font-semibold flex items-center gap-2">
+                Plano de Contas
+                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full text-slate-400 hover:text-primary transition-colors" onClick={() => setShowChartInfo(true)}>
+                  <Info className="w-4 h-4" />
+                </Button>
+              </h2>
+              <p className="text-sm text-muted-foreground">Hierarquia oficial de contas para relatórios contábeis e DRE</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer hover:text-slate-900 transition-colors bg-slate-100 px-3 py-2 rounded-lg border border-slate-200 mr-2">
+                <input 
+                  type="checkbox" 
+                  checked={showInactiveChartAccounts}
+                  onChange={(e) => setShowInactiveChartAccounts(e.target.checked)}
+                  className="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                />
+                <span className="font-medium">Exibir apagados (Lixeira)</span>
+              </label>
+              
+              <Button variant="outline" onClick={() => setShowDefaultChartModal(true)} className="border-primary text-primary hover:bg-primary/5">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Plano de Contas Padrão
               </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="border rounded-lg overflow-hidden">
+              
+              <Button onClick={() => {
+                setAccountToEdit(null);
+                setParentAccountForNew(null);
+                setShowAddChartAccount(true);
+              }}>
+                <Plus className="w-4 h-4 mr-2" />
+                Nova Conta Contábil
+              </Button>
+            </div>
+          </div>
+
+          <Card>
+            <CardContent className="p-0">
+              <div className="border-x border-b rounded-b-lg overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-slate-50 border-b">
-                      <th className="text-left p-3 font-bold text-slate-600">Código</th>
+                    <tr className="bg-slate-50 border-y border-slate-200">
+                      <th className="text-left p-3 font-bold text-slate-600 w-32">Código</th>
                       <th className="text-left p-3 font-bold text-slate-600">Nome da Conta</th>
-                      <th className="text-left p-3 font-bold text-slate-600">Tipo</th>
-                      <th className="text-right p-3 font-bold text-slate-600">Ações</th>
+                      <th className="text-left p-3 font-bold text-slate-600 w-48">Natureza / Tipo</th>
+                      <th className="text-right p-3 font-bold text-slate-600 w-48">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {chartOfAccounts.map(account => (
-                      <tr key={account.id} className="hover:bg-slate-50">
-                        <td className="p-3 font-mono text-xs text-primary">{account.code}</td>
+                    {chartOfAccounts.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="p-12 text-center text-muted-foreground italic">
+                          <Target className="w-12 h-12 text-slate-200 mx-auto mb-3" />
+                          Nenhuma conta cadastrada no plano de contas.
+                        </td>
+                      </tr>
+                    )}
+                    {chartOfAccounts
+                      .sort((a, b) => {
+                        const codeA = a.code || '';
+                        const codeB = b.code || '';
+                        return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
+                      })
+                      .map(account => (
+                      <tr key={account.id} className={`hover:bg-slate-50 transition-colors ${account.active === false ? 'bg-slate-50/50' : ''}`}>
+                        <td className={`p-3 font-mono text-xs font-bold ${account.active === false ? 'text-slate-400' : 'text-primary'}`}>
+                          {account.code || '—'}
+                        </td>
                         <td className="p-3">
                           <div className="flex items-center gap-2">
-                             {account.code?.split('.').length > 1 && (
-                                <div className="flex gap-1">
-                                  {Array.from({ length: account.code.split('.').length - 1 }).map((_, i) => (
-                                    <div key={i} className="w-4 border-l border-slate-200 h-4" />
-                                  ))}
-                                </div>
-                              )}
-                             <span>{account.name}</span>
+                            {account.code?.split('.').length > 1 && (
+                              <div className="flex gap-1 opacity-50">
+                                {Array.from({ length: account.code.split('.').length - 1 }).map((_, i) => (
+                                  <div key={i} className="w-4 border-l border-slate-200 h-4" />
+                                ))}
+                              </div>
+                            )}
+                            <span className={`${account.type === 'SYNTHETIC' ? 'font-bold text-slate-900' : 'text-slate-700'} ${account.active === false ? 'line-through text-slate-400' : ''}`}>
+                              {account.name}
+                            </span>
+                            {account.active === false && (
+                              <span className="text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded uppercase font-bold ml-1">
+                                Excluída
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="p-3">
-                           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 uppercase">
-                             {account.type}
-                           </span>
+                          <div className="flex items-center gap-2">
+                            {(() => {
+                              const conf = accountNatureConfig[account.nature] || { label: account.nature, colors: 'bg-gray-100 text-gray-700' };
+                              return (
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase whitespace-nowrap ${account.active === false ? 'bg-slate-100 text-slate-400 grayscale' : conf.colors}`}>
+                                  {conf.label}
+                                </span>
+                              );
+                            })()}
+                            <span title={account.type === 'SYNTHETIC' ? 'Sintética' : 'Analítica'} className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase whitespace-nowrap ${account.active === false ? 'bg-slate-100 text-slate-400' : 'bg-slate-100 text-slate-600'}`}>
+                              {account.type === 'SYNTHETIC' ? '[S]' : '[A]'}
+                            </span>
+                          </div>
                         </td>
                         <td className="p-3 text-right">
-                           <Button variant="ghost" size="icon" onClick={() => handleEditChartAccount(account)}>
-                             <Pencil className="w-4 h-4 text-slate-400" />
-                           </Button>
+                          {account.active === false ? (
+                            <Button variant="ghost" size="sm" className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 h-8" onClick={() => handleRestoreChartAccount(account.id)}>
+                              <RefreshCw className="w-3.5 h-3.5 mr-1" /> Restaurar
+                            </Button>
+                          ) : (
+                            <div className="flex justify-end gap-1">
+                              <Button variant="ghost" size="icon" title="Adicionar Subconta" onClick={() => handleAddChildChartAccount(account)} className="h-8 w-8">
+                                <Plus className="w-4 h-4 text-slate-400 hover:text-primary" />
+                              </Button>
+                              <Button variant="ghost" size="icon" title="Editar Conta" onClick={() => handleEditChartAccount(account)} className="h-8 w-8">
+                                <Pencil className="w-4 h-4 text-slate-400 hover:text-slate-600" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="group h-8 w-8" onClick={() => handleDeleteChartAccount(account.id)} title="Excluir">
+                                <Trash className="w-4 h-4 text-slate-400 group-hover:text-red-500" />
+                              </Button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -1200,85 +1231,104 @@ const Financeiro: React.FC = () => {
       {/* Transactions Tab */}
       {activeTab === 'transactions' && (
         <div className="space-y-4">
-          {transactions.map((transaction) => {
-            const statusInfo = transactionStatusConfig[transaction.status];
-            const StatusIcon = statusInfo.icon;
+          {filterAccountId && (
+            <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-lg">
+              <div className="flex items-center text-blue-700 text-sm">
+                <Info className="w-4 h-4 mr-2" />
+                Exibindo apenas transações da conta: <strong>{accounts.find(a => a.id === filterAccountId)?.name}</strong>
+              </div>
+              <Button size="sm" variant="link" onClick={() => setFilterAccountId(null)} className="text-blue-700 hover:text-blue-900 h-auto p-0">
+                Limpar filtro
+              </Button>
+            </div>
+          )}
+          {transactions.filter(t => !filterAccountId || t.account.id === filterAccountId).length === 0 ? (
+            <div className="text-center py-16 text-muted-foreground bg-slate-50 border border-dashed rounded-lg">
+              <Activity className="w-12 h-12 mx-auto mb-4 opacity-20" />
+              <p>Nenhuma transação encontrada</p>
+              <p className="text-sm">Registre suas receitas e despesas para visualizar o extrato.</p>
+            </div>
+          ) : (
+            transactions
+              .filter(t => !filterAccountId || t.account.id === filterAccountId)
+              .map((transaction) => {
+                const statusInfo = transactionStatusConfig[transaction.status];
+                const StatusIcon = statusInfo.icon;
 
-            return (
-              <Card key={transaction.id}>
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className={`p-2 rounded-full ${transaction.type === 'INCOME' ? 'bg-green-100' : 'bg-red-100'
-                        }`}>
-                        {transaction.type === 'INCOME' ? (
-                          <TrendingUp className="w-5 h-5 text-green-600" />
-                        ) : (
-                          <TrendingDown className="w-5 h-5 text-red-600" />
-                        )}
-                      </div>
-
-                      <div>
-                        <h4 className="font-medium">{transaction.description}</h4>
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-muted-foreground">
-                          <div className="flex items-center">
-                            <span>{transaction.account.name}</span>
-                            {transaction.category && (
-                              <>
-                                <span className="mx-1.5 opacity-50">•</span>
-                                <span>{transaction.category.name}</span>
-                              </>
+                return (
+                  <Card key={transaction.id}>
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                          <div className={`p-2 rounded-full ${transaction.type === 'INCOME' ? 'bg-green-100' : 'bg-red-100'}`}>
+                            {transaction.type === 'INCOME' ? (
+                              <TrendingUp className="w-5 h-5 text-green-600" />
+                            ) : (
+                              <TrendingDown className="w-5 h-5 text-red-600" />
                             )}
                           </div>
-                          <div className="flex items-center">
-                            <Calendar className="w-3 h-3 mr-1 opacity-70" />
-                            <span>{formatDateTime(transaction.createdAt)}</span>
+
+                          <div>
+                            <h4 className="font-medium">{transaction.description}</h4>
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-muted-foreground">
+                              <div className="flex items-center">
+                                <span>{transaction.account.name}</span>
+                                {transaction.category && (
+                                  <>
+                                    <span className="mx-1.5 opacity-50">•</span>
+                                    <span>{transaction.category.name}</span>
+                                  </>
+                                )}
+                              </div>
+                              <div className="flex items-center">
+                                <Calendar className="w-3 h-3 mr-1 opacity-70" />
+                                <span>{formatDateTime(transaction.createdAt)}</span>
+                              </div>
+                              {transaction.performedBy && (
+                                <div className="flex items-center bg-secondary/50 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider">
+                                  <UserCheck className="w-3 h-3 mr-1" />
+                                  <span>Op: {transaction.performedBy.name.split(' ')[0]}</span>
+                                </div>
+                              )}
+                              {transaction.profile && (
+                                <div className="flex items-center text-primary font-medium">
+                                  <Users className="w-3 h-3 mr-1" />
+                                  <span>{transaction.profile.name}</span>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          {transaction.performedBy && (
-                            <div className="flex items-center bg-secondary/50 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider">
-                              <UserCheck className="w-3 h-3 mr-1" />
-                              <span>Op: {transaction.performedBy.name.split(' ')[0]}</span>
+                        </div>
+
+                        <div className="flex items-center space-x-4">
+                          <div className="text-right">
+                            <p className={`font-semibold ${transaction.type === 'INCOME' ? 'text-green-600' : 'text-red-600'}`}>
+                              {transaction.type === 'INCOME' ? '+' : '-'}{formatCurrency(transaction.amount)}
+                            </p>
+                            <div className="flex items-center space-x-2">
+                              <StatusIcon className="w-4 h-4" />
+                              <span className={`px-2 py-1 rounded text-xs ${statusInfo.color}`}>
+                                {statusInfo.label}
+                              </span>
                             </div>
-                          )}
-                          {transaction.profile && (
-                            <div className="flex items-center text-primary font-medium">
-                              <Users className="w-3 h-3 mr-1" />
-                              <span>{transaction.profile.name}</span>
-                            </div>
+                          </div>
+
+                          {transaction.status === 'PENDING' && (
+                            <Button
+                              size="sm"
+                              onClick={() => handlePayTransaction(transaction.id)}
+                            >
+                              <CheckCircle className="w-4 h-4 mr-1" />
+                              Marcar como Pago
+                            </Button>
                           )}
                         </div>
                       </div>
-                    </div>
-
-                    <div className="flex items-center space-x-4">
-                      <div className="text-right">
-                        <p className={`font-semibold ${transaction.type === 'INCOME' ? 'text-green-600' : 'text-red-600'
-                          }`}>
-                          {transaction.type === 'INCOME' ? '+' : '-'}{formatCurrency(transaction.amount)}
-                        </p>
-                        <div className="flex items-center space-x-2">
-                          <StatusIcon className="w-4 h-4" />
-                          <span className={`px-2 py-1 rounded text-xs ${statusInfo.color}`}>
-                            {statusInfo.label}
-                          </span>
-                        </div>
-                      </div>
-
-                      {transaction.status === 'PENDING' && (
-                        <Button
-                          size="sm"
-                          onClick={() => handlePayTransaction(transaction.id)}
-                        >
-                          <CheckCircle className="w-4 h-4 mr-1" />
-                          Marcar como Pago
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+                    </CardContent>
+                  </Card>
+                );
+              })
+          )}
         </div>
       )}
 
@@ -1528,13 +1578,53 @@ const Financeiro: React.FC = () => {
                   </div>
                 </div>
 
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Conta no Plano (Contabil/DRE)</label>
+                    {chartOfAccounts.filter(acc => acc.type === 'ANALYTIC').length === 0 ? (
+                      <div className="bg-amber-50 border border-amber-200 p-3 rounded-md mt-1">
+                        <p className="text-xs text-amber-700 font-medium flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" />
+                          Nenhuma conta analítica encontrada.
+                        </p>
+                        <p className="text-[10px] text-amber-600 mt-0.5 leading-relaxed">
+                          É necessário cadastrar o Plano de Contas primeiro para vincular categorias e permitir a geração automática do DRE e Relatórios.
+                        </p>
+                        <Button 
+                          type="button" 
+                          variant="default" 
+                          size="sm" 
+                          className="h-8 text-[11px] bg-amber-600 hover:bg-amber-700 text-white mt-3 shadow-sm font-semibold px-4"
+                          onClick={() => {
+                            setShowAddCategory(false);
+                            setActiveTab('chart-of-accounts');
+                          }}
+                        >
+                          <ArrowRight className="w-3 h-3 mr-1.5" />
+                          Configurar Plano de Contas
+                        </Button>
+                      </div>
+                    ) : (
+                      <AccountCombobox 
+                         value={categoryForm.chartOfAccountId}
+                         onChange={(val) => setCategoryForm(prev => ({ ...prev, chartOfAccountId: val }))}
+                         placeholder="Vincular a uma conta analítica..."
+                      />
+                    )}
+                    <p className="text-[10px] text-muted-foreground italic">Vincule a uma conta analítica [A] para que esta categoria reflita nos relatórios de faturamento e lucro.</p>
+                  </div>
+
                 <div className="flex justify-end gap-2 pt-4">
                   <Button type="button" variant="ghost" onClick={() => {
                     setShowAddCategory(false);
                     setEditingCategoryId(null);
-                    setCategoryForm({ name: '', type: 'EXPENSE', color: '#EF4444' });
+                    setCategoryForm({ name: '', type: 'EXPENSE', color: '#EF4444', chartOfAccountId: '' });
                   }}>Cancelar</Button>
-                  <Button type="submit">{editingCategoryId ? 'Salvar Alterações' : 'Salvar'}</Button>
+                  <Button 
+                    type="submit" 
+                    disabled={chartOfAccounts.filter(acc => acc.type === 'ANALYTIC').length === 0}
+                  >
+                    {editingCategoryId ? 'Salvar Alterações' : 'Salvar'}
+                  </Button>
                 </div>
               </form>
             </CardContent>
@@ -1544,63 +1634,102 @@ const Financeiro: React.FC = () => {
 
       {showAddChartAccount && (
         <div className="modal-overlay">
-          <Card className="modal-content-card max-w-md">
-            <CardHeader>
-              <CardTitle>{editingChartAccountId ? 'Editar Conta' : 'Nova Conta no Plano'}</CardTitle>
-              <CardDescription>Defina a estrutura para classificação contábil</CardDescription>
+          <Card className="modal-content-card max-w-md w-full relative">
+            <Button
+              variant="ghost" 
+              size="icon"
+              className="absolute right-4 top-4"
+              onClick={() => {
+                setShowAddChartAccount(false);
+              }}
+            >
+              <Trash className="w-4 h-4" /> {/* Botão estético de fechar... ou um X... vamos colocar 'Cancelar' abaixo */}
+            </Button>
+            <CardContent className="pt-6">
+              <AccountEntryForm 
+                isCreationMode={!accountToEdit}
+                accountToEdit={accountToEdit || (parentAccountForNew ? { parentId: parentAccountForNew.id, nature: parentAccountForNew.nature } : null)}
+                onSuccess={() => {
+                  setShowAddChartAccount(false);
+                  setAccountToEdit(null);
+                  setParentAccountForNew(null);
+                  loadData();
+                  toast.success('Plano de Contas atualizado!');
+                }}
+              />
+              <div className="flex justify-end mt-2">
+                 <Button type="button" variant="ghost" onClick={() => setShowAddChartAccount(false)}>Cancelar</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Migration Modal for Dependencies */}
+      {accountToDeleteWithDependencies && (
+        <div className="modal-overlay z-[9999]">
+          <Card className="modal-content-card max-w-lg w-full">
+            <CardHeader className="bg-red-50 border-b border-red-100 rounded-t-xl pb-4">
+              <CardTitle className="text-red-800 flex items-center gap-2">
+                <AlertCircle className="w-5 h-5" />
+                Migração Obrigatória
+              </CardTitle>
+              <CardDescription className="text-red-700 mt-1">
+                A conta <strong>{accountToDeleteWithDependencies.code} - {accountToDeleteWithDependencies.name}</strong> não pode ser excluída diretamente. Ela possui materiais e históricos vitais atrelados a ela.
+              </CardDescription>
             </CardHeader>
-            <CardContent>
-              <form onSubmit={handleCreateChartAccount} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2 col-span-1">
-                    <label className="text-xs font-bold text-slate-500 flex flex-col uppercase">
-                      <span>Código</span>
-                      {!editingChartAccountId && <span className="text-[10px] text-slate-400 font-normal normal-case leading-none mt-0.5">(Opcional)</span>}
-                    </label>
-                    <Input
-                      value={chartAccountForm.code}
-                      onChange={(e) => setChartAccountForm(prev => ({ ...prev, code: e.target.value }))}
-                      placeholder={editingChartAccountId ? "" : "Automático"}
-                      disabled={!!editingChartAccountId}
-                      className={editingChartAccountId ? "bg-slate-50" : ""}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2 col-span-2 flex flex-col justify-end">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Nome da Conta</label>
-                    <Input
-                      value={chartAccountForm.name}
-                      onChange={(e) => setChartAccountForm(prev => ({ ...prev, name: e.target.value }))}
-                      placeholder="Ex: Salários, Impostos, Ferramentas..."
-                      required
-                    />
-                  </div>
-                </div>
+            <CardContent className="pt-6 space-y-4">
+              <div className="bg-slate-50 p-3 rounded text-sm text-slate-600 max-h-40 overflow-y-auto font-mono">
+                <p className="font-bold mb-2 text-slate-700">Recursos Mapeados ({deletionDependencies.length}):</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  {deletionDependencies.map((dep, idx) => (
+                    <li key={idx}>{dep.name || dep.id} (Material)</li>
+                  ))}
+                </ul>
+              </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Tipo Contábil base (Comportamento)</label>
-                  <select
-                    value={chartAccountForm.type}
-                    onChange={(e) => setChartAccountForm(prev => ({ ...prev, type: e.target.value }))}
-                    className="w-full h-10 px-3 border rounded-md text-sm bg-white"
-                  >
-                    <option value="ASSET">Ativo</option>
-                    <option value="LIABILITY">Passivo</option>
-                    <option value="EQUITY">Patrimônio Líquido</option>
-                    <option value="REVENUE">Receita</option>
-                    <option value="EXPENSE">Despesa</option>
-                  </select>
-                </div>
+              <div className="space-y-2 mt-4">
+                <label className="text-sm font-bold text-slate-800">
+                  Para onde migrar os recursos? (Nova Conta)
+                </label>
+                <select 
+                  className="w-full h-10 px-3 border border-slate-300 rounded focus:border-primary shadow-sm"
+                  value={replacementAccountId}
+                  onChange={e => setReplacementAccountId(e.target.value)}
+                >
+                  <option value="">Selecione a conta de destino...</option>
+                  {chartOfAccounts
+                    .filter(c => c.id !== accountToDeleteWithDependencies.id && c.type === 'ANALYTIC') // Only analytics for materials usually
+                    .map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.code} - {c.name}
+                      </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground mt-1">Ao migrar, os históricos antigos permanecerão inalterados (Soft Delete) e os materiais receberão o novo código imediatamente.</p>
+              </div>
 
-                <div className="flex justify-end gap-2 pt-4">
-                  <Button type="button" variant="ghost" onClick={() => {
-                    setShowAddChartAccount(false);
-                    setEditingChartAccountId(null);
-                    setChartAccountForm({ code: '', name: '', type: 'EXPENSE' });
-                  }}>Cancelar</Button>
-                  <Button type="submit">{editingChartAccountId ? 'Salvar Alterações' : 'Criar Conta'}</Button>
-                </div>
-              </form>
+              <div className="flex justify-end gap-3 pt-4 border-t mt-6">
+                <Button 
+                  type="button" 
+                  variant="ghost" 
+                  onClick={() => {
+                    setAccountToDeleteWithDependencies(null);
+                    setDeletionDependencies([]);
+                    setReplacementAccountId('');
+                  }}
+                >
+                  Cancelar, manter conta
+                </Button>
+                <Button 
+                  disabled={!replacementAccountId}
+                  onClick={() => handleDeleteChartAccount(accountToDeleteWithDependencies.id, replacementAccountId)}
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Substituir e Migrar Tudo
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -1735,6 +1864,24 @@ const Financeiro: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+      {showDefaultCategoriesModal && (
+        <DefaultCategoriesModal 
+          onClose={() => setShowDefaultCategoriesModal(false)}
+          onSuccess={() => {
+            setShowDefaultCategoriesModal(false);
+            loadData();
+          }}
+        />
+      )}
+      {showDefaultChartModal && (
+        <DefaultChartOfAccountsModal
+          onClose={() => setShowDefaultChartModal(false)}
+          onSuccess={() => {
+            setShowDefaultChartModal(false);
+            loadData();
+          }}
+        />
       )}
     </div>
   );

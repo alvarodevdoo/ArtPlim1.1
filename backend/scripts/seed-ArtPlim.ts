@@ -63,90 +63,11 @@ async function main() {
 
   console.log('✅ Organization, Admin and Operator created.');
 
-  // 2. Chart of Accounts (Plano de Contas Realista)
-  const chartOfAccounts = [
-    { code: '1', name: 'Ativo', type: 'ASSET' },
-    { code: '1.1', name: 'Ativo Circulante', type: 'ASSET' },
-    { code: '1.1.01', name: 'Disponibilidades', type: 'ASSET' },
-    { code: '1.1.01.01', name: 'Caixa Geral', type: 'ASSET' },
-    { code: '1.1.01.02', name: 'Bancos Conta Movimento', type: 'ASSET' },
-    { code: '1.1.02', name: 'Estoques', type: 'ASSET' },
-    { code: '1.1.02.01', name: 'Estoque de Materiais', type: 'ASSET' },
-    { code: '1.1.02.02', name: 'Estoque de Produtos Acabados', type: 'ASSET' },
-    { code: '2', name: 'Passivo', type: 'LIABILITY' },
-    { code: '2.1', name: 'Passivo Circulante', type: 'LIABILITY' },
-    { code: '2.1.01', name: 'Fornecedores a Pagar', type: 'LIABILITY' },
-    { code: '3', name: 'Receitas', type: 'REVENUE' },
-    { code: '3.1', name: 'Receita Operacional Bruta', type: 'REVENUE' },
-    { code: '3.1.01', name: 'Venda de Produtos', type: 'REVENUE' },
-    { code: '3.1.02', name: 'Venda de Serviços', type: 'REVENUE' },
-    { code: '4', name: 'Despesas', type: 'EXPENSE' },
-    { code: '4.1', name: 'Custo das Mercadorias Vendidas (CMV)', type: 'EXPENSE' },
-    { code: '4.1.01', name: 'Consumo de Materiais', type: 'EXPENSE' },
-    { code: '4.2', name: 'Despesas Operacionais', type: 'EXPENSE' },
-    { code: '4.2.01', name: 'Salários e Encargos', type: 'EXPENSE' },
-    { code: '4.2.02', name: 'Aluguel e Condomínio', type: 'EXPENSE' },
-    { code: '4.2.03', name: 'Energia, Água e Telefone', type: 'EXPENSE' },
-    { code: '4.2.04', name: 'Marketing e Vendas', type: 'EXPENSE' },
-  ];
+  // 2. Chart of Accounts (Removed - user will use modal)
+  console.log('⚠ Chart of Accounts population skipped.');
 
-  for (const account of chartOfAccounts) {
-    await prisma.chartOfAccount.upsert({
-      where: { 
-        organizationId_code: {
-          organizationId: organization.id,
-          code: account.code
-        }
-      },
-      update: { name: account.name, type: account.type as any },
-      create: {
-        organizationId: organization.id,
-        code: account.code,
-        name: account.name,
-        type: account.type as any,
-        active: true
-      }
-    });
-  }
-
-  console.log('✅ Chart of Accounts populated.');
-
-  // Get Chart of Account IDs for Materials
-  const inventoryAccount = await prisma.chartOfAccount.findFirst({
-    where: { organizationId: organization.id, code: '1.1.02.01' }
-  });
-  const expenseAccount = await prisma.chartOfAccount.findFirst({
-    where: { organizationId: organization.id, code: '4.1.01' }
-  });
-
-  // 3. Financial Accounts
-  const accounts = [
-    { name: 'Caixa Interno', type: 'CASH', balance: 1500.00 },
-    { name: 'Banco do Brasil', type: 'CHECKING', balance: 12500.50 },
-    { name: 'Itaú Empresas', type: 'CHECKING', balance: 5400.00 },
-    { name: 'Cofre Retalhos', type: 'CASH', balance: 0.00 },
-  ];
-
-  for (const acc of accounts) {
-    await prisma.account.upsert({
-      where: { 
-        organizationId_name: {
-          organizationId: organization.id,
-          name: acc.name
-        }
-      },
-      update: { type: acc.type as any },
-      create: {
-        organizationId: organization.id,
-        name: acc.name,
-        type: acc.type as any,
-        balance: acc.balance,
-        active: true
-      }
-    });
-  }
-
-  console.log('✅ Bank Accounts created.');
+  // 3. Financial Accounts (Removed - user will create manually)
+  console.log('⚠ Bank Accounts creation skipped.');
 
   // 4. Profiles (Clientes e Fornecedores) - 30+ Clientes
   const supplierNames = [
@@ -296,8 +217,6 @@ async function main() {
         costPerUnit: mData.cost, 
         unit: mData.unit, 
         format: (formatMap[mData.format] || 'UNIT') as any,
-        inventoryAccountId: inventoryAccount?.id,
-        expenseAccountId: expenseAccount?.id
       },
       create: {
         organizationId: organization.id,
@@ -309,8 +228,6 @@ async function main() {
         minStockQuantity: 10,
         sellWithoutStock: true,
         active: true,
-        inventoryAccountId: inventoryAccount?.id,
-        expenseAccountId: expenseAccount?.id
       }
     });
     materialIds.push(material.id);
@@ -511,99 +428,7 @@ async function main() {
 
   console.log('✅ Initial Inventory and Offcuts created.');
 
-  // 9. Orders and Budgets (50+ records)
-  const statuses: any[] = ['DRAFT', 'APPROVED', 'IN_PRODUCTION', 'FINISHED', 'DELIVERED'];
-  const budgetStatuses: any[] = ['DRAFT', 'SENT', 'APPROVED', 'REJECTED'];
-
-  for (let i = 1; i <= 60; i++) {
-    const isBudget = i > 45;
-    const client = clientProfiles[Math.floor(Math.random() * clientProfiles.length)];
-    const product = productsData[Math.floor(Math.random() * productsData.length)];
-    const productId = productIds[productsData.indexOf(product)];
-    
-    const daysAgo = Math.floor(Math.random() * 60);
-    const date = subDays(new Date(), daysAgo);
-    
-    if (isBudget) {
-      await prisma.budget.upsert({
-        where: {
-          organizationId_budgetNumber: {
-            organizationId: organization.id,
-            budgetNumber: `ORC-${202400 + i}`
-          }
-        },
-        update: {},
-        create: {
-          organizationId: organization.id,
-          customerId: client.id,
-          budgetNumber: `ORC-${202400 + i}`,
-          status: budgetStatuses[Math.floor(Math.random() * budgetStatuses.length)],
-          total: (Math.random() * 500) + 50,
-          subtotal: (Math.random() * 500) + 50,
-          createdAt: date,
-          items: {
-            create: {
-              productId: productId,
-              quantity: Math.floor(Math.random() * 10) + 1,
-              unitPrice: product.price,
-              totalPrice: product.price * 2,
-              costPrice: product.price * 0.5,
-              calculatedPrice: product.price
-            }
-          }
-        }
-      });
-    } else {
-      const orderNumber = `PED-${1000 + i}`;
-      const order = await prisma.order.upsert({
-        where: {
-          organizationId_orderNumber: {
-            organizationId: organization.id,
-            orderNumber
-          }
-        },
-        update: {},
-        create: {
-          organizationId: organization.id,
-          customerId: client.id,
-          orderNumber,
-          status: statuses[Math.floor(Math.random() * statuses.length)],
-          total: (Math.random() * 1000) + 100,
-          subtotal: (Math.random() * 1000) + 100,
-          createdAt: date,
-          items: {
-            create: {
-              productId: productId,
-              quantity: Math.floor(Math.random() * 5) + 1,
-              unitPrice: product.price,
-              totalPrice: product.price,
-              costPrice: product.price * 0.4,
-              calculatedPrice: product.price
-            }
-          }
-        }
-      });
-
-      // Histórico para o pedido (apenas se for novo ou simplificado)
-      const hasHistory = await prisma.orderStatusHistory.findFirst({
-        where: { orderId: order.id }
-      });
-
-      if (!hasHistory) {
-        await prisma.orderStatusHistory.create({
-          data: {
-            orderId: order.id,
-            toStatus: 'DRAFT',
-            userId: admin.id,
-            createdAt: subDays(date, 1)
-          }
-        });
-      }
-    }
-  }
-
-  console.log('✅ 60 Budgets and Orders generated.');
-
+  console.log('✅ Master data populated. No orders or transactions created.');
 }
 
 main()

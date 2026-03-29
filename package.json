@@ -34,7 +34,9 @@
     "test:database": "cd backend && npx ts-node scripts/check-database.ts",
     "test:endpoints": "cd backend && npx ts-node scripts/test-optimized-endpoints.ts",
     "test:full": "pnpm test:performance && pnpm test:phase5 && pnpm test:analytics && pnpm test:endpoints && pnpm test:database",
-    "optimize:database": "cd backend && npx ts-node scripts/optimize-database.ts"
+    "optimize:database": "cd backend && npx ts-node scripts/optimize-database.ts",
+    "clear:financeiro": "cd backend && npx tsx scripts/limpar-financeiro.ts",
+    "clear:pedidos": "cd backend && pnpm exec tsx scripts/clear-orders.ts"
   },
   "dependencies": {
     "axios": "^1.13.2"

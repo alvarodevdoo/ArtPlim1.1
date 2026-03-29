@@ -36,6 +36,8 @@ interface OrganizationSettings {
   taxRate: number;
   validadeOrcamento: number;
   allowDuplicatePhones: boolean;
+  defaultReceivableCategoryId?: string;
+  defaultRevenueCategoryId?: string;
 }
 
 const Configuracoes: React.FC = () => {
@@ -75,7 +77,6 @@ const Configuracoes: React.FC = () => {
 
   const loadSettings = async () => {
     try {
-      // Carregar configurações da organização
       const [orgResponse, settingsResponse] = await Promise.all([
         api.get('/api/organization'),
         api.get('/api/organization/settings')
@@ -406,32 +407,8 @@ const Configuracoes: React.FC = () => {
                   </div>
 
                   <div className="space-y-4">
-                    <h4 className="font-medium">Configurações Padrão</h4>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Margem Padrão (multiplicador)</label>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          value={settings.defaultMarkup || 2.0}
-                          onChange={(e) => setSettings(prev => ({ ...prev, defaultMarkup: parseFloat(e.target.value) || 2.0 }))}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Ex: 2.0 = 100% de margem sobre o custo
-                        </p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Taxa de Imposto (%)</label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={settings.taxRate || 0.0}
-                          onChange={(e) => setSettings(prev => ({ ...prev, taxRate: parseFloat(e.target.value) || 0.0 }))}
-                        />
-                      </div>
-
+                    <h4 className="font-medium">Configurações Gerais</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <label className="text-sm font-medium">Validade do Orçamento (dias)</label>
                         <Input
@@ -442,7 +419,7 @@ const Configuracoes: React.FC = () => {
                           onChange={(e) => setSettings(prev => ({ ...prev, validadeOrcamento: parseInt(e.target.value) || 7 }))}
                         />
                         <p className="text-xs text-muted-foreground">
-                          Quantos dias o orçamento permanece válido
+                          Dias que o orçamento permanece válido
                         </p>
                       </div>
                     </div>

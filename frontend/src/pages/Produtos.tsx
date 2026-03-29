@@ -63,6 +63,7 @@ type FormData = {
   stockUnit: string;
   sellWithoutStock: boolean;
   categoryId?: string;
+  revenueAccountId?: string;
 };
 
 const defaultForm: FormData = {
@@ -80,6 +81,7 @@ const defaultForm: FormData = {
   stockUnit: 'un',
   sellWithoutStock: true,
   categoryId: '',
+  revenueAccountId: '',
 };
 
 const Produtos: React.FC = () => {
@@ -88,6 +90,7 @@ const Produtos: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [globalRules, setGlobalRules] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [chartOfAccounts, setChartOfAccounts] = useState<any[]>([]);
   useInsumos();
   
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -100,6 +103,7 @@ const Produtos: React.FC = () => {
     loadProdutos();
     loadGlobalRules();
     loadCategories();
+    loadChartOfAccounts();
   }, []);
 
   const refreshFichaTecnica = async (id: string) => {
@@ -249,6 +253,19 @@ const Produtos: React.FC = () => {
     }
   };
 
+  const loadChartOfAccounts = async () => {
+    try {
+      const response = await api.get('/api/finance/chart-of-accounts');
+      // Filtrar apenas contas analíticas de receita
+      const revenueAccounts = response.data.data.filter((acc: any) => 
+        acc.nature === 'REVENUE' && acc.type === 'ANALYTIC' && acc.active
+      );
+      setChartOfAccounts(revenueAccounts);
+    } catch (error) {
+      console.error('Erro ao carregar plano de contas:', error);
+    }
+  };
+
   const loadCategories = async () => {
     try {
       const response = await api.get('/api/finance/categories');
@@ -299,6 +316,7 @@ const Produtos: React.FC = () => {
       stockUnit: produto.stockUnit || 'un',
       sellWithoutStock: produto.sellWithoutStock ?? true,
       categoryId: (produto as any).categoryId || '',
+      revenueAccountId: (produto as any).revenueAccountId || '',
     });
   };
 
@@ -330,6 +348,7 @@ const Produtos: React.FC = () => {
       salePrice: calculatedPrices.sale,
       costPrice: calculatedPrices.cost,
       categoryId: formData.categoryId || null,
+      revenueAccountId: formData.revenueAccountId || null,
       active: true
     };
 
@@ -578,12 +597,31 @@ const Produtos: React.FC = () => {
                               placeholder="Opcional: Detalhes extras para o catálogo"
                               className="w-full min-h-[100px] p-3 rounded-md border text-sm focus:ring-2 focus:ring-primary focus:outline-none transition-all"
                             />
-                            <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Categoria Financeira</label>
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Conta de Receita (DRE)</label>
+                            <select
+                              value={formData.revenueAccountId}
+                              onChange={(e) => setFormData(prev => ({ ...prev, revenueAccountId: e.target.value }))}
+                              className="w-full h-11 px-3 border rounded-md text-sm font-medium bg-white focus:ring-2 focus:ring-primary focus:outline-none"
+                            >
+                              <option value="">Configuração Padrão</option>
+                              {chartOfAccounts.map(acc => (
+                                <option key={acc.id} value={acc.id}>
+                                  {acc.code} - {acc.name}
+                                </option>
+                              ))}
+                            </select>
+                            <p className="text-[10px] text-muted-foreground">Define em qual conta de faturamento este item será registrado.</p>
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Categoria Financeira (Backup)</label>
                             <select
                               value={formData.categoryId}
                               onChange={(e) => setFormData(prev => ({ ...prev, categoryId: e.target.value }))}
-                              className="w-full h-11 px-3 border rounded-md text-sm font-medium bg-white"
+                              className="w-full h-11 px-3 border rounded-md text-sm font-medium bg-white opacity-60"
                             >
                               <option value="">Nenhuma categoria</option>
                               {categories
@@ -594,9 +632,7 @@ const Produtos: React.FC = () => {
                                 </option>
                               ))}
                             </select>
-                            <p className="text-[10px] text-muted-foreground">Classifica vendas deste item automaticamente no DRE/Fluxo.</p>
                           </div>
-                        </div>
                         </div>
                         <div className="space-y-6">
                           {formData.productType === 'PRODUCT' ? (

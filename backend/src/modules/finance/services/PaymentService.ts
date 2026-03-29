@@ -136,4 +136,141 @@ export class PaymentService {
       return updatedPayable;
     });
   }
+
+  /**
+   * Recebe o pagamento de uma conta a receber (AccountReceivable), realizando
+   * a liquidação patrimonial correta:
+   *
+   *   DÉBITO  → Conta Caixa/Banco (Ativo ↑)               – entra dinheiro
+   *   CRÉDITO → Conta de Contas a Receber (Ativo ↓)       – baixa o direito
+   *   EXPENSE → Categoria de Taxas (Resultado ↓)          – se houver taxa (ex: cartão)
+   *
+   * @param input Dados da liquidação
+   */
+  async receiveReceivablePayment(input: {
+    organizationId: string;
+    receivableId: string;
+    paymentAccountId: string;   // Banco/Caixa onde o dinheiro entra
+    receivableAccountId: string; // Conta de Ativo "Contas a Receber" que será baixada
+    paymentMethodId: string;
+    amountPaid: number;          // Valor bruto pago pelo cliente
+    feeAmount?: number;          // Valor da taxa descontada (ex: operadora)
+    feeCategoryId?: string;      // Categoria de despesa para a taxa
+    notes?: string;
+    userId: string;
+  }) {
+    const {
+      organizationId,
+      receivableId,
+      paymentAccountId,
+      receivableAccountId,
+      paymentMethodId,
+      amountPaid,
+      feeAmount = 0,
+      feeCategoryId,
+      notes,
+      userId
+    } = input;
+
+    if (amountPaid <= 0) {
+      throw new AppError('O valor recebido deve ser maior que zero.', 400);
+    }
+
+    return await this.prisma.$transaction(async (tx) => {
+      // 1. Validar recebível
+      const receivable = await (tx as any).accountReceivable.findFirst({
+        where: { id: receivableId, organizationId, status: 'PENDING' }
+      });
+
+      if (!receivable) {
+        throw new AppError('Conta a receber não encontrada ou já liquidada.', 404);
+      }
+
+      const today = new Date();
+      const netAmount = amountPaid - feeAmount;
+
+      // 2. Atualizar Recebível
+      await (tx as any).accountReceivable.update({
+        where: { id: receivableId },
+        data: {
+          status: 'PAID',
+          paidAt: today,
+          notes: notes ? `${receivable.notes ?? ''}\nLIQ: ${notes}` : receivable.notes
+        }
+      });
+
+      // 3. PARTIDAS DOBRADAS
+
+      // 3a. DÉBITO – Ativo: Caixa/Banco (Entrada Líquida)
+      await tx.transaction.create({
+        data: {
+          organizationId,
+          accountId: paymentAccountId,
+          type: TransactionType.DEBIT,
+          amount: netAmount,
+          description: `Recebimento Pedido #${receivable.orderId?.slice(-8)}`,
+          status: TransactionStatus.PAID,
+          paidAt: today,
+          paymentMethodId,
+          receivableId: receivable.id,
+          orderId: receivable.orderId,
+          userId,
+          profileId: receivable.customerId
+        }
+      });
+
+      await tx.account.update({
+        where: { id: paymentAccountId, organizationId },
+        data: { balance: { increment: netAmount } }
+      });
+
+      // 3b. CRÉDITO – Ativo: Contas a Receber (Baixa Bruta)
+      await tx.transaction.create({
+        data: {
+          organizationId,
+          accountId: receivableAccountId,
+          type: TransactionType.CREDIT,
+          amount: amountPaid,
+          description: `Baixa de Recebível #${receivable.id.slice(-8)}`,
+          status: TransactionStatus.PAID,
+          paidAt: today,
+          paymentMethodId,
+          receivableId: receivable.id,
+          orderId: receivable.orderId,
+          userId,
+          profileId: receivable.customerId
+        }
+      });
+
+      await tx.account.update({
+        where: { id: receivableAccountId, organizationId },
+        data: { balance: { decrement: amountPaid } }
+      });
+
+      // 3c. DESPESA – Resultado: Taxas de Pagamento (Se houver)
+      if (feeAmount > 0 && feeCategoryId) {
+        await tx.transaction.create({
+          data: {
+            organizationId,
+            accountId: paymentAccountId, // Registramos na conta de entrada para conciliação
+            type: TransactionType.EXPENSE,
+            amount: feeAmount,
+            description: `Taxa de Pagamento - Pedido #${receivable.orderId?.slice(-8)}`,
+            status: TransactionStatus.PAID,
+            paidAt: today,
+            categoryId: feeCategoryId,
+            paymentMethodId,
+            receivableId: receivable.id,
+            orderId: receivable.orderId,
+            userId,
+            profileId: receivable.customerId
+          }
+        });
+        // Note: O saldo da conta já foi atualizado pelo valor LÍQUIDO (netAmount).
+        // A transação de EXPENSE serve para o DRE e conciliação, mas não subtraímos de novo da conta.
+      }
+
+      return receivable;
+    });
+  }
 }

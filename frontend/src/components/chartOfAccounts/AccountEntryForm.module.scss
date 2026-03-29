@@ -1,0 +1,147 @@
+.wrapper {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  padding: 24px;
+  font-family: inherit;
+  width: 100%;
+  max-width: 500px;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 24px;
+}
+
+.fieldGroup {
+  margin-bottom: 16px;
+}
+
+.label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #4b5563;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  background-color: white;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  
+  &:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+}
+
+.creationSection {
+  background-color: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 6px;
+  padding: 16px;
+  margin-top: 12px;
+}
+
+.creationTitle {
+  font-size: 14px;
+  font-weight: 500;
+  color: #0f172a;
+  margin-bottom: 12px;
+}
+
+.buttonGroup {
+  margin-top: 24px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.buttonSubmit {
+  background-color: #2563eb;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  
+  &:hover {
+    background-color: #1d4ed8;
+  }
+  
+  &:disabled {
+    background-color: #93c5fd;
+    cursor: not-allowed;
+  }
+}
+
+.textInput {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  &.inputError {
+    border-color: #ef4444;
+    background-color: #fef2f2;
+  }
+}
+
+.errorMessage {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #ef4444;
+  font-weight: 500;
+}
+
+.radioGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #fff;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+
+.radioLabel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  cursor: pointer;
+  color: #1e293b;
+  transition: color 0.2s;
+
+  &:hover {
+    color: #2563eb;
+  }
+}
+
+.radioInput {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #2563eb;
+}

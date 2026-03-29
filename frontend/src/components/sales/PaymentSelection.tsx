@@ -18,6 +18,17 @@ interface PaymentMethod {
     name: string;
     type: 'PIX' | 'CARD' | 'CASH' | 'TRANSFER' | 'BOLETO' | 'OTHER';
     feePercentage: number | string;
+    feeCategoryId?: string | null;
+    accountId?: string | null;
+    installmentRules?: {
+        maxInstallments: number;
+        interestFreeInstallments: number;
+        installmentFees?: { installment: number; fee: number }[];
+        brands?: {
+            name: string;
+            installmentFees?: { installment: number; fee: number }[];
+        }[];
+    };
     active: boolean;
 }
 
@@ -28,6 +39,9 @@ interface PaymentSelectionProps {
     remainingAmount: number;
     initialPayment?: any;
     onUpdatePayment?: (payment: any) => void;
+    receivableId?: string;
+    receivableAccountId?: string;
+    onSuccess?: () => void;
 }
 
 export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
@@ -36,11 +50,15 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
     onAddPayment,
     remainingAmount,
     initialPayment,
-    onUpdatePayment
+    onUpdatePayment,
+    receivableId,
+    receivableAccountId,
+    onSuccess
 }) => {
     const [selectedMethod, setSelectedMethod] = useState<string>('');
     const [amount, setAmount] = useState<number>(remainingAmount);
     const [installments, setInstallments] = useState<number>(1);
+    const [selectedBrand, setSelectedBrand] = useState<string>('');
     const [justification, setJustification] = useState<string>('');
     const [showJustification, setShowJustification] = useState(false);
     const [methods, setMethods] = useState<PaymentMethod[]>([]);
@@ -70,12 +88,14 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
                 setAmount(initialPayment.amount);
                 setSelectedMethod(initialPayment.methodId);
                 setInstallments(initialPayment.installments || 1);
+                setSelectedBrand(initialPayment.brand || '');
                 setJustification(initialPayment.justification || '');
                 setShowJustification(!!initialPayment.justification);
             } else {
                 setAmount(remainingAmount);
                 setSelectedMethod('');
                 setInstallments(1);
+                setSelectedBrand('');
                 setJustification('');
                 setShowJustification(false);
             }
@@ -83,7 +103,30 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
     }, [isOpen, remainingAmount, initialPayment]);
 
     const method = methods.find(m => m.id === selectedMethod);
-    const feePercent = method ? Number(method.feePercentage) : 0;
+    
+    // Buscar a taxa específica para a bandeira e parcela selecionada
+    const getFeePercent = () => {
+        if (!method) return 0;
+        
+        // Se for cartão e tiver bandeiras configuradas
+        if (method.type === 'CARD' && method.installmentRules?.brands && selectedBrand) {
+            const brand = method.installmentRules.brands.find(b => b.name === selectedBrand);
+            if (brand?.installmentFees) {
+                const specificFee = brand.installmentFees.find(f => f.installment === installments);
+                if (specificFee) return specificFee.fee;
+            }
+        }
+        
+        // Fallback para taxas gerais por parcela
+        if (method.type === 'CARD' && method.installmentRules?.installmentFees) {
+            const specificFee = method.installmentRules.installmentFees.find(f => f.installment === installments);
+            if (specificFee) return specificFee.fee;
+        }
+        
+        return Number(method.feePercentage);
+    };
+
+    const feePercent = getFeePercent();
     const calculatedFee = method ? (amount * feePercent) / 100 : 0;
     const netAmount = amount - calculatedFee;
 
@@ -94,7 +137,7 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
         setAmount(newVal);
     };
 
-    const handleConfirm = () => {
+    const handleConfirm = async () => {
         if (!selectedMethod) {
             toast.error('Selecione um método de pagamento');
             return;
@@ -102,6 +145,11 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
 
         if (amount <= 0) {
             toast.error('Valor deve ser maior que zero');
+            return;
+        }
+
+        if (method?.type === 'CARD' && method.installmentRules?.brands && !selectedBrand) {
+            toast.error('Selecione uma bandeira');
             return;
         }
 
@@ -113,12 +161,6 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
             return;
         }
 
-        // Se o usuário abriu o campo manualmente, exige preenchimento
-        if (showJustification && !justification.trim() && !isReductionCheck) {
-            toast.error('Por favor, informe a observação ou feche o campo');
-            return;
-        }
-
         const paymentData = {
             methodId: selectedMethod,
             methodName: method?.name,
@@ -126,19 +168,43 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
             fee: calculatedFee,
             netAmount,
             installments,
+            brand: selectedBrand || null,
             justification: (showJustification || isReductionCheck) ? justification : null,
-            date: initialPayment?.date || new Date().toISOString() // Preservar data original na edição
+            date: initialPayment?.date || new Date().toISOString()
         };
 
-        if (initialPayment && onUpdatePayment) {
-            onUpdatePayment(paymentData);
-            toast.success('Pagamento atualizado com sucesso!');
-        } else {
-            onAddPayment(paymentData);
-            toast.success('Pagamento registrado com sucesso!');
+        setIsLoading(true);
+        try {
+            // Se tivermos um receivableId, persistimos direto no backend (Fluxo de Liquidação)
+            if (receivableId && receivableAccountId) {
+                await api.post(`/api/finance/receivables/${receivableId}/pay`, {
+                    paymentAccountId: method?.accountId, // Onde o dinheiro entra (Configurado no Método)
+                    receivableAccountId: receivableAccountId, // Ativo que é baixado
+                    paymentMethodId: selectedMethod,
+                    amountPaid: amount,
+                    feeAmount: calculatedFee,
+                    feeCategoryId: method?.feeCategoryId,
+                    notes: (paymentData.brand ? `Bandeira: ${paymentData.brand}. ` : '') + (paymentData.justification || '')
+                });
+                toast.success('Pagamento liquidado e registrado no plano de contas!');
+                if (onSuccess) onSuccess();
+            } else {
+                // Fluxo em memória (Criação de Pedido)
+                if (initialPayment && onUpdatePayment) {
+                    onUpdatePayment(paymentData);
+                    toast.success('Pagamento atualizado com sucesso!');
+                } else {
+                    onAddPayment(paymentData);
+                    toast.success('Pagamento registrado com sucesso!');
+                }
+            }
+            onClose();
+        } catch (error: any) {
+            console.error('Erro ao processar pagamento:', error);
+            toast.error(error.response?.data?.error?.message || 'Erro ao processar pagamento');
+        } finally {
+            setIsLoading(false);
         }
-
-        onClose();
     };
 
     if (!isOpen) return null;
@@ -174,12 +240,31 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
                             <SelectContent className="z-[999999]">
                                 {methods.map(m => (
                                     <SelectItem key={m.id} value={m.id}>
-                                        {m.name} {Number(m.feePercentage) > 0 && `(${m.feePercentage}%)`}
+                                        {m.name} 
                                     </SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
                     </div>
+
+                    {/* Bandeira (apenas se o método de cartão tiver bandeiras configuradas) */}
+                    {method?.type === 'CARD' && method.installmentRules?.brands && (
+                        <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
+                            <label className="text-sm font-medium">Bandeira do Cartão</label>
+                            <Select value={selectedBrand} onValueChange={setSelectedBrand}>
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Selecione a bandeira..." />
+                                </SelectTrigger>
+                                <SelectContent className="z-[999999]">
+                                    {method.installmentRules.brands.map(b => (
+                                        <SelectItem key={b.name} value={b.name}>
+                                            {b.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-4">
                         {/* Valor */}
@@ -263,7 +348,7 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
                                 <span>R$ {amount.toFixed(2).replace('.', ',')}</span>
                             </div>
                             <div className="flex justify-between items-center text-red-500">
-                                <span className="flex items-center gap-1">Taxas ({method?.feePercentage}%) <Info className="w-3 h-3" /></span>
+                                <span className="flex items-center gap-1">Taxas ({feePercent.toFixed(2)}%) <Info className="w-3 h-3" /></span>
                                 <span>- R$ {calculatedFee.toFixed(2).replace('.', ',')}</span>
                             </div>
                             <div className="flex justify-between items-center pt-2 border-t font-bold text-blue-800 text-base">
@@ -276,8 +361,12 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
 
                 <div className="p-4 bg-slate-50 border-t flex justify-end gap-3">
                     <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-                    <Button onClick={handleConfirm} className="bg-blue-600 hover:bg-blue-700 font-bold">
-                        {initialPayment ? 'Atualizar Pagamento' : 'Confirmar Pagamento'}
+                    <Button 
+                        onClick={handleConfirm} 
+                        className="bg-blue-600 hover:bg-blue-700 font-bold"
+                        disabled={isLoading}
+                    >
+                        {isLoading ? 'Wait...' : (initialPayment ? 'Atualizar Pagamento' : 'Confirmar Pagamento')}
                     </Button>
                 </div>
             </div>

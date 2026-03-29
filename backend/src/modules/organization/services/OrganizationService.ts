@@ -16,6 +16,8 @@ interface UpdateSettingsInput {
   taxRate?: number;
   validadeOrcamento?: number;
   allowDuplicatePhones?: boolean;
+  defaultReceivableCategoryId?: string | null;
+  defaultRevenueCategoryId?: string | null;
 }
 
 export class OrganizationService {

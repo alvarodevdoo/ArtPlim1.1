@@ -10,8 +10,16 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  css: {
+    preprocessorOptions: {
+      scss: {
+        api: 'modern-compiler',
+      },
+    },
+  },
   server: {
     port: 3000,
+    allowedHosts: ['erp.artplim.com.br'],
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

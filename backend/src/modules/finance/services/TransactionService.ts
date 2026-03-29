@@ -178,7 +178,8 @@ export class TransactionService {
       });
 
       // Atualizar saldo da conta
-      const operation = transaction.type === 'INCOME' ? 'ADD' : 'SUBTRACT';
+      // Em contas de Ativo (padrão do sistema): INCOME e DEBIT somam; EXPENSE e CREDIT subtraem.
+      const operation = (transaction.type === 'INCOME' || transaction.type === 'DEBIT') ? 'ADD' : 'SUBTRACT';
       await this.accountService.updateBalance(transaction.accountId, organizationId, Number(transaction.amount), operation);
 
       return this.prisma.transaction.findFirst({

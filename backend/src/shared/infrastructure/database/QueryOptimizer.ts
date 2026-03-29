@@ -182,6 +182,8 @@ export class QueryOptimizer {
         defaultConsumptionFactor: true,
         inventoryAccountId: true,
         expenseAccountId: true,
+        minStockQuantity: true,
+        sellWithoutStock: true,
         inventoryAccount: {
           select: { id: true, name: true, code: true }
         },

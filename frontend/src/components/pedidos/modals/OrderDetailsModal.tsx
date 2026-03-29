@@ -4,12 +4,18 @@ import { Button } from '@/components/ui/Button';
 import { DatasOrcamento } from '@/components/ui/DatasOrcamento';
 import { 
   Printer, FileText, User, MessageSquare, Send, Calendar, 
-  Package, Activity, CheckCircle, Target, XCircle, Calculator, ChevronRight
+  Package, Activity, XCircle, Calculator, ChevronRight
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { sendOrderWhatsApp } from '@/lib/whatsapp';
 import { useAuth } from '@/contexts/AuthContext';
 import { Pedido, ProcessStatus, statusConfig } from '@/types/pedidos';
+import { OrderFinancialStatus } from '../../sales/OrderFinancialStatus';
+import { PaymentSelection } from '../../sales/PaymentSelection';
+import PartialCancelModal from './PartialCancelModal';
+import PartialDeliveryModal from './PartialDeliveryModal';
+import api from '@/lib/api';
+import { toast } from 'sonner';
 
 interface OrderDetailsModalProps {
   pedido: Pedido | null;
@@ -33,6 +39,52 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   processStatuses = []
 }) => {
   const { hasPermission } = useAuth();
+  const [receivable, setReceivable] = React.useState<any>(null);
+  const [loadingFinancial, setLoadingFinancial] = React.useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = React.useState(false);
+  
+  // Parciais (Cancelamento e Entregas)
+  const [selectedItemIds, setSelectedItemIds] = React.useState<string[]>([]);
+  const [showPartialCancelModal, setShowPartialCancelModal] = React.useState(false);
+  const [showPartialDeliveryModal, setShowPartialDeliveryModal] = React.useState(false);
+
+  // Limpar seleção ao fechar
+  React.useEffect(() => {
+    if (!isOpen) setSelectedItemIds([]);
+  }, [isOpen]);
+
+  const toggleItemSelection = (itemId: string) => {
+    setSelectedItemIds(prev => 
+      prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]
+    );
+  };
+
+  const getSelectedItemsFull = () => {
+    if (!pedido?.items) return [];
+    return pedido.items.filter((i: any) => selectedItemIds.includes(i.id));
+  };
+
+  const fetchFinancialData = React.useCallback(async () => {
+    if (!pedido?.id || !hasPermission('finance.view')) return;
+    
+    try {
+      setLoadingFinancial(true);
+      const response = await api.get(`/api/finance/receivables/order/${pedido.id}`);
+      setReceivable(response.data.data);
+    } catch (error) {
+      console.error('Erro ao carregar dados financeiros:', error);
+    } finally {
+      setLoadingFinancial(false);
+    }
+  }, [pedido?.id, hasPermission]);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      fetchFinancialData();
+    } else {
+      setReceivable(null);
+    }
+  }, [isOpen, fetchFinancialData]);
 
   if (!isOpen || !pedido) return null;
 
@@ -153,11 +205,30 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
 
               {/* Itens do Pedido */}
               <Card>
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="text-lg flex items-center space-x-2">
                     <Package className="w-5 h-5" />
                     <span>Itens do Pedido</span>
                   </CardTitle>
+                  {selectedItemIds.length > 0 && (
+                    <div className="flex space-x-2">
+                      <Button 
+                        size="sm" 
+                        variant="destructive" 
+                        className="h-8 text-xs font-bold"
+                        onClick={() => setShowPartialCancelModal(true)}
+                      >
+                        <XCircle className="w-3 h-3 mr-1" /> Cancelar ({selectedItemIds.length})
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        className="h-8 bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white shadow"
+                        onClick={() => setShowPartialDeliveryModal(true)}
+                      >
+                        <Package className="w-3 h-3 mr-1" /> Entregar ({selectedItemIds.length})
+                      </Button>
+                    </div>
+                  )}
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
@@ -165,27 +236,45 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                       const w = Number(item.width || 0);
                       const h = Number(item.height || 0);
                       const area = (w * h) / 1000000;
+                      const isSelected = selectedItemIds.includes(item.id);
+                      const isCancelledOrDelivered = item.status === 'CANCELLED' || item.status === 'DELIVERED';
 
                       return (
-                        <div key={item.id} className="border border-border rounded-lg p-4">
+                        <div key={item.id} className={`border rounded-lg p-4 transition-colors ${isSelected ? 'border-primary bg-primary/5' : 'border-border'} ${isCancelledOrDelivered ? 'opacity-60 saturate-50' : ''}`}>
                           <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-2">
-                                <span className="bg-muted text-muted-foreground px-2 py-1 rounded text-sm">#{index + 1}</span>
-                                <h5 className="font-medium">{item.product?.name}</h5>
+                            <div className="flex-1 flex gap-3">
+                              <div className="pt-1">
+                                <input 
+                                  type="checkbox" 
+                                  className="w-4 h-4 rounded text-primary focus:ring-primary disabled:opacity-50 cursor-pointer"
+                                  checked={isSelected}
+                                  onChange={() => toggleItemSelection(item.id)}
+                                  disabled={isCancelledOrDelivered}
+                                />
                               </div>
-                              <div className="mt-2 grid grid-cols-2 gap-4 text-sm text-muted-foreground">
-                                {shouldShowDimensions(item) && (
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-2">
+                                  <span className="bg-muted text-muted-foreground px-2 py-1 rounded text-sm font-semibold">#{index + 1}</span>
+                                  <h5 className="font-bold text-slate-800">{item.product?.name}</h5>
+                                  {isCancelledOrDelivered && (
+                                    <span className={`px-2 py-0.5 text-xs font-bold rounded ${item.status === 'CANCELLED' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                      {item.status === 'CANCELLED' ? 'CANCELADO' : 'ENTREGUE'}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="mt-2 grid grid-cols-2 gap-4 text-sm text-muted-foreground">
+                                  {shouldShowDimensions(item) && (
+                                    <div>
+                                      <p><span className="font-medium text-foreground">Dimensões:</span> {w} × {h} mm</p>
+                                      <p><span className="font-medium text-foreground">Área unitária:</span> {area.toFixed(2)} m²</p>
+                                    </div>
+                                  )}
                                   <div>
-                                    <p><span className="font-medium text-foreground">Dimensões:</span> {w} × {h} mm</p>
-                                    <p><span className="font-medium text-foreground">Área unitária:</span> {area.toFixed(2)} m²</p>
+                                    <p><span className="font-medium text-foreground">Quantidade:</span> {item.quantity} unidade(s)</p>
+                                    {item.isCustomSize && <p><span className="font-medium text-foreground">Tamanho Personalizado:</span> Sim</p>}
+                                    {item.paperType && <p><span className="font-medium text-foreground">Papel:</span> {item.paperType}</p>}
+                                    {item.printColors && <p><span className="font-medium text-foreground">Cores:</span> {item.printColors}</p>}
                                   </div>
-                                )}
-                                <div>
-                                  <p><span className="font-medium text-foreground">Quantidade:</span> {item.quantity} unidade(s)</p>
-                                  {item.isCustomSize && <p><span className="font-medium text-foreground">Tamanho Personalizado:</span> Sim</p>}
-                                  {item.paperType && <p><span className="font-medium text-foreground">Papel:</span> {item.paperType}</p>}
-                                  {item.printColors && <p><span className="font-medium text-foreground">Cores:</span> {item.printColors}</p>}
                                 </div>
                               </div>
                             </div>
@@ -205,7 +294,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                             </div>
                           </div>
                         </div>
-                      )
+                      );
                     })}
                   </div>
                 </CardContent>
@@ -258,44 +347,52 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                 </CardContent>
               </Card>
 
-              {/* Análise Financeira */}
+              {/* Análise Financeira Real */}
               {hasFinancialAccess() && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center space-x-2">
-                      <Target className="w-5 h-5" />
-                      <span>Análise Financeira</span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <span className="font-medium">Subtotal:</span>
-                          <p className="text-lg font-bold">{formatCurrency(pedido.total || 0)}</p>
-                        </div>
-                        <div>
-                          <span className="font-medium">Custo Estimado:</span>
-                          <p className="text-lg font-bold text-red-600">{formatCurrency(Number(pedido.total || 0) * 0.6)}</p>
-                        </div>
-                        <div>
-                          <span className="font-medium">Margem Bruta:</span>
-                          <p className="text-lg font-bold text-green-600">{formatCurrency(Number(pedido.total || 0) * 0.4)}</p>
-                        </div>
-                        <div>
-                          <span className="font-medium">Margem %:</span>
-                          <p className="text-lg font-bold text-green-600">40%</p>
-                        </div>
-                      </div>
-                      <div className="border-t pt-4">
-                        <div className="flex justify-between items-center">
-                          <span className="font-medium">Total do Pedido:</span>
-                          <span className="text-2xl font-bold">{formatCurrency(pedido.total || 0)}</span>
-                        </div>
-                      </div>
+                <div className="space-y-4">
+                  {loadingFinancial ? (
+                    <div className="p-8 text-center animate-pulse bg-slate-50 rounded-lg">
+                      Carregando dados financeiros...
                     </div>
-                  </CardContent>
-                </Card>
+                  ) : receivable ? (
+                    <OrderFinancialStatus 
+                      totalOrder={Number(receivable.amount)}
+                      paidAmount={receivable.transactions?.reduce((sum: number, t: any) => sum + Number(t.amount), 0) || 0}
+                      payments={receivable.transactions?.map((t: any) => ({
+                        methodName: t.paymentMethod?.name || 'Não informado',
+                        amount: Number(t.amount),
+                        date: t.paidAt,
+                        installments: 1 // TODO: Support installments in transaction
+                      }))}
+                      onAddPayment={() => setIsPaymentModalOpen(true)}
+                      onRemovePayment={() => {}} // TODO: Implement delete transaction
+                    />
+                  ) : pedido.status === 'APPROVED' || pedido.status === 'IN_PRODUCTION' || pedido.status === 'FINISHED' || pedido.status === 'DELIVERED' ? (
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-sm italic">
+                      Este pedido foi aprovado mas não possui apropriação financeira vinculada.
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 text-sm italic">
+                      Aguardando aprovação do pedido para gerar apropriação no plano de contas.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Modal de Pagamento/Liquidação */}
+              {receivable && (
+                <PaymentSelection 
+                  isOpen={isPaymentModalOpen}
+                  onClose={() => setIsPaymentModalOpen(false)}
+                  onAddPayment={() => {}} // Não usado no fluxo de liquidação direta
+                  remainingAmount={Number(receivable.amount) - (receivable.transactions?.reduce((sum: number, t: any) => sum + Number(t.amount), 0) || 0)}
+                  receivableId={receivable.id}
+                  receivableAccountId={receivable.receivableAccountId}
+                  onSuccess={() => {
+                    fetchFinancialData();
+                    setIsPaymentModalOpen(false);
+                  }}
+                />
               )}
             </div>
 
@@ -344,6 +441,35 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           </div>
         </CardContent>
       </Card>
+
+      {/* Modais Aninhados (Partial Actions) */}
+      <PartialCancelModal
+        pedido={pedido}
+        itemsToCancel={getSelectedItemsFull()}
+        isOpen={showPartialCancelModal}
+        onClose={() => setShowPartialCancelModal(false)}
+        onSuccess={() => {
+          // Após sucesso, os items mudam. Talvez um refresh aqui seja via prop.
+          // Como onStatusChange é restrito a um pedido geral na UI de Pedidos.tsx
+          // O ideal é a pagina de Pedidos escutar atualizações profundas.
+          setSelectedItemIds([]);
+          // Hack para atualizar financeiro dentro do modal se já estivermos vendo
+          fetchFinancialData();
+          // Force fechar modal inteiro para reabrir, ou chamar refresh global:
+          toast.success('Itens atualizados! Recarregue a janela ou o pedido será atualizado no grid.');
+        }}
+      />
+
+      <PartialDeliveryModal
+        pedido={pedido}
+        itemsToDeliver={getSelectedItemsFull()}
+        isOpen={showPartialDeliveryModal}
+        onClose={() => setShowPartialDeliveryModal(false)}
+        onSuccess={() => {
+          setSelectedItemIds([]);
+          toast.success('Entrega gerada! Reabra o pedido para atualizar a visualização interna.');
+        }}
+      />
     </div>
   );
 };

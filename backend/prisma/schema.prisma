@@ -35,6 +35,7 @@ model Organization {
   materials              Material[]
   notifications          Notifications[]
   orders                 Order[]
+  deliveries             Delivery[]
   settings               OrganizationSettings?
   PaymentMethod          PaymentMethod[]
   pendingChanges         PendingChanges[]
@@ -63,6 +64,11 @@ model OrganizationSettings {
   validadeOrcamento    Int          @default(7)
   enableFinanceReports Boolean      @default(true)
   allowDuplicatePhones Boolean      @default(true)
+  
+  // Configurações de Apropriação Financeira (Plano de Contas)
+  defaultReceivableCategoryId String?
+  defaultRevenueCategoryId    String?
+  
   organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("organization_settings")
@@ -240,6 +246,8 @@ model Product {
   productionWastes ProductionWaste[]
   organization     Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   pricingRule      PricingRule?           @relation(fields: [pricingRuleId], references: [id])
+  revenueAccountId String?
+  revenueAccount   ChartOfAccount?        @relation("ProductRevenueAccount", fields: [revenueAccountId], references: [id])
 
   @@unique([organizationId, name], name: "organizationId_name")
   @@map("products")
@@ -426,6 +434,7 @@ model Order {
   productionQueue           ProductionQueue[]
   productionWastes          ProductionWaste[]
   transactions              Transaction[]
+  deliveries                Delivery[]
 
   @@unique([organizationId, orderNumber])
   @@map("orders")
@@ -482,8 +491,38 @@ model OrderItem {
   pricingRule     PricingRule?             @relation(fields: [pricingRuleId], references: [id])
   processStatus   ProcessStatus?           @relation(fields: [processStatusId], references: [id])
   product         Product                  @relation(fields: [productId], references: [id])
+  deliveryItems   DeliveryItem[]
 
   @@map("order_items")
+}
+
+model Delivery {
+  id             String         @id @default(uuid())
+  organizationId String
+  orderId        String
+  deliveryDate   DateTime?      @default(now())
+  status         DeliveryStatus @default(PENDING)
+  notes          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  
+  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  items          DeliveryItem[]
+
+  @@map("deliveries")
+}
+
+model DeliveryItem {
+  id              String      @id @default(uuid())
+  deliveryId      String
+  orderItemId     String
+  quantity        Int
+  
+  delivery        Delivery    @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  orderItem       OrderItem   @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@map("delivery_items")
 }
 
 model Budget {
@@ -673,6 +712,8 @@ model Transaction {
   receivableId    String?
   userId          String?
   competenceDate  DateTime?
+  accrualDate     DateTime?
+  paymentDate     DateTime?
   account         Account            @relation(fields: [accountId], references: [id])
   category        Category?          @relation(fields: [categoryId], references: [id])
   order           Order?             @relation(fields: [orderId], references: [id])
@@ -698,6 +739,11 @@ model Category {
   parent         Category?     @relation("CategoryHierarchy", fields: [parentId], references: [id])
   children       Category[]    @relation("CategoryHierarchy")
   transactions   Transaction[]
+  
+  // Relações Contábeis
+  paymentMethodsFee PaymentMethod[]  @relation("PaymentMethodFee")
+  chartOfAccountId String?
+  chartOfAccount    ChartOfAccount? @relation(fields: [chartOfAccountId], references: [id])
 
   @@map("categories")
 }
@@ -714,6 +760,11 @@ model PaymentMethod {
   updatedAt        DateTime          @updatedAt
   accountId        String?
   account          Account?          @relation(fields: [accountId], references: [id])
+  
+  // Categoria para Taxas (Plano de Contas)
+  feeCategoryId    String?
+  feeCategory      Category?         @relation("PaymentMethodFee", fields: [feeCategoryId], references: [id])
+  
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   transactions     Transaction[]
 
@@ -1024,17 +1075,26 @@ model AccountReceivable {
 }
 
 model ChartOfAccount {
-  id                 String             @id @default(uuid())
-  organizationId     String
-  name               String
-  code               String?
-  type               ChartOfAccountType
-  active             Boolean            @default(true)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  expenseMaterials   Material[]         @relation("MaterialExpenseAccount")
-  inventoryMaterials Material[]         @relation("MaterialInventoryAccount")
+  id             String           @id @default(uuid())
+  organizationId String
+  name           String
+  code           String?
+  description    String?
+  nature         AccountNature
+  type           ChartAccountType
+  parentId       String?
+  active         Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent         ChartOfAccount?  @relation("ChartAccountHierarchy", fields: [parentId], references: [id])
+  children       ChartOfAccount[] @relation("ChartAccountHierarchy")
+  categories     Category[]
+  revenueProducts Product[]        @relation("ProductRevenueAccount")
+
+  // Existing relations
+  expenseMaterials   Material[] @relation("MaterialExpenseAccount")
+  inventoryMaterials Material[] @relation("MaterialInventoryAccount")
 
   @@unique([organizationId, code], name: "organizationId_code")
   @@map("chart_of_accounts")
@@ -1089,6 +1149,13 @@ enum OrderStatus {
   APPROVED
   IN_PRODUCTION
   FINISHED
+  DELIVERED
+  CANCELLED
+}
+
+enum DeliveryStatus {
+  PENDING
+  SHIPPED
   DELIVERED
   CANCELLED
 }
@@ -1150,6 +1217,7 @@ enum AccountType {
   SAVINGS
   CASH
   CREDIT_CARD
+  RECEIVABLE
 }
 
 enum TransactionType {
@@ -1222,12 +1290,21 @@ enum ReceivableStatus {
   CANCELLED
 }
 
-enum ChartOfAccountType {
+enum ChartAccountType {
+  SYNTHETIC
+  ANALYTIC
+}
+
+enum AccountNature {
   ASSET
   LIABILITY
   EQUITY
   REVENUE
+  REVENUE_DEDUCTION
+  COST
   EXPENSE
+  RESULT_CALCULATION
+  CONTROL
 }
 
 enum ConsumptionRule {

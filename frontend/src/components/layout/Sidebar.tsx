@@ -16,7 +16,6 @@ import {
   Warehouse,
   Factory,
   DollarSign,
-  FlaskConical,
   TrendingUp
 } from 'lucide-react';
 
@@ -162,7 +161,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-4">
+      <nav className="flex-1 p-4 overflow-y-auto min-h-0">
         <ul className="space-y-2">
           {visibleMenuItems.map((item) => {
             const Icon = item.icon;

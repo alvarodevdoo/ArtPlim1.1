@@ -8,9 +8,13 @@ export interface CreateReceivableFromOrderInput {
   amount: number;
   dueDate: Date;
   receivableAccountId: string; // Conta de Ativo: Contas a Receber
-  revenueAccountId: string;    // Conta de Receita: Vendas / Faturamento
+  splits: {
+    revenueAccountId: string;  // Conta de Receita (Vendas/Serviços)
+    categoryId: string;        // Categoria Financeira
+    amount: number;            // Valor deste rateio
+    description?: string;      // Descrição customizada
+  }[];
   notes?: string;
-  categoryId?: string;
   userId: string; // Operador que realizou a ação
 }
 
@@ -38,9 +42,8 @@ export class ReceivableService {
       amount,
       dueDate,
       receivableAccountId,
-      revenueAccountId,
+      splits,
       notes,
-      categoryId,
       userId
     } = input;
 
@@ -48,8 +51,15 @@ export class ReceivableService {
       throw new AppError('O valor da conta a receber deve ser maior que zero.', 400);
     }
 
+    // Validar Soma dos Splits (Regra de Negócio Estrita)
+    const splitsTotal = splits.reduce((sum: number, split: any) => sum + split.amount, 0);
+    const tolerance = 0.01; // Tolerância para erros de arredondamento de centavos
+    if (Math.abs(splitsTotal - amount) > tolerance) {
+      throw new AppError(`A soma dos rateios (${splitsTotal}) deve ser igual ao valor total do recebível (${amount}).`, 400);
+    }
+
     return await this.prisma.$transaction(async (tx) => {
-      // ── 1. Criar o registro de Conta a Receber ────────────────────────────────
+      // ── 1. Criar o registro de Conta a Receber (PAI) ───────────────────────────
       const receivable = await tx.accountReceivable.create({
         data: {
           organizationId,
@@ -62,13 +72,10 @@ export class ReceivableService {
         }
       });
 
-      // ── 2. PARTIDAS DOBRADAS ───────────────────────────────────────────────────
-      //
-      //   DÉBITO  Contas a Receber (Ativo ↑)
-      //   INCOME  Receita de Vendas (Resultado)
-      //
+      // ── 2. PARTIDAS DOBRADAS (Master-Detail) ───────────────────────────────────
 
-      // 2a. DÉBITO – Ativo: Contas a Receber
+      // 2a. DÉBITO – Ativo: Contas a Receber (Vontade de receber do cliente)
+      // Representa o documento de cobrança único.
       await tx.transaction.create({
         data: {
           organizationId,
@@ -77,12 +84,12 @@ export class ReceivableService {
           amount,
           description: `Conta a Receber – Pedido ${orderId ? '#' + orderId.slice(-8) : 'avulso'}`,
           dueDate,
+          accrualDate: new Date(), // Competência inicial na criação
           status: TransactionStatus.PENDING,
           orderId,
-          categoryId,
           receivableId: receivable.id,
-          userId, // Quem fez
-          profileId: customerId // De quem
+          userId,
+          profileId: customerId
         }
       });
 
@@ -91,28 +98,32 @@ export class ReceivableService {
         data: { balance: { increment: amount } }
       });
 
-      // 2b. INCOME – Receita de Vendas
-      await tx.transaction.create({
-        data: {
-          organizationId,
-          accountId: revenueAccountId,
-          type: TransactionType.INCOME,
-          amount,
-          description: `Receita de Venda – Pedido ${orderId ? '#' + orderId.slice(-8) : 'avulso'}`,
-          dueDate,
-          status: TransactionStatus.PENDING,
-          orderId,
-          categoryId,
-          receivableId: receivable.id,
-          userId, // Quem fez
-          profileId: customerId // De quem
-        }
-      });
+      // 2b. INCOME – Rateios de Receita (DRE / Competência)
+      // Cria um lançamento de receita para cada item do rateio.
+      for (const split of splits) {
+        await tx.transaction.create({
+          data: {
+            organizationId,
+            accountId: split.revenueAccountId,
+            type: TransactionType.INCOME,
+            amount: split.amount,
+            description: split.description || `Receita de Venda/Serviço – Pedido ${orderId ? '#' + orderId.slice(-8) : 'avulso'}`,
+            dueDate,
+            accrualDate: new Date(), // Competência inicial na criação
+            status: TransactionStatus.PENDING,
+            orderId,
+            categoryId: split.categoryId,
+            receivableId: receivable.id,
+            userId,
+            profileId: customerId
+          }
+        });
 
-      await tx.account.update({
-        where: { id: revenueAccountId, organizationId },
-        data: { balance: { increment: amount } }
-      });
+        await tx.account.update({
+          where: { id: split.revenueAccountId, organizationId },
+          data: { balance: { increment: split.amount } }
+        });
+      }
 
       return receivable;
     });

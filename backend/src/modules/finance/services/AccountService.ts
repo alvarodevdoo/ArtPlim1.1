@@ -140,4 +140,24 @@ export class AccountService {
       balanceByType
     };
   }
+
+  async delete(id: string, organizationId: string) {
+    // Verificar se existem transações vinculadas a esta conta
+    const transactionCount = await this.prisma.transaction.count({
+      where: { accountId: id }
+    });
+
+    if (transactionCount > 0) {
+      // Soft Delete: Apenas desativa a conta para preservar o histórico financeiro
+      return this.prisma.account.updateMany({
+        where: { id, organizationId },
+        data: { active: false }
+      });
+    }
+
+    // Hard Delete: Se não tem nenhuma transação, pode apagar do banco
+    return this.prisma.account.deleteMany({
+      where: { id, organizationId }
+    });
+  }
 }

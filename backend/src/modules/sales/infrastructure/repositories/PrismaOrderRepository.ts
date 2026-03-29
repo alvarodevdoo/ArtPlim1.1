@@ -166,7 +166,8 @@ export class PrismaOrderRepository implements OrderRepository {
               select: {
                 id: true,
                 name: true,
-                description: true
+                description: true,
+                revenueAccountId: true
               }
             }
           }

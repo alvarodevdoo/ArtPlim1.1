@@ -37,6 +37,7 @@ interface Material {
       supplier: { name: string };
     };
   }[];
+  inventoryItems?: { quantity: number }[];
   _count: {
     components: number;
     inventoryItems: number;
@@ -460,7 +461,7 @@ const Materiais: React.FC = () => {
                         className="w-full h-10 px-3 py-2 border border-input rounded-md bg-background text-sm"
                       >
                         <option value="">— Selecione uma conta de Ativo —</option>
-                        {chartOfAccounts.filter(c => c.type === 'ASSET').map(acc => (
+                        {chartOfAccounts.filter(c => c.type === 'ANALYTIC' && c.code.startsWith('1')).map(acc => (
                           <option key={acc.id} value={acc.id}>{acc.code} - {acc.name}</option>
                         ))}
                       </select>
@@ -479,7 +480,7 @@ const Materiais: React.FC = () => {
                         className="w-full h-10 px-3 py-2 border border-input rounded-md bg-background text-sm"
                       >
                         <option value="">— Selecione uma conta de Despesa —</option>
-                        {chartOfAccounts.filter(c => c.type === 'EXPENSE').map(acc => (
+                        {chartOfAccounts.filter(c => c.type === 'ANALYTIC' && (c.code.startsWith('3') || c.code.startsWith('4'))).map(acc => (
                           <option key={acc.id} value={acc.id}>{acc.code} - {acc.name}</option>
                         ))}
                       </select>
@@ -641,11 +642,23 @@ const Materiais: React.FC = () => {
 
       {/* Materiais List */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredMateriais.map((material) => (
-          <Card key={material.id}>
-            <CardHeader className="pb-2">
+        {filteredMateriais.map((material) => {
+          const totalStock = material.inventoryItems?.reduce((acc: number, item: any) => acc + (item.quantity || 0), 0) || 0;
+          const enableLowStockAlert = material.minStockQuantity !== null && material.minStockQuantity !== undefined && material.minStockQuantity > 0;
+          const isLowStock = enableLowStockAlert && totalStock < material.minStockQuantity!;
+
+          return (
+          <Card key={material.id} className={isLowStock ? 'border-red-300 ring-1 ring-red-200 shadow-sm relative overflow-hidden' : ''}>
+            {isLowStock && (
+               <div className="absolute top-0 right-0 w-16 h-16 pointer-events-none">
+                 <div className="absolute transform rotate-45 bg-red-500 text-white text-[10px] font-bold py-1 right-[-35px] top-[15px] w-[120px] text-center shadow">
+                   ALERTA
+                 </div>
+               </div>
+            )}
+            <CardHeader className="pb-2 relative z-10">
               <div className="flex justify-between items-start">
-                <div>
+                <div className="pr-12">
                   <span className="px-2 py-1 bg-primary/10 text-primary text-[10px] rounded-full uppercase font-bold">
                     {material.category || 'Outros'}
                   </span>
@@ -711,14 +724,14 @@ const Materiais: React.FC = () => {
 
                 <div className="pt-2 border-t flex justify-between text-[11px] text-muted-foreground">
                   <span>Uso em {material._count?.components || 0} produto(s)</span>
-                  <span className={material._count?.inventoryItems === 0 ? 'text-red-500 font-bold' : ''}>
-                    {material._count?.inventoryItems || 0} em estoque
+                  <span className={isLowStock ? 'text-red-600 font-bold' : totalStock === 0 ? 'text-amber-600 font-medium' : 'text-emerald-600 font-medium'}>
+                    {totalStock} {material.unit} em estoque {enableLowStockAlert && `(Mín: ${material.minStockQuantity})`}
                   </span>
                 </div>
               </div>
             </CardContent>
           </Card>
-        ))}
+        )})}
       </div>
 
       {filteredMateriais.length === 0 && (

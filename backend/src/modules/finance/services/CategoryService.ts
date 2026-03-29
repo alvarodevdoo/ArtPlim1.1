@@ -7,6 +7,7 @@ interface CreateCategoryInput {
   type: CategoryType;
   color?: string;
   parentId?: string;
+  chartOfAccountId?: string;
 }
 
 export class CategoryService {
@@ -19,7 +20,8 @@ export class CategoryService {
         name: data.name,
         type: data.type,
         color: data.color,
-        parentId: data.parentId
+        parentId: data.parentId,
+        chartOfAccountId: data.chartOfAccountId
       },
       include: {
         parent: {
@@ -50,6 +52,13 @@ export class CategoryService {
         parent: {
           select: {
             id: true,
+            name: true
+          }
+        },
+        chartOfAccount: {
+          select: {
+            id: true,
+            code: true,
             name: true
           }
         },

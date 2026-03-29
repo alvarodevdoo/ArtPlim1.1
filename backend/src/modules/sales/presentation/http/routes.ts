@@ -32,6 +32,16 @@ export async function orderRoutes(fastify: FastifyInstance, orderController: Ord
     preHandler: [fastify.authenticate]
   }, orderController.updateStatus.bind(orderController));
 
+  // Cancelar itens do pedido
+  fastify.patch('/orders/:id/cancel-items', {
+    preHandler: [fastify.authenticate]
+  }, orderController.cancelItems.bind(orderController));
+
+  // Entregar/Gerar Romaneio
+  fastify.post('/orders/:id/deliveries', {
+    preHandler: [fastify.authenticate]
+  }, orderController.createDelivery.bind(orderController));
+
   // Simular preço de item
   fastify.post('/simulate', {
     preHandler: [fastify.authenticate]

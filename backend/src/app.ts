@@ -14,6 +14,8 @@ import { customConfigRoutes } from './modules/organization/custom-config.routes'
 import { wmsRoutes } from './modules/wms/wms.routes';
 import { productionRoutes } from './modules/production/production.routes';
 import { financeRoutes } from './modules/finance/finance.routes';
+import { chartOfAccountsRoutes } from './modules/chartOfAccounts/infrastructure/http/routes';
+
 import { adminRoutes } from './modules/admin/admin.routes';
 import { analyticsRoutes } from './modules/analytics/analytics.routes';
 import { paymentMethodRoutes } from './modules/finance/payment-method.routes';
@@ -22,8 +24,28 @@ import { budgetRoutes } from './modules/sales/budget.routes';
 import { fichaTecnicaRoutes } from './modules/catalog/ficha-tecnica.routes';
 
 async function registerPlugins(fastify: FastifyInstance) {
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'https://erp.artplim.com.br',
+    'http://erp.artplim.com.br',
+    'https://api.artplim.com.br',
+    'http://api.artplim.com.br'
+  ];
+
   await fastify.register(cors, {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: (origin, cb) => {
+      // Permitir requests sem origin (como mobile apps ou curl) se em dev
+      if (!origin) {
+        cb(null, true);
+        return;
+      }
+      
+      if (allowedOrigins.includes(origin) || allowedOrigins.some(o => origin.startsWith(o))) {
+        cb(null, true);
+        return;
+      }
+      cb(new Error("Not allowed by CORS"), false);
+    },
     credentials: true
   });
 
@@ -60,6 +82,8 @@ async function registerRoutes(fastify: FastifyInstance, options: { websocketServ
     }
 
     await api.register(financeRoutes, { prefix: '/finance' });
+    await api.register(chartOfAccountsRoutes, { prefix: '/finance' });
+
     await api.register(adminRoutes, { prefix: '/admin' });
     await api.register(analyticsRoutes, { prefix: '/analytics' });
     await api.register(paymentMethodRoutes, { prefix: '/payment-methods' });

@@ -3,6 +3,8 @@ import { OrderStatus, OrderStatusEnum } from '../../domain/value-objects/OrderSt
 import { OrderRepository } from '../../domain/repositories/OrderRepository';
 import { NotFoundError, ValidationError } from '../../../../shared/infrastructure/errors/AppError';
 import { ProcessStatusService } from '../../../organization/services/ProcessStatusService';
+import { ReceivableService } from '../../../finance/services/ReceivableService';
+import { OrderStatus as OrderStatusPrisma } from '@prisma/client';
 
 export class UpdateOrderStatusUseCase {
   constructor(
@@ -62,18 +64,31 @@ export class UpdateOrderStatusUseCase {
         // Se não for UUID e não for cancelado, atualiza status legado normalmente
         order.changeStatus(newStatus);
         
+        // --- INÍCIO DA INTEGRAÇÃO FINANCEIRA ---
+        if (status === OrderStatusEnum.APPROVED) {
+          console.log(`[UpdateOrderStatus] Detectado status APPROVED. Iniciando apropriação financeira para o pedido ${id}`);
+          await this.handleAppropriation(order, details);
+        }
+        // --- FIM DA INTEGRAÇÃO FINANCEIRA ---
+
         // Se estiver finalizando o pedido, atualizar campos do regime de competência
         if (newStatus.isFinished()) {
-          // Buscar a transação associada para pegar a competenceDate
-          const transaction = await this.prisma.transaction.findFirst({
-            where: { orderId: order.id, type: 'INCOME' },
-            orderBy: { createdAt: 'desc' }
+          console.log(`[UpdateOrderStatus] Pedido FINALIZADO. Atualizando accrualDate das transações para hoje.`);
+          
+          const now = new Date();
+          
+          // Atualizar accrualDate de todas as transações de receita (INCOME) deste pedido
+          await this.prisma.transaction.updateMany({
+            where: { 
+              orderId: order.id, 
+              type: 'INCOME' 
+            },
+            data: {
+              accrualDate: now
+            }
           });
           
-          if (transaction?.competenceDate) {
-            console.log(`[UpdateOrderStatus] Usando competenceDate da transação: ${transaction.competenceDate}`);
-            order.finishedAt = transaction.competenceDate;
-          }
+          order.finishedAt = now;
         }
       }
     }
@@ -81,6 +96,120 @@ export class UpdateOrderStatusUseCase {
     const savedOrder = await this.orderRepository.save(order);
     console.log(`[UpdateOrderStatus] Pedido ${id} salvo com sucesso`);
     return savedOrder;
+  }
+
+  private async handleAppropriation(order: any, details: any) {
+    try {
+      const settings = await this.prisma.organizationSettings.findUnique({
+        where: { organizationId: order.organizationId }
+      });
+
+      if (!settings?.defaultReceivableCategoryId || !settings?.defaultRevenueCategoryId) {
+        console.log('[UpdateOrderStatus] Apropriação ignorada: Categorias padrão não configuradas.');
+        return;
+      }
+
+      // 1. Buscar o pedido completo com itens e produtos para obter as contas de receita
+      // Usamos findUnique diretamente para garantir que temos os dados mais frescos e as relações
+      const orderWithDetails = await this.prisma.order.findUnique({
+        where: { id: order.id },
+        include: {
+          items: {
+            include: {
+              product: true
+            }
+          }
+        }
+      });
+
+      if (!orderWithDetails) return;
+
+      // 2. Buscar Conta de Receita Padrão (Fallback)
+      let defaultRevenueAccount = await this.prisma.account.findFirst({
+        where: { organizationId: order.organizationId, active: true, type: { notIn: ['RECEIVABLE', 'PAYABLE'] } }
+      });
+      
+      // 3. Agrupar itens por Par (revenueAccountId + categoryId)
+      const splitsMap = new Map<string, { amount: number, accountId: string, categoryId: string, description: string }>();
+
+      for (const item of orderWithDetails.items) {
+        // Resolve a conta: Produto -> Fallback Global
+        const revenueAccountId = item.product?.revenueAccountId || defaultRevenueAccount?.id;
+        
+        // Resolve a categoria: Produto -> Fallback Global
+        const categoryId = item.product?.categoryId || settings.defaultRevenueCategoryId;
+        
+        if (!revenueAccountId || !categoryId) {
+          console.warn(`[UpdateOrderStatus] Falha ao resolver conta/categoria para o produto ${item.product?.name}`);
+          continue;
+        }
+
+        const key = `${revenueAccountId}-${categoryId}`;
+        const current = splitsMap.get(key) || { 
+          amount: 0, 
+          accountId: revenueAccountId, 
+          categoryId: categoryId, 
+          description: '' 
+        };
+        
+        current.amount += Number(item.totalPrice);
+        current.description = current.description 
+          ? `${current.description}, ${item.product?.name || 'Item'}` 
+          : `Rateio: ${item.product?.name || 'Item'}`;
+        
+        splitsMap.set(key, current);
+      }
+
+      // 4. Converter o mapa para o array de splits esperado pelo serviço
+      const splits = Array.from(splitsMap.values()).map((data) => ({
+        revenueAccountId: data.accountId,
+        categoryId: data.categoryId,
+        amount: Number(data.amount.toFixed(2)),
+        description: data.description.substring(0, 255)
+      }));
+
+      // Ajuste fino para evitar erros de centavos (atribuir diferença ao primeiro split)
+      const totalAmount = Number((order as any).total?.value || (order as any).total || 0);
+      const sumSplits = splits.reduce((sum, s) => sum + s.amount, 0);
+      const diff = totalAmount - sumSplits;
+      if (Math.abs(diff) > 0 && splits.length > 0) {
+        splits[0].amount = Number((splits[0].amount + diff).toFixed(2));
+      }
+
+      // 4. Buscar Conta de Recebíveis (Ativo)
+      let receivableAccount = await this.prisma.account.findFirst({
+        where: { organizationId: order.organizationId, type: 'RECEIVABLE', active: true }
+      });
+
+      if (!receivableAccount) {
+        receivableAccount = await this.prisma.account.create({
+          data: {
+            organizationId: order.organizationId,
+            name: 'Contas a Receber',
+            type: 'RECEIVABLE',
+            balance: 0,
+            active: true
+          }
+        });
+      }
+
+      const receivableService = new ReceivableService(this.prisma);
+      await receivableService.createReceivableFromOrder({
+        organizationId: order.organizationId,
+        customerId: order.customerId,
+        orderId: order.id,
+        amount: totalAmount,
+        dueDate: (order as any).deliveryDate || new Date(),
+        receivableAccountId: receivableAccount.id,
+        splits,
+        notes: `Apropriação automática - Pedido ${(order as any).orderNumber?.value || (order as any).orderNumber}`,
+        userId: details?.userId || 'SYSTEM'
+      });
+
+      console.log(`[UpdateOrderStatus] Apropriação concluída para o pedido ${order.id}`);
+    } catch (error) {
+      console.error('[UpdateOrderStatus] Erro na apropriação financeira:', error);
+    }
   }
 
   private async processFinancialAction(order: Order, details: any) {

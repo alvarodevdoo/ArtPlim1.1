@@ -6,6 +6,8 @@ import { GetOrderUseCase } from './application/use-cases/GetOrderUseCase';
 import { ListOrdersUseCase } from './application/use-cases/ListOrdersUseCase';
 import { UpdateOrderStatusUseCase } from './application/use-cases/UpdateOrderStatusUseCase';
 import { GetOrderStatsUseCase } from './application/use-cases/GetOrderStatsUseCase';
+import { CancelOrderItemsUseCase } from './application/use-cases/CancelOrderItemsUseCase';
+import { CreateDeliveryUseCase } from './application/use-cases/CreateDeliveryUseCase';
 import { OrderController } from './presentation/http/OrderController';
 import { orderRoutes } from './presentation/http/routes';
 import { PricingEngine } from '../../shared/application/pricing/PricingEngine';
@@ -32,6 +34,8 @@ export class SalesModule {
   private listOrdersUseCase!: ListOrdersUseCase;
   private updateOrderStatusUseCase!: UpdateOrderStatusUseCase;
   private getOrderStatsUseCase!: GetOrderStatsUseCase;
+  private cancelOrderItemsUseCase!: CancelOrderItemsUseCase;
+  private createDeliveryUseCase!: CreateDeliveryUseCase;
   private orderController!: OrderController;
   private pricingEngine!: PricingEngine;
   private processStatusService!: ProcessStatusService;
@@ -79,6 +83,8 @@ export class SalesModule {
       this.processStatusService
     );
     this.getOrderStatsUseCase = new GetOrderStatsUseCase(this.orderRepository);
+    this.cancelOrderItemsUseCase = new CancelOrderItemsUseCase(this.prisma);
+    this.createDeliveryUseCase = new CreateDeliveryUseCase(this.prisma);
 
     // Controllers
     this.orderController = new OrderController(
@@ -87,7 +93,9 @@ export class SalesModule {
       this.getOrderUseCase,
       this.listOrdersUseCase,
       this.updateOrderStatusUseCase,
-      this.getOrderStatsUseCase
+      this.getOrderStatsUseCase,
+      this.cancelOrderItemsUseCase,
+      this.createDeliveryUseCase
     );
   }
 

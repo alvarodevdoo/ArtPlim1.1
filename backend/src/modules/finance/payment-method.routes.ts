@@ -6,9 +6,21 @@ const createPaymentMethodSchema = z.object({
   name: z.string().min(1, 'Nome é obrigatório'),
   type: z.enum(['PIX', 'CARD', 'CASH', 'TRANSFER', 'BOLETO', 'OTHER']),
   feePercentage: z.number().min(0).default(0),
+  feeCategoryId: z.string().uuid().nullish(),
   installmentRules: z.object({
     maxInstallments: z.number().min(1).optional(),
     interestFreeInstallments: z.number().min(1).optional(),
+    installmentFees: z.array(z.object({
+      installment: z.number(),
+      fee: z.number()
+    })).optional(),
+    brands: z.array(z.object({
+      name: z.string(),
+      installmentFees: z.array(z.object({
+        installment: z.number(),
+        fee: z.number()
+      })).optional()
+    })).optional(),
   }).optional(),
   accountId: z.string().nullish(),
   active: z.boolean().default(true),
