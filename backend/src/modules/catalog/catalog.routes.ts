@@ -44,20 +44,26 @@ const createMaterialSchema = z.object({
   category: z.string().optional().default("Outros"),
   description: z.string().optional(),
   format: z.enum(['ROLL', 'SHEET', 'UNIT']),
-  costPerUnit: z.number().positive(),
+  costPerUnit: z.number().min(0),
   unit: z.string().min(1),
-  standardWidth: z.number().positive().optional(),
-  standardLength: z.number().positive().optional(),
-  defaultConsumptionRule: z.enum(['AREA', 'PERIMETER', 'SPACING', 'FIXED']).optional(),
+  controlUnit: z.enum(['UN', 'M', 'M2', 'ML']).optional().nullable(),
+  conversionFactor: z.number().optional().default(1),
+  width: z.number().min(0).optional().nullable(),
+  height: z.number().min(0).optional().nullable(),
+  defaultConsumptionRule: z.enum(['PRODUCT_AREA', 'PERIMETER', 'SPACING', 'FIXED_UNIT']).optional(),
   defaultConsumptionFactor: z.number().optional(),
   inventoryAccountId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   expenseAccountId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   minStockQuantity: z.preprocess((val) => (val === '' || val === null || val === undefined) ? null : isNaN(Number(val)) ? null : Number(val), z.number().min(0).nullable().optional()),
   sellWithoutStock: z.boolean().optional().default(true),
+  trackStock: z.boolean().optional().default(true),
+  spedType: z.string().optional().nullable(),
   suppliers: z.array(z.object({
     supplierId: z.string().uuid(),
     costPrice: z.number().min(0),
-    supplierCode: z.string().optional()
+    supplierCode: z.string().optional(),
+    paymentTerms: z.string().optional().nullable(),
+    preferredPaymentDay: z.number().min(1).max(31).optional().nullable()
   })).optional()
 });
 
@@ -265,11 +271,23 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
+
+    // ====== [LOG 1] RAW BODY RECEBIDO ======
+    console.log('[MAT-UPDATE] RAW BODY:', JSON.stringify(request.body, null, 2));
+
     const body = createMaterialSchema.partial().parse(request.body);
+
+    // ====== [LOG 2] BODY APOS ZOD PARSE ======
+    console.log('[MAT-UPDATE] PARSED BODY:', JSON.stringify(body, null, 2));
+    console.log('[MAT-UPDATE] trackStock:', (body as any).trackStock, '| spedType:', (body as any).spedType, '| costPerUnit:', (body as any).costPerUnit);
+
     const prisma = getTenantClient(request.user!.organizationId);
     const materialService = new MaterialService(prisma);
 
     const material = await materialService.update(id, body);
+
+    // ====== [LOG 3] RESULTADO DO BANCO ======
+    console.log('[MAT-UPDATE] RESULTADO DB:', JSON.stringify({ id: (material as any).id, trackStock: (material as any).trackStock, spedType: (material as any).spedType, costPerUnit: (material as any).costPerUnit }, null, 2));
 
     return reply.send({
       success: true,
@@ -876,5 +894,17 @@ export async function catalogRoutes(fastify: FastifyInstance) {
 
     const result = await service.save(request.user!.organizationId, data);
     return reply.send({ success: true, data: result });
+  });
+
+  // ========== MÁQUINAS (Listagem Básica para WMS) ==========
+  fastify.get('/machines', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const prisma = getTenantClient(request.user!.organizationId);
+    const machines = await prisma.machine.findMany({
+      where: { organizationId: request.user!.organizationId, active: true },
+      orderBy: { name: 'asc' }
+    });
+    return reply.send({ success: true, data: machines });
   });
 }

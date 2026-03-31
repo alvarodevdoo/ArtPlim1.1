@@ -12,7 +12,7 @@ import DashboardSimple from '@/pages/DashboardSimple';
 import Clientes from '@/pages/Clientes';
 import Funcionarios from '@/pages/Funcionarios';
 import Produtos from '@/pages/Produtos';
-import Materiais from '@/pages/Materiais';
+import Insumos from '@/pages/Insumos';
 import Orcamentos from '@/pages/Orcamentos';
 import Pedidos from '@/pages/Pedidos';
 import CriarPedido from '@/pages/CriarPedido';
@@ -80,7 +80,7 @@ function App() {
               <Route path="/materiais" element={
                 <ProtectedRoute permission="inventory.view">
                   <Layout>
-                    <Materiais />
+                    <Insumos />
                   </Layout>
                 </ProtectedRoute>
               } />
@@ -159,8 +159,15 @@ function App() {
                 </ProtectedRoute>
               } />
 
-              <Route path="/insumos" element={<Navigate to="/materiais" replace />} />
+              <Route path="/insumos" element={
+                <ProtectedRoute permission="inventory.view">
+                  <Layout>
+                    <Insumos />
+                  </Layout>
+                </ProtectedRoute>
+              } />
 
+              <Route path="/estoque-consumo" element={<Navigate to="/insumos" replace />} />
 
               {/* Redirect para dashboard se logado */}
               <Route path="*" element={<Navigate to="/" replace />} />

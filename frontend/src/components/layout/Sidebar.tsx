@@ -58,8 +58,8 @@ const allMenuItems: MenuItem[] = [
     alwaysVisible: true
   },
   {
-    title: 'Materiais',
-    href: '/materiais',
+    title: 'Insumos',
+    href: '/insumos',
     icon: Layers,
     permission: 'inventory.view'
   },
@@ -146,13 +146,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       isOpen ? "w-64" : "w-16"
     )}>
       {/* Logo */}
-      <div className="p-4 border-b border-border">
+      <div className={cn("p-4 border-b border-border transition-all", !isOpen && "flex justify-center")}>
         <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shrink-0">
             <span className="text-primary-foreground font-bold text-sm">A</span>
           </div>
           {isOpen && (
-            <div>
+            <div className="transition-all duration-300 transform origin-left">
               <h1 className="font-bold text-lg text-foreground">ArtPlim</h1>
               <p className="text-xs text-muted-foreground">ERP Gráfico</p>
             </div>
@@ -172,15 +172,17 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
                 <Link
                   to={item.href}
                   className={cn(
-                    "flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors",
+                    "flex items-center rounded-lg transition-all duration-200 h-10 px-3",
+                    isOpen ? "space-x-3 w-full" : "justify-center px-0 w-10 mx-auto",
                     isActive
-                      ? "bg-primary text-primary-foreground"
+                      ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
                       : "text-muted-foreground hover:text-foreground hover:bg-accent"
                   )}
+                  title={!isOpen ? item.title : undefined}
                 >
                   <Icon className="w-5 h-5 flex-shrink-0" />
                   {isOpen && (
-                    <span className="font-medium">{item.title}</span>
+                    <span className="font-medium whitespace-nowrap overflow-hidden text-ellipsis">{item.title}</span>
                   )}
                 </Link>
               </li>

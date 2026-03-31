@@ -21,6 +21,7 @@ const updateSettingsSchema = z.object({
   taxRate: z.number().min(0).max(100).optional(),
   validadeOrcamento: z.number().int().min(1).max(365).optional(),
   allowDuplicatePhones: z.boolean().optional(),
+  requireDocumentKeyForEntry: z.boolean().optional(),
   defaultReceivableCategoryId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   defaultRevenueCategoryId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional()
 });

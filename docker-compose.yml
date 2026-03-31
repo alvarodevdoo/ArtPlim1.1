@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Banco de dados PostgreSQL
   postgres:
@@ -70,6 +68,7 @@ services:
 
 volumes:
   postgres_data:
+
 
 networks:
   artplim_network:

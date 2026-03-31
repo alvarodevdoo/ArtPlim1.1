@@ -1,0 +1,288 @@
+// ============================================================
+// ProductiveIntelligence.module.scss - REFINAMENTO PREMIUM
+// ============================================================
+
+@function color($var, $opacity: 1) {
+  @if $opacity < 1 {
+    @return hsl(var(--#{$var}) / $opacity);
+  }
+  @return hsl(var(--#{$var}));
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  background: color(background);
+  border: 1px solid color(border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 200ms ease;
+
+  &:hover {
+    border-color: color(primary, 0.3);
+  }
+}
+
+// Cabeçalho compactado
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: color(muted, 0.4);
+  border-bottom: 1px solid color(border, 0.6);
+}
+
+.titleGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.iconCircle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: color(primary, 0.1);
+  color: color(primary);
+  border-radius: 50%;
+}
+
+.title {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: color(foreground);
+  margin: 0;
+}
+
+// Seletor de métricas (m/cm/mm)
+.unitToggle {
+  display: flex;
+  background: color(background);
+  padding: 2px;
+  border-radius: 6px;
+  border: 1px solid color(border, 0.8);
+}
+
+.unitBtn {
+  padding: 2px 8px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  border: none;
+  background: transparent;
+  color: color(muted-foreground);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 150ms ease;
+
+  &:hover {
+    color: color(foreground);
+  }
+
+  &.active {
+    background: color(primary);
+    color: color(primary-foreground);
+  }
+}
+
+// Conteúdo Interno
+.content {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+
+  &.threeCols {
+    grid-template-columns: 1fr 1fr 1fr;
+    
+    @media (max-width: 650px) {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 480px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0; // Evita que o flex-item estoure o grid
+
+  label {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: color(muted-foreground);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  select, input {
+    height: 38px;
+    padding: 0 10px;
+    background: color(background);
+    border: 1px solid color(border);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: color(foreground);
+    outline: none;
+    transition: all 150ms ease;
+    width: 100%;
+
+    &:focus {
+      border-color: color(primary);
+      box-shadow: 0 0 0 3px color(primary, 0.15);
+    }
+  }
+
+  select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 28px;
+  }
+}
+
+// Fator de Conversão Especial
+.factorField {
+  .inputGroup {
+    position: relative;
+    display: flex;
+    align-items: center;
+
+    input {
+      width: 100%;
+      padding-right: 36px;
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      color: color(primary);
+    }
+  }
+}
+
+.magicBtn {
+  position: absolute;
+  right: 4px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color(primary, 0.05);
+  border: 1px solid color(primary, 0.1);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 200ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+  &:hover {
+    background: color(primary);
+    transform: scale(1.1) rotate(5deg);
+    border-color: color(primary);
+  }
+}
+
+.helperText {
+  margin-top: 4px;
+  font-size: 9px;
+  color: color(muted-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  
+  strong {
+    color: color(foreground);
+    font-weight: 700;
+  }
+}
+
+// Fator de Conversão Especial com Addon
+.factorField {
+  .inputWithAddon {
+    position: relative;
+    display: flex;
+    align-items: center;
+
+    input {
+      width: 100%;
+      padding-right: 50px;
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      color: color(primary);
+    }
+
+    .addon {
+      position: absolute;
+      right: 4px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      padding: 0 8px;
+      background: color(muted, 0.4);
+      border-radius: 6px;
+      font-size: 9px;
+      font-weight: 800;
+      color: color(muted-foreground);
+      text-transform: uppercase;
+      border: 1px solid color(border, 0.5);
+      pointer-events: none;
+      transition: all 200ms ease;
+    }
+    
+    &:focus-within .addon {
+      background: color(primary, 0.05);
+      border-color: color(primary, 0.2);
+      color: color(primary);
+    }
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+// Banner de Feedback Técnico
+.feedbackBanner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: color(muted, 0.3);
+  border-radius: 8px;
+  font-size: 11px;
+  color: color(muted-foreground);
+  font-family: 'JetBrains Mono', monospace;
+
+  .badge {
+    font-size: 8px;
+    text-transform: uppercase;
+    font-weight: 900;
+    padding: 2px 6px;
+    background: color(foreground, 0.05);
+    border-radius: 4px;
+  }
+
+  .result {
+    margin-left: auto;
+    font-weight: 800;
+    color: color(primary);
+  }
+}

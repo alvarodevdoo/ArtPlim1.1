@@ -8,15 +8,25 @@ interface CreateMaterialInput {
   format: MaterialFormat;
   costPerUnit: number;
   unit: string;
-  standardWidth?: number;
-  standardLength?: number;
+  controlUnit?: any;
+  conversionFactor?: number;
+  width?: number | null;
+  height?: number | null;
   defaultConsumptionRule?: any;
   defaultConsumptionFactor?: number;
   inventoryAccountId?: string | null;
   expenseAccountId?: string | null;
   minStockQuantity?: number | null;
   sellWithoutStock?: boolean;
-  suppliers?: { supplierId: string; costPrice: number; supplierCode?: string }[];
+  trackStock?: boolean;
+  spedType?: string | null;
+  suppliers?: { 
+    supplierId: string; 
+    costPrice: number; 
+    supplierCode?: string;
+    paymentTerms?: string | null;
+    preferredPaymentDay?: number | null;
+  }[];
 }
 
 export class MaterialService {
@@ -31,19 +41,25 @@ export class MaterialService {
         format: data.format,
         costPerUnit: data.costPerUnit,
         unit: data.unit,
-        standardWidth: data.standardWidth,
-        standardLength: data.standardLength,
+        controlUnit: data.controlUnit,
+        conversionFactor: data.conversionFactor || 1.0,
+        width: data.width,
+        height: data.height,
         defaultConsumptionRule: data.defaultConsumptionRule,
         defaultConsumptionFactor: data.defaultConsumptionFactor,
         inventoryAccountId: data.inventoryAccountId,
         expenseAccountId: data.expenseAccountId,
         minStockQuantity: data.minStockQuantity,
         sellWithoutStock: data.sellWithoutStock,
+        trackStock: data.trackStock,
+        spedType: data.spedType,
         suppliers: data.suppliers?.length ? {
           create: data.suppliers.map(s => ({
             supplierId: s.supplierId,
             costPrice: s.costPrice,
-            supplierCode: s.supplierCode
+            supplierCode: s.supplierCode,
+            paymentTerms: s.paymentTerms,
+            preferredPaymentDay: s.preferredPaymentDay
           }))
         } : undefined
       }
@@ -130,33 +146,58 @@ export class MaterialService {
   }
 
   async update(id: string, data: Partial<CreateMaterialInput>) {
-    const { suppliers, ...updateData } = data;
-    
-    // Se enviou array de fornecedores, recria os vínculos
-    if (suppliers !== undefined) {
-      await this.prisma.materialSupplier.deleteMany({
-        where: { materialId: id }
-      });
-    }
+    const { suppliers, ..._ } = data;
 
-    const material = await this.prisma.material.update({
-      where: { id },
-      data: {
-        ...updateData,
-        updatedAt: new Date(),
-        ...(suppliers !== undefined ? {
-          suppliers: {
-            create: suppliers.map(s => ({
-              supplierId: s.supplierId,
-              costPrice: s.costPrice,
-              supplierCode: s.supplierCode
-            }))
-          }
-        } : {})
+    return this.prisma.$transaction(async (tx: any) => {
+      // Se enviou array de fornecedores, recria os vínculos
+      if (suppliers !== undefined) {
+        await tx.materialSupplier.deleteMany({
+          where: { materialId: id }
+        });
       }
-    });
 
-    return material;
+      // Mapeamento explícito para garantir que campos novos não sejam descartados pelo Prisma
+      const updateFields: any = { updatedAt: new Date() };
+
+      if (data.name !== undefined)                    updateFields.name = data.name;
+      if (data.category !== undefined)                updateFields.category = data.category;
+      if (data.description !== undefined)             updateFields.description = data.description;
+      if (data.format !== undefined)                  updateFields.format = data.format;
+      if (data.costPerUnit !== undefined)             updateFields.costPerUnit = data.costPerUnit;
+      if (data.unit !== undefined)                    updateFields.unit = data.unit;
+      if (data.controlUnit !== undefined)             updateFields.controlUnit = data.controlUnit;
+      if (data.conversionFactor !== undefined)        updateFields.conversionFactor = data.conversionFactor;
+      if (data.width !== undefined)                   updateFields.width = data.width;
+      if (data.height !== undefined)                  updateFields.height = data.height;
+      if (data.defaultConsumptionRule !== undefined)  updateFields.defaultConsumptionRule = data.defaultConsumptionRule;
+      if (data.defaultConsumptionFactor !== undefined) updateFields.defaultConsumptionFactor = data.defaultConsumptionFactor;
+      if (data.inventoryAccountId !== undefined)      updateFields.inventoryAccountId = data.inventoryAccountId;
+      if (data.expenseAccountId !== undefined)        updateFields.expenseAccountId = data.expenseAccountId;
+      if (data.minStockQuantity !== undefined)        updateFields.minStockQuantity = data.minStockQuantity;
+      if (data.sellWithoutStock !== undefined)        updateFields.sellWithoutStock = data.sellWithoutStock;
+      if (data.trackStock !== undefined)              updateFields.trackStock = data.trackStock;
+      if (data.spedType !== undefined)                updateFields.spedType = data.spedType;
+
+      if (suppliers !== undefined) {
+        updateFields.suppliers = {
+          create: suppliers.map(s => ({
+            supplierId: s.supplierId,
+            costPrice: s.costPrice,
+            supplierCode: s.supplierCode,
+            paymentTerms: s.paymentTerms,
+            preferredPaymentDay: s.preferredPaymentDay
+          }))
+        };
+      }
+
+      // ====== [LOG 4] CAMPOS QUE SERAO SALVOS NO PRISMA ======
+      console.log('[MAT-SERVICE] updateFields:', JSON.stringify(updateFields, null, 2));
+
+      return tx.material.update({
+        where: { id },
+        data: updateFields
+      });
+    });
   }
 
   async delete(id: string) {

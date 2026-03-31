@@ -48,28 +48,30 @@ model Organization {
   standardSizes          StandardSize[]
   transactions           Transaction[]
   users                  User[]
+  stockMovements         StockMovement[]
 
   @@map("organizations")
 }
 
 model OrganizationSettings {
-  id                   String       @id @default(uuid())
-  organizationId       String       @unique
-  enableWMS            Boolean      @default(false)
-  enableProduction     Boolean      @default(false)
-  enableFinance        Boolean      @default(true)
-  enableAutomation     Boolean      @default(true)
-  defaultMarkup        Float        @default(2.0)
-  taxRate              Float        @default(0.0)
-  validadeOrcamento    Int          @default(7)
-  enableFinanceReports Boolean      @default(true)
-  allowDuplicatePhones Boolean      @default(true)
-  
+  id                   String  @id @default(uuid())
+  organizationId       String  @unique
+  enableWMS            Boolean @default(false)
+  enableProduction     Boolean @default(false)
+  enableFinance        Boolean @default(true)
+  enableAutomation     Boolean @default(true)
+  defaultMarkup        Float   @default(2.0)
+  taxRate              Float   @default(0.0)
+  validadeOrcamento    Int     @default(7)
+  enableFinanceReports Boolean @default(true)
+  allowDuplicatePhones Boolean @default(true)
+  requireDocumentKeyForEntry Boolean @default(false)
+
   // Configurações de Apropriação Financeira (Plano de Contas)
   defaultReceivableCategoryId String?
   defaultRevenueCategoryId    String?
-  
-  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("organization_settings")
 }
@@ -150,6 +152,7 @@ model Profile {
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user               User?               @relation(fields: [userId], references: [id])
   transactions       Transaction[]
+  stockMovements     StockMovement[]     @relation("SupplierMovements")
 
   @@unique([organizationId, name], name: "organizationId_name")
   @@unique([organizationId, document], name: "organizationId_document")
@@ -164,29 +167,36 @@ model Material {
   format                   MaterialFormat
   costPerUnit              Decimal               @db.Decimal(10, 4)
   unit                     String
-  standardWidth            Float?
-  standardLength           Float?
+  controlUnit              ControlUnit?
+  conversionFactor         Float                 @default(1.0)
+  width                    Float?
+  height                   Float?
   active                   Boolean               @default(true)
   createdAt                DateTime              @default(now())
   updatedAt                DateTime              @updatedAt
   category                 String                @default("Outros")
   defaultConsumptionFactor Decimal               @default(1.0) @db.Decimal(10, 4)
-  defaultConsumptionRule   ConsumptionRule       @default(FIXED)
+  defaultConsumptionRule   ConsumptionRule       @default(FIXED_UNIT)
   expenseAccountId         String?
   inventoryAccountId       String?
   minStockQuantity         Float?
   sellWithoutStock         Boolean               @default(true)
+  trackStock               Boolean               @default(true)
+  spedType                 String?
   fichasTecnicas           FichaTecnicaInsumo[]
   fornecedores             InsumoFornecedor[]
   inventoryAlerts          InventoryAlert[]
   inventoryItems           InventoryItem[]
   receiptItems             MaterialReceiptItem[]
   suppliers                MaterialSupplier[]
+  stockMovements           StockMovement[]
   expenseAccount           ChartOfAccount?       @relation("MaterialExpenseAccount", fields: [expenseAccountId], references: [id])
   inventoryAccount         ChartOfAccount?       @relation("MaterialInventoryAccount", fields: [inventoryAccountId], references: [id])
   organization             Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   components               ProductComponent[]
   productionWastes         ProductionWaste[]
+  averageCost              Decimal               @default(0) @db.Decimal(10, 4)
+  currentStock             Decimal               @default(0) @db.Decimal(15, 4)
 
   @@unique([organizationId, name], name: "organizationId_name")
   @@index([organizationId])
@@ -505,22 +515,22 @@ model Delivery {
   notes          String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
-  
-  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  items          DeliveryItem[]
+
+  order        Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  items        DeliveryItem[]
 
   @@map("deliveries")
 }
 
 model DeliveryItem {
-  id              String      @id @default(uuid())
-  deliveryId      String
-  orderItemId     String
-  quantity        Int
-  
-  delivery        Delivery    @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
-  orderItem       OrderItem   @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  id          String @id @default(uuid())
+  deliveryId  String
+  orderItemId String
+  quantity    Int
+
+  delivery  Delivery  @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
 
   @@map("delivery_items")
 }
@@ -669,6 +679,7 @@ model Machine {
   active          Boolean       @default(true)
   createdAt       DateTime      @default(now())
   organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stockMovements  StockMovement[]
 
   @@map("machines")
 }
@@ -739,10 +750,10 @@ model Category {
   parent         Category?     @relation("CategoryHierarchy", fields: [parentId], references: [id])
   children       Category[]    @relation("CategoryHierarchy")
   transactions   Transaction[]
-  
+
   // Relações Contábeis
-  paymentMethodsFee PaymentMethod[]  @relation("PaymentMethodFee")
-  chartOfAccountId String?
+  paymentMethodsFee PaymentMethod[] @relation("PaymentMethodFee")
+  chartOfAccountId  String?
   chartOfAccount    ChartOfAccount? @relation(fields: [chartOfAccountId], references: [id])
 
   @@map("categories")
@@ -760,13 +771,13 @@ model PaymentMethod {
   updatedAt        DateTime          @updatedAt
   accountId        String?
   account          Account?          @relation(fields: [accountId], references: [id])
-  
+
   // Categoria para Taxas (Plano de Contas)
-  feeCategoryId    String?
-  feeCategory      Category?         @relation("PaymentMethodFee", fields: [feeCategoryId], references: [id])
-  
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  transactions     Transaction[]
+  feeCategoryId String?
+  feeCategory   Category? @relation("PaymentMethodFee", fields: [feeCategoryId], references: [id])
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
 
   @@map("payment_methods")
 }
@@ -1011,6 +1022,8 @@ model MaterialSupplier {
   supplierCode String?
   costPrice    Decimal  @db.Decimal(10, 4)
   notes        String?
+  paymentTerms String?
+  preferredPaymentDay Int?
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -1075,21 +1088,21 @@ model AccountReceivable {
 }
 
 model ChartOfAccount {
-  id             String           @id @default(uuid())
-  organizationId String
-  name           String
-  code           String?
-  description    String?
-  nature         AccountNature
-  type           ChartAccountType
-  parentId       String?
-  active         Boolean          @default(true)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  parent         ChartOfAccount?  @relation("ChartAccountHierarchy", fields: [parentId], references: [id])
-  children       ChartOfAccount[] @relation("ChartAccountHierarchy")
-  categories     Category[]
+  id              String           @id @default(uuid())
+  organizationId  String
+  name            String
+  code            String?
+  description     String?
+  nature          AccountNature
+  type            ChartAccountType
+  parentId        String?
+  active          Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent          ChartOfAccount?  @relation("ChartAccountHierarchy", fields: [parentId], references: [id])
+  children        ChartOfAccount[] @relation("ChartAccountHierarchy")
+  categories      Category[]
   revenueProducts Product[]        @relation("ProductRevenueAccount")
 
   // Existing relations
@@ -1308,8 +1321,46 @@ enum AccountNature {
 }
 
 enum ConsumptionRule {
-  AREA
+  FIXED_UNIT
+  PRODUCT_AREA
   PERIMETER
   SPACING
-  FIXED
+}
+
+enum ControlUnit {
+  UN
+  M
+  M2
+  ML
+}
+
+model StockMovement {
+  id             String            @id @default(uuid())
+  organizationId String
+  materialId     String
+  type           StockMovementType
+  quantity       Decimal           @db.Decimal(15, 4)
+  unitCost       Decimal           @db.Decimal(10, 4)
+  totalCost      Decimal           @db.Decimal(10, 4)
+  machineId      String?
+  machineCounter Int?
+  notes          String?
+  supplierId     String?
+  documentKey    String?
+  createdAt      DateTime          @default(now())
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  material       Material          @relation(fields: [materialId], references: [id])
+  machine        Machine?          @relation(fields: [machineId], references: [id])
+  supplier       Profile?          @relation("SupplierMovements", fields: [supplierId], references: [id])
+
+  @@index([organizationId])
+  @@index([materialId])
+  @@index([supplierId])
+  @@map("stock_movements")
+}
+
+enum StockMovementType {
+  ENTRY
+  INTERNAL_CONSUMPTION
+  ADJUSTMENT
 }

@@ -175,8 +175,10 @@ export class QueryOptimizer {
         format: true,
         costPerUnit: true,
         unit: true,
-        standardWidth: true,
-        standardLength: true,
+        controlUnit: true,
+        conversionFactor: true,
+        width: true,
+        height: true,
         active: true,
         defaultConsumptionRule: true,
         defaultConsumptionFactor: true,
@@ -184,6 +186,10 @@ export class QueryOptimizer {
         expenseAccountId: true,
         minStockQuantity: true,
         sellWithoutStock: true,
+        trackStock: true,
+        spedType: true,
+        averageCost: true,
+        currentStock: true,
         inventoryAccount: {
           select: { id: true, name: true, code: true }
         },
@@ -242,8 +248,10 @@ export class QueryOptimizer {
                 format: true,
                 costPerUnit: true,
                 unit: true,
-                standardWidth: true,
-                standardLength: true
+                controlUnit: true,
+                conversionFactor: true,
+                width: true,
+                height: true
               }
             }
           }

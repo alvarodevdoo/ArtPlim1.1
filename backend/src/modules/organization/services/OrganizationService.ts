@@ -16,6 +16,7 @@ interface UpdateSettingsInput {
   taxRate?: number;
   validadeOrcamento?: number;
   allowDuplicatePhones?: boolean;
+  requireDocumentKeyForEntry?: boolean;
   defaultReceivableCategoryId?: string | null;
   defaultRevenueCategoryId?: string | null;
 }
@@ -80,7 +81,8 @@ export class OrganizationService {
           defaultMarkup: 2.0,
           taxRate: 0.0,
           validadeOrcamento: 7,
-          allowDuplicatePhones: true
+          allowDuplicatePhones: true,
+          requireDocumentKeyForEntry: false
         }
       });
     }

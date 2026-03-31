@@ -36,6 +36,7 @@ interface OrganizationSettings {
   taxRate: number;
   validadeOrcamento: number;
   allowDuplicatePhones: boolean;
+  requireDocumentKeyForEntry: boolean;
   defaultReceivableCategoryId?: string;
   defaultRevenueCategoryId?: string;
 }
@@ -61,7 +62,8 @@ const Configuracoes: React.FC = () => {
     defaultMarkup: 2.0,
     taxRate: 0.0,
     validadeOrcamento: 7,
-    allowDuplicatePhones: true
+    allowDuplicatePhones: true,
+    requireDocumentKeyForEntry: false
   });
 
   const [userSettings, setUserSettings] = useState({
@@ -437,6 +439,21 @@ const Configuracoes: React.FC = () => {
                           type="checkbox"
                           checked={settings.allowDuplicatePhones}
                           onChange={(e) => setSettings(prev => ({ ...prev, allowDuplicatePhones: e.target.checked }))}
+                          className="rounded border-input h-4 w-4"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between p-3 border rounded-lg border-border">
+                        <div>
+                          <h5 className="font-medium text-sm">Exigir Nota Fiscal nas Entradas</h5>
+                          <p className="text-sm text-muted-foreground">
+                            Impede o registro de entradas de estoque sem a Chave da Nota ou Cupom Fiscal
+                          </p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={settings.requireDocumentKeyForEntry || false}
+                          onChange={(e) => setSettings(prev => ({ ...prev, requireDocumentKeyForEntry: e.target.checked }))}
                           className="rounded border-input h-4 w-4"
                         />
                       </div>
