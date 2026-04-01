@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { OrganizationService } from './services/OrganizationService';
 import { UserService } from './services/UserService';
 import { getTenantClient, prisma } from '../../shared/infrastructure/database/tenant';
-import { requireRole } from '../../shared/infrastructure/auth/middleware';
+import { requirePermission } from '../../shared/infrastructure/auth/middleware';
 
 const updateOrganizationSchema = z.object({
   name: z.string().min(2).optional(),
@@ -53,7 +53,7 @@ export async function organizationRoutes(fastify: FastifyInstance) {
 
   // Atualizar organização
   fastify.put('/', {
-    preHandler: [fastify.authenticate, requireRole(['OWNER', 'ADMIN'])]
+    preHandler: [fastify.authenticate, requirePermission(['admin.organization'])]
   }, async (request, reply) => {
     const body = updateOrganizationSchema.parse(request.body);
     const organizationService = new OrganizationService(prisma);
@@ -84,7 +84,7 @@ export async function organizationRoutes(fastify: FastifyInstance) {
 
   // Atualizar configurações
   fastify.put('/settings', {
-    preHandler: [fastify.authenticate, requireRole(['OWNER', 'ADMIN'])]
+    preHandler: [fastify.authenticate, requirePermission(['admin.settings'])]
   }, async (request, reply) => {
     const body = updateSettingsSchema.parse(request.body);
     const organizationService = new OrganizationService(prisma);
@@ -101,7 +101,7 @@ export async function organizationRoutes(fastify: FastifyInstance) {
 
   // Listar usuários da organização
   fastify.get('/users', {
-    preHandler: [fastify.authenticate, requireRole(['OWNER', 'ADMIN'])]
+    preHandler: [fastify.authenticate, requirePermission(['admin.users'])]
   }, async (request, reply) => {
     const userService = new UserService(prisma);
 
@@ -115,7 +115,7 @@ export async function organizationRoutes(fastify: FastifyInstance) {
 
   // Criar usuário
   fastify.post('/users', {
-    preHandler: [fastify.authenticate, requireRole(['OWNER', 'ADMIN'])]
+    preHandler: [fastify.authenticate, requirePermission(['admin.users'])]
   }, async (request, reply) => {
     const body = createUserSchema.parse(request.body);
     const userService = new UserService(prisma);
@@ -133,7 +133,7 @@ export async function organizationRoutes(fastify: FastifyInstance) {
 
   // Atualizar usuário
   fastify.put('/users/:id', {
-    preHandler: [fastify.authenticate, requireRole(['OWNER', 'ADMIN'])]
+    preHandler: [fastify.authenticate, requirePermission(['admin.users'])]
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = createUserSchema.partial().parse(request.body);
@@ -149,7 +149,7 @@ export async function organizationRoutes(fastify: FastifyInstance) {
 
   // Desativar usuário
   fastify.delete('/users/:id', {
-    preHandler: [fastify.authenticate, requireRole(['OWNER', 'ADMIN'])]
+    preHandler: [fastify.authenticate, requirePermission(['admin.users'])]
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const userService = new UserService(prisma);

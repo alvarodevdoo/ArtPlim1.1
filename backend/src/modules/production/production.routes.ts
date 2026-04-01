@@ -6,7 +6,7 @@ import { PendingChangesService } from './services/PendingChangesService';
 import { NotificationService } from '../../shared/application/notifications/NotificationService';
 import { WebSocketServer } from '../../shared/infrastructure/websocket/WebSocketServer';
 import { getTenantClient } from '../../shared/infrastructure/database/tenant';
-import { requireRole } from '../../shared/infrastructure/auth/middleware';
+import { requirePermission } from '../../shared/infrastructure/auth/middleware';
 
 export async function productionRoutes(fastify: FastifyInstance, options: { websocketServer: WebSocketServer }) {
   const { websocketServer } = options;
@@ -29,7 +29,7 @@ export async function productionRoutes(fastify: FastifyInstance, options: { webs
   // ==========================================
 
   fastify.get('/pending-changes', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.authenticate, requirePermission(['production.view'])]
   }, async (request, reply) => {
     const { organizationId } = request.user!;
     const { pendingChangesService } = getServices(organizationId);
@@ -45,7 +45,7 @@ export async function productionRoutes(fastify: FastifyInstance, options: { webs
   });
 
   fastify.get('/pending-changes/:id', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.authenticate, requirePermission(['production.view'])]
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { organizationId } = request.user!;
@@ -61,7 +61,7 @@ export async function productionRoutes(fastify: FastifyInstance, options: { webs
   });
 
   fastify.post('/pending-changes/:id/approve', {
-    preHandler: [fastify.authenticate, requireRole(['OPERATOR', 'ADMIN', 'OWNER'])]
+    preHandler: [fastify.authenticate, requirePermission(['production.manage'])]
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { comments } = request.body as { comments?: string };
@@ -80,7 +80,7 @@ export async function productionRoutes(fastify: FastifyInstance, options: { webs
   // ========== KANBAN ==========
   
   fastify.get('/kanban/items', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.authenticate, requirePermission(['production.view'])]
   }, async (request, reply) => {
     const { organizationId } = request.user!;
     const { prisma } = getServices(organizationId);

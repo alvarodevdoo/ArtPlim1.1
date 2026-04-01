@@ -21,6 +21,7 @@ interface CreateProfileInput {
   paymentTerms?: number;
   password?: string;
   role?: 'ADMIN' | 'MANAGER' | 'OPERATOR' | 'USER' | 'CUSTOMER';
+  roleId?: string;
 }
 
 interface ListFilters {
@@ -128,7 +129,8 @@ export class ProfileService {
               name: normalizedData.name,
               email: normalizedData.email.toLowerCase(),
               password: hashedPassword,
-              role: normalizedData.role || 'USER'
+              role: 'USER', // Enum base para retrocompatibilidade
+              roleId: normalizedData.roleId || undefined,
             }
           });
 
@@ -327,7 +329,8 @@ export class ProfileService {
           // Atualizar o usuário existente
           const updateData: any = {
             name: normalizedData.name || existingProfileWithUser.name,
-            role: normalizedData.role || existingProfileWithUser.user.role,
+            role: existingProfileWithUser.user.role === 'OWNER' ? 'OWNER' : 'USER',
+            roleId: normalizedData.roleId !== undefined ? normalizedData.roleId : existingProfileWithUser.user.roleId,
             updatedAt: new Date()
           };
 
@@ -352,7 +355,8 @@ export class ProfileService {
               name: normalizedData.name || existingProfileWithUser.name,
               email: normalizedData.email.toLowerCase(),
               password: hashedPassword,
-              role: normalizedData.role || 'USER'
+              role: 'USER',
+              roleId: normalizedData.roleId || undefined,
             }
           });
 

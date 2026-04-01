@@ -28,7 +28,8 @@ const createProfileSchema = z.object({
   creditLimit: z.number().positive().optional(),
   paymentTerms: z.number().int().positive().optional(),
   password: z.string().min(6).optional(),
-  role: z.enum(['ADMIN', 'MANAGER', 'OPERATOR', 'USER', 'CUSTOMER']).optional()
+  role: z.enum(['ADMIN', 'MANAGER', 'OPERATOR', 'USER', 'CUSTOMER']).optional(),
+  roleId: z.string().uuid().optional()
 });
 
 const updateProfileSchema = z.object({
@@ -47,7 +48,8 @@ const updateProfileSchema = z.object({
   creditLimit: z.number().positive().optional(),
   paymentTerms: z.number().int().positive().optional(),
   password: z.string().min(6).optional(),
-  role: z.enum(['ADMIN', 'MANAGER', 'OPERATOR', 'USER', 'CUSTOMER']).optional()
+  role: z.enum(['ADMIN', 'MANAGER', 'OPERATOR', 'USER', 'CUSTOMER']).optional(),
+  roleId: z.string().uuid().optional()
 });
 
 export async function profilesRoutes(fastify: FastifyInstance) {

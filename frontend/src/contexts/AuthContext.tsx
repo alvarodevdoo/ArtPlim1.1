@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '@/lib/api';
-import { ROLE_PERMISSIONS, PermissionType, MODULE_SETTINGS_MAP } from '@/lib/permissions';
+import { PermissionType, MODULE_SETTINGS_MAP } from '@/lib/permissions';
 
 interface User {
   id: string;
@@ -9,6 +9,7 @@ interface User {
   role: string;
   organizationId: string;
   organizationName: string;
+  permissions: string[];
 }
 
 interface OrganizationSettings {
@@ -174,13 +175,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const hasPermission = (permission: PermissionType): boolean => {
     if (!user) return false;
 
-    // 1. Verificar se o cargo do usuário possui a permissão no RBAC
-    const userPermissions = ROLE_PERMISSIONS[user.role as keyof typeof ROLE_PERMISSIONS] || [];
-    const hasRolePermission = userPermissions.includes(permission);
+    // 1. O Proprietário (OWNER) sempre tem permissão total por padrão no RBAC
+    if (user.role !== 'OWNER') {
+      // Verificar se o usuário possui a permissão no RBAC dinâmico
+      const hasRolePermission = user.permissions.includes(permission);
+      if (!hasRolePermission) return false;
+    }
 
-    if (!hasRolePermission) return false;
-
-    // 2. Verificar se o módulo está habilitado nas configurações globais
+    // 2. Verificar se o módulo está habilitado nas configurações globais da organização
     const requiredSetting = MODULE_SETTINGS_MAP[permission];
     if (requiredSetting && settings) {
       return settings[requiredSetting as keyof typeof settings] === true;

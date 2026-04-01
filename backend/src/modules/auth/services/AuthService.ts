@@ -38,6 +38,11 @@ export class AuthService {
           organizationId: organization.id,
           email
         }
+      },
+      include: {
+        customRole: {
+          include: { permissions: true }
+        }
       }
     });
 
@@ -75,7 +80,8 @@ export class AuthService {
         email: user.email,
         role: user.role,
         organizationId: user.organizationId,
-        organizationName: organization.name
+        organizationName: organization.name,
+        permissions: user.customRole?.permissions.map(p => p.permissionKey) || []
       }
     };
   }
@@ -124,6 +130,31 @@ export class AuthService {
       const seedUseCase = new SeedChartOfAccountsUseCase();
       await seedUseCase.execute(organization.id, tx);
 
+      // Criar roles padrão da organização (RBAC)
+      const roles = [
+        { name: 'Proprietário', isSystem: true, permissions: ['sales.view', 'sales.create', 'sales.edit', 'sales.delete', 'sales.approve', 'finance.view', 'finance.costs', 'finance.margins', 'finance.reports', 'production.view', 'production.manage', 'inventory.view', 'inventory.manage', 'admin.users', 'admin.settings', 'admin.organization'] },
+        { name: 'Administrador', isSystem: true, permissions: ['sales.view', 'sales.create', 'sales.edit', 'sales.delete', 'sales.approve', 'finance.view', 'finance.costs', 'finance.margins', 'finance.reports', 'production.view', 'production.manage', 'inventory.view', 'inventory.manage', 'admin.users', 'admin.settings'] },
+        { name: 'Gerente', isSystem: true, permissions: ['sales.view', 'sales.create', 'sales.edit', 'sales.approve', 'finance.view', 'finance.costs', 'production.view', 'production.manage', 'inventory.view', 'inventory.manage'] },
+        { name: 'Operador', isSystem: true, permissions: ['production.view', 'production.manage', 'inventory.view'] },
+        { name: 'Usuário', isSystem: true, permissions: ['sales.view', 'sales.create', 'sales.edit'] }
+      ];
+
+      let ownerRoleId = '';
+
+      for (const r of roles) {
+        const createdRole = await tx.role.create({
+          data: {
+            organizationId: organization.id,
+            name: r.name,
+            isSystem: r.isSystem,
+            permissions: {
+              create: r.permissions.map(pk => ({ permissionKey: pk }))
+            }
+          }
+        });
+        if (r.name === 'Proprietário') ownerRoleId = createdRole.id;
+      }
+
       // Criar usuário owner
       const user = await tx.user.create({
         data: {
@@ -131,7 +162,8 @@ export class AuthService {
           name,
           email,
           password: hashedPassword,
-          role: 'OWNER'
+          role: 'OWNER',
+          roleId: ownerRoleId
         }
       });
 
@@ -161,6 +193,9 @@ export class AuthService {
             slug: true,
             plan: true
           }
+        },
+        customRole: {
+          include: { permissions: true }
         }
       }
     });
@@ -174,7 +209,8 @@ export class AuthService {
       name: user.name,
       email: user.email,
       role: user.role,
-      organization: user.organization
+      organization: user.organization,
+      permissions: user.customRole?.permissions.map(p => p.permissionKey) || []
     };
   }
 }

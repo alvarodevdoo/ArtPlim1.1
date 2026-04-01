@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Plus, Search, Edit, Trash2, Phone, Mail, Users, UserCheck, UserX, Eye, EyeOff } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { useRoles } from '@/features/roles/useRoles';
 
 interface Funcionario {
   id: string;
@@ -28,6 +29,8 @@ const Funcionarios: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingFuncionario, setEditingFuncionario] = useState<Funcionario | null>(null);
+  
+  const { roles: activeRoles } = useRoles();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -48,7 +51,7 @@ const Funcionarios: React.FC = () => {
     hireDate: '',
     active: true,
     password: '',
-    role: 'USER' as 'ADMIN' | 'MANAGER' | 'OPERATOR' | 'USER'
+    roleId: ''
   });
 
   const [showPassword, setShowPassword] = useState(false);
@@ -110,7 +113,7 @@ const Funcionarios: React.FC = () => {
       hireDate: '',
       active: funcionario.active,
       password: '',
-      role: (funcionario as any).user?.role || 'USER'
+      roleId: (funcionario as any).user?.roleId || ''
     });
     setShowForm(true);
   };
@@ -157,7 +160,7 @@ const Funcionarios: React.FC = () => {
       hireDate: '',
       active: true,
       password: '',
-      role: 'USER'
+      roleId: ''
     });
   };
 
@@ -398,16 +401,19 @@ const Funcionarios: React.FC = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Cargo de Acesso (Permissões)</label>
+                  <label className="text-sm font-medium">Departamento / Nível de Acesso *</label>
                   <select
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    value={formData.role}
-                    onChange={(e) => setFormData(prev => ({ ...prev, role: e.target.value as any }))}
+                    value={formData.roleId}
+                    onChange={(e) => setFormData(prev => ({ ...prev, roleId: e.target.value }))}
+                    required
                   >
-                    <option value="USER">Usuário (Padrão)</option>
-                    <option value="OPERATOR">Operador (Produção)</option>
-                    <option value="MANAGER">Gerente</option>
-                    <option value="ADMIN">Administrador</option>
+                    <option value="" disabled>Selecione um departamento...</option>
+                    {activeRoles.map(r => (
+                      <option key={r.id} value={r.id}>
+                        {r.name} {r.isSystem ? '(Padrão do Sistema)' : ''}
+                      </option>
+                    ))}
                   </select>
                   <p className="text-xs text-muted-foreground">
                     Define o nível de permissão e quais módulos o funcionário poderá acessar

@@ -10,7 +10,7 @@ interface JWTPayload {
 declare module '@fastify/jwt' {
   interface FastifyJWT {
     payload: JWTPayload;
-    user: JWTPayload;
+    user: JWTPayload & { permissions: string[] };
   }
 }
 
@@ -30,18 +30,37 @@ export async function authMiddleware(request: FastifyRequest, reply: FastifyRepl
 
     const decoded = request.server.jwt.verify(token) as JWTPayload;
     
-    // Verificação de segurança: O registro ainda existe no banco após um possível reset?
+    // Verificação de segurança: O registro ainda existe e quais são suas permissões customizadas?
     const { prisma } = await import('../database/prisma');
     const userExists = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      select: { id: true, active: true }
+      select: { 
+        id: true, 
+        active: true,
+        role: true,
+        roleId: true,
+        customRole: {
+          select: {
+            permissions: { select: { permissionKey: true } }
+          }
+        }
+      }
     });
 
     if (!userExists || !userExists.active) {
       throw new UnauthorizedError('Sessão expirada ou usuário desativado');
     }
 
-    request.user = decoded;
+    let permissions: string[] = [];
+    if (userExists.customRole) {
+      permissions = userExists.customRole.permissions.map((p) => p.permissionKey);
+    }
+
+    request.user = { 
+      ...decoded, 
+      role: userExists.role,
+      permissions
+    };
     
   } catch (error) {
     if (error instanceof UnauthorizedError) throw error;
@@ -49,14 +68,23 @@ export async function authMiddleware(request: FastifyRequest, reply: FastifyRepl
   }
 }
 
-export function requireRole(roles: string[]) {
+// Novo Guard de Controle de Acesso Baseado em Permissão
+export function requirePermission(permissionKeys: string[]) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.user) {
       throw new UnauthorizedError('Usuário não autenticado');
     }
 
-    if (!roles.includes(request.user.role)) {
-      throw new UnauthorizedError('Permissão insuficiente');
+    // O Proprietário (OWNER) é o super usuário nato e sempre terá acesso absoluto, independente da matriz.
+    if (request.user.role === 'OWNER') {
+      return;
+    }
+
+    // Se não for OWNER, ele precisa ter pelo menos UMA das chaves exigidas pela rota.
+    const hasPermission = permissionKeys.some(key => request.user.permissions.includes(key));
+    
+    if (!hasPermission) {
+      throw new UnauthorizedError('Permissão insuficiente para acessar este recurso');
     }
   };
 }

@@ -1,299 +1,156 @@
-import React, { useState } from 'react';
-import { Button } from '@/components/ui/Button';
+import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
-import {
-  Shield,
-  Users,
-  Settings,
-  DollarSign,
-  Package,
-  Database,
-  Eye,
-  Edit,
-  Trash2,
-  Plus,
-  CheckCircle,
-  XCircle
-} from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+import { Plus, Shield } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { ROLE_PERMISSIONS, PermissionType } from '@/lib/permissions';
-
-interface Permission {
-  id: string;
-  name: string;
-  description: string;
-  module: string;
-  icon: React.ComponentType<any>;
-}
-
-interface RolePermission {
-  role: string;
-  permissions: string[];
-}
-
-const permissions: { id: PermissionType; name: string; description: string; module: string; icon: any }[] = [
-  // Módulo de Vendas
-  { id: 'sales.view', name: 'Visualizar Pedidos', description: 'Ver lista de pedidos e orçamentos', module: 'Vendas', icon: Eye },
-  { id: 'sales.create', name: 'Criar Pedidos', description: 'Criar novos pedidos e orçamentos', module: 'Vendas', icon: Plus },
-  { id: 'sales.edit', name: 'Editar Pedidos', description: 'Modificar pedidos existentes', module: 'Vendas', icon: Edit },
-  { id: 'sales.delete', name: 'Excluir Pedidos', description: 'Remover pedidos do sistema', module: 'Vendas', icon: Trash2 },
-  { id: 'sales.approve', name: 'Aprovar Orçamentos', description: 'Aprovar orçamentos para produção', module: 'Vendas', icon: CheckCircle },
-
-  // Módulo Financeiro
-  { id: 'finance.view', name: 'Visualizar Financeiro', description: 'Ver informações financeiras e custos', module: 'Financeiro', icon: DollarSign },
-  { id: 'finance.costs', name: 'Ver Custos', description: 'Visualizar custos de materiais e produção', module: 'Financeiro', icon: DollarSign },
-  { id: 'finance.margins', name: 'Ver Margens', description: 'Visualizar margens de lucro', module: 'Financeiro', icon: DollarSign },
-  { id: 'finance.reports', name: 'Relatórios Financeiros', description: 'Gerar relatórios financeiros', module: 'Financeiro', icon: DollarSign },
-
-  // Módulo de Produção
-  { id: 'production.view', name: 'Visualizar Produção', description: 'Ver fila de produção', module: 'Produção', icon: Package },
-  { id: 'production.manage', name: 'Gerenciar Produção', description: 'Controlar fila e status de produção', module: 'Produção', icon: Package },
-
-  // Módulo de Estoque (WMS)
-  { id: 'inventory.view', name: 'Visualizar Estoque', description: 'Ver níveis de estoque', module: 'Estoque', icon: Database },
-  { id: 'inventory.manage', name: 'Gerenciar Estoque', description: 'Controlar movimentações de estoque', module: 'Estoque', icon: Database },
-
-  // Administração
-  { id: 'admin.users', name: 'Gerenciar Usuários', description: 'Criar, editar e remover usuários', module: 'Administração', icon: Users },
-  { id: 'admin.settings', name: 'Configurações', description: 'Alterar configurações do sistema', module: 'Administração', icon: Settings },
-  { id: 'admin.organization', name: 'Dados da Empresa', description: 'Alterar dados da organização', module: 'Administração', icon: Settings },
-];
-
-const defaultRolePermissions: RolePermission[] = Object.entries(ROLE_PERMISSIONS).map(([role, perms]) => ({
-  role,
-  permissions: perms as string[]
-}));
-
-const roleLabels: Record<string, string> = {
-  OWNER: 'Proprietário',
-  ADMIN: 'Administrador',
-  MANAGER: 'Gerente',
-  OPERATOR: 'Operador',
-  USER: 'Usuário'
-};
-
-const roleColors = {
-  OWNER: 'bg-purple-100 text-purple-800 border-purple-200',
-  ADMIN: 'bg-red-100 text-red-800 border-red-200',
-  MANAGER: 'bg-blue-100 text-blue-800 border-blue-200',
-  OPERATOR: 'bg-orange-100 text-orange-800 border-orange-200',
-  USER: 'bg-gray-100 text-gray-800 border-gray-200'
-};
-
-const moduleColors = {
-  'Vendas': 'bg-green-50 border-green-200',
-  'Financeiro': 'bg-yellow-50 border-yellow-200',
-  'Produção': 'bg-blue-50 border-blue-200',
-  'Estoque': 'bg-purple-50 border-purple-200',
-  'Administração': 'bg-red-50 border-red-200'
-};
+import { useRoles } from '@/features/roles/useRoles';
+import { RoleList } from '../roles/RoleList';
+import { RoleFormModal } from '../roles/RoleFormModal';
+import { PermissionMatrix, PERMISSIONS } from '../roles/PermissionMatrix';
 
 const RolePermissions: React.FC = () => {
   const { user } = useAuth();
-  const [rolePermissions, setRolePermissions] = useState<RolePermission[]>(defaultRolePermissions);
-  const [selectedRole, setSelectedRole] = useState<string>('USER');
+  const { roles: fetchedRoles, loading, createRole, updatePermissions } = useRoles();
+  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const canEditRole = (role: string) => {
-    if (!user) return false;
+  // Ordenação prioritária: Administrador -> Outros (Proprietário oculto)
+  const roles = useMemo(() => {
+    return fetchedRoles
+      .filter(r => r.name !== 'Proprietário') // Ocultar proprietário pois é imutável
+      .sort((a, b) => {
+        const weights: Record<string, number> = {
+          'Administrador': 1,
+        };
+        const weightA = weights[a.name] || 99;
+        const weightB = weights[b.name] || 99;
+        if (weightA !== weightB) return weightA - weightB;
+        return a.name.localeCompare(b.name);
+      });
+  }, [fetchedRoles]);
 
-    // OWNER pode editar todos os roles
+  // Auto-selecionar o primeiro perfil quando carregar
+  React.useEffect(() => {
+    if (roles.length > 0 && !selectedRoleId) {
+      setSelectedRoleId(roles[0].id);
+    }
+  }, [roles, selectedRoleId]);
+
+  const selectedRole = useMemo(() => {
+    return roles.find(r => r.id === selectedRoleId) || null;
+  }, [roles, selectedRoleId]);
+
+  // Regra de Negócio: OWNER edita tudo (exceto OWNER). ADMIN edita apenas customizados (não-system).
+  const canEditSelectedRole = useMemo(() => {
+    if (!user || !selectedRole) return false;
+    if (selectedRole.name === 'Proprietário') return false; // Ninguém edita o dono
     if (user.role === 'OWNER') return true;
-
-    // ADMIN pode editar MANAGER e USER
-    if (user.role === 'ADMIN') {
-      return ['MANAGER', 'USER'].includes(role);
-    }
-
-    // MANAGER pode editar apenas USER
-    if (user.role === 'MANAGER') {
-      return role === 'USER';
-    }
-
+    if (user.role === 'ADMIN' && !selectedRole.isSystem) return true;
     return false;
+  }, [user, selectedRole]);
+
+  const handleTogglePermission = async (permissionId: string) => {
+    if (!selectedRole || !canEditSelectedRole) return;
+
+    const currentPerms = selectedRole.permissions.map((p: any) => p.permissionKey);
+    const hasPermission = currentPerms.includes(permissionId);
+    
+    const newPermissions = hasPermission 
+      ? currentPerms.filter((p: string) => p !== permissionId)
+      : [...currentPerms, permissionId];
+
+    await updatePermissions(selectedRole.id, newPermissions);
   };
-
-  const getCurrentRolePermissions = (role: string): string[] => {
-    const roleData = rolePermissions.find(rp => rp.role === role);
-    return roleData?.permissions || [];
-  };
-
-  const togglePermission = (role: string, permissionId: string) => {
-    if (!canEditRole(role)) return;
-
-    setRolePermissions(prev =>
-      prev.map(rp => {
-        if (rp.role === role) {
-          const hasPermission = rp.permissions.includes(permissionId);
-          return {
-            ...rp,
-            permissions: hasPermission
-              ? rp.permissions.filter(p => p !== permissionId)
-              : [...rp.permissions, permissionId]
-          };
-        }
-        return rp;
-      })
-    );
-  };
-
-  const groupedPermissions = permissions.reduce((acc, permission) => {
-    if (!acc[permission.module]) {
-      acc[permission.module] = [];
-    }
-    acc[permission.module].push(permission);
-    return acc;
-  }, {} as Record<string, Permission[]>);
-
-  const currentPermissions = getCurrentRolePermissions(selectedRole);
 
   return (
     <div className="space-y-6">
-      {/* Seletor de Role */}
-      <div className="flex flex-wrap gap-2">
-        {Object.entries(roleLabels).map(([role, label]) => (
-          <button
-            key={role}
-            onClick={() => setSelectedRole(role as any)}
-            disabled={!canEditRole(role)}
-            className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${selectedRole === role
-              ? roleColors[role as keyof typeof roleColors]
-              : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-              } ${!canEditRole(role) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-          >
-            {label}
-            {!canEditRole(role) && (
-              <Shield className="w-3 h-3 ml-1 inline" />
-            )}
-          </button>
-        ))}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Departamentos e Perfis</h2>
+          <p className="text-muted-foreground">Gerencie o nível de acesso e crie novos departamentos.</p>
+        </div>
+        
+        {/* Apenas administradores e owners podem criar departamentos */}
+        {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+          <Button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2">
+            <Plus className="w-4 h-4" />
+            Novo Departamento
+          </Button>
+        )}
       </div>
 
-      {/* Informações do Role Selecionado */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <span>Permissões do {roleLabels[selectedRole]}</span>
-            {!canEditRole(selectedRole) && (
-              <span className="px-2 py-1 bg-yellow-100 text-yellow-600 text-xs rounded-full">
-                Somente Leitura
-              </span>
-            )}
-          </CardTitle>
-          <CardDescription>
-            {canEditRole(selectedRole)
-              ? 'Clique nas permissões para ativar ou desativar'
-              : 'Você não tem permissão para editar este perfil'
-            }
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
-            {Object.entries(groupedPermissions).map(([module, modulePermissions]) => (
-              <div key={module} className={`border rounded-lg p-4 ${moduleColors[module as keyof typeof moduleColors] || 'bg-gray-50 border-gray-200'}`}>
-                <h4 className="font-medium mb-3 flex items-center space-x-2">
-                  <span>{module}</span>
-                  <span className="text-xs text-muted-foreground">
-                    ({modulePermissions.filter(p => currentPermissions.includes(p.id)).length}/{modulePermissions.length})
-                  </span>
-                </h4>
+      {loading ? (
+        <div className="flex items-center justify-center p-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      ) : (
+        <>
+          <RoleList 
+            roles={roles} 
+            selectedRoleId={selectedRoleId} 
+            onSelect={(role) => setSelectedRoleId(role.id)} 
+          />
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {modulePermissions.map((permission) => {
-                    const Icon = permission.icon;
-                    const hasPermission = currentPermissions.includes(permission.id);
+          {selectedRole && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <span>Permissões: {selectedRole.name}</span>
+                  {!canEditSelectedRole && (
+                    <span className="px-2 py-1 bg-yellow-100 text-yellow-600 text-xs rounded-full font-medium">
+                      Somente Leitura
+                    </span>
+                  )}
+                  {selectedRole.isSystem && (
+                    <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full font-medium border">
+                      Padrão do Sistema
+                    </span>
+                  )}
+                </CardTitle>
+                <CardDescription>
+                  {selectedRole.description || 'Nenhuma descrição fornecida.'}
+                </CardDescription>
 
-                    return (
-                      <div
-                        key={permission.id}
-                        onClick={() => canEditRole(selectedRole) && togglePermission(selectedRole, permission.id)}
-                        className={`flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-all ${hasPermission
-                          ? 'bg-green-50 border-green-200 shadow-sm'
-                          : 'bg-white border-gray-200 hover:bg-gray-50'
-                          } ${!canEditRole(selectedRole) ? 'cursor-not-allowed opacity-75' : ''}`}
-                      >
-                        <div className={`p-1.5 rounded ${hasPermission ? 'bg-green-100' : 'bg-gray-100'}`}>
-                          <Icon className={`w-3 h-3 ${hasPermission ? 'text-green-600' : 'text-gray-500'}`} />
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center space-x-2">
-                            <h5 className="text-sm font-medium">{permission.name}</h5>
-                            {hasPermission ? (
-                              <CheckCircle className="w-4 h-4 text-green-500" />
-                            ) : (
-                              <XCircle className="w-4 h-4 text-gray-400" />
-                            )}
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {permission.description}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
+                {/* Relatório de Porcentagem de Acesso */}
+                <div className="mt-4 p-4 bg-muted/30 rounded-lg border border-border/50">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-primary" />
+                      Cobertura Total do Sistema
+                    </span>
+                    <span className="text-sm font-bold text-primary">
+                      {Math.round((selectedRole.permissions.length / PERMISSIONS.length) * 100)}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-primary h-2 rounded-full transition-all duration-500" 
+                      style={{ width: `${(selectedRole.permissions.length / PERMISSIONS.length) * 100}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-2">
+                    Este departamento possui <strong>{selectedRole.permissions.length}</strong> de <strong>{PERMISSIONS.length}</strong> permissões totais mapeadas no ArtPlimERP.
+                  </p>
                 </div>
-              </div>
-            ))}
-          </div>
-
-          {canEditRole(selectedRole) && (
-            <div className="mt-6 pt-4 border-t">
-              <div className="flex space-x-2">
-                <Button size="sm" variant="outline">
-                  Salvar Alterações
-                </Button>
-                <Button size="sm" variant="outline">
-                  Restaurar Padrão
-                </Button>
-              </div>
-            </div>
+              </CardHeader>
+              
+              <CardContent>
+                <PermissionMatrix 
+                  currentPermissions={selectedRole.permissions.map((p: any) => p.permissionKey)}
+                  canEdit={canEditSelectedRole}
+                  onToggle={handleTogglePermission}
+                />
+              </CardContent>
+            </Card>
           )}
-        </CardContent>
-      </Card>
+        </>
+      )}
 
-      {/* Resumo de Permissões */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Resumo de Acesso por Perfil</CardTitle>
-          <CardDescription>
-            Visão geral das permissões de cada perfil
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {Object.entries(roleLabels).map(([role, label]) => {
-              const rolePerms = getCurrentRolePermissions(role);
-              const totalPerms = permissions.length;
-              const percentage = Math.round((rolePerms.length / totalPerms) * 100);
-
-              return (
-                <div key={role} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    <span className={`px-3 py-1 rounded text-sm font-medium ${roleColors[role as keyof typeof roleColors]}`}>
-                      {label}
-                    </span>
-                    <div className="text-sm text-muted-foreground">
-                      {rolePerms.length} de {totalPerms} permissões ({percentage}%)
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <div className="w-24 bg-gray-200 rounded-full h-2">
-                      <div
-                        className="bg-blue-500 h-2 rounded-full transition-all"
-                        style={{ width: `${percentage}%` }}
-                      />
-                    </div>
-                    <span className="text-xs text-muted-foreground w-8">
-                      {percentage}%
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
+      <RoleFormModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        onCreate={createRole} 
+      />
     </div>
   );
 };

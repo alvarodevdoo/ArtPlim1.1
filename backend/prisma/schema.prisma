@@ -48,6 +48,7 @@ model Organization {
   standardSizes          StandardSize[]
   transactions           Transaction[]
   users                  User[]
+  roles                  Role[]
   stockMovements         StockMovement[]
   spedAccountMappings    SpedAccountMapping[]
   materialTypes          MaterialType[]
@@ -84,7 +85,9 @@ model User {
   email              String
   password           String
   name               String
-  role               UserRole             @default(USER)
+  role               UserRole             @default(USER) // Mantido para retrocompatibilidade
+  roleId             String?              // Novo: Relacionamento com Role (Departamento) customizado
+  customRole         Role?                @relation(fields: [roleId], references: [id])
   active             Boolean              @default(true)
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
@@ -1417,4 +1420,31 @@ enum StockMovementType {
   ADJUSTMENT
 }
 
+model Role {
+  id              String       @id @default(uuid())
+  organizationId  String
+  name            String
+  description     String?
+  isSystem        Boolean      @default(false)
+  active          Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  
+  users           User[]
+  permissions     RolePermission[]
+  
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  @@unique([organizationId, name])
+  @@map("roles")
+}
 
+model RolePermission {
+  id              String       @id @default(uuid())
+  roleId          String
+  permissionKey   String
+  
+  role            Role         @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  
+  @@unique([roleId, permissionKey])
+  @@map("role_permissions")
+}

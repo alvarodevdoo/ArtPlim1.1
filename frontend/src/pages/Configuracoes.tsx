@@ -314,28 +314,121 @@ const Configuracoes: React.FC = () => {
                       </div>
                     </div>
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className={`flex items-center justify-between p-3 border rounded-lg ${settings.enableWMS ? 'border-green-200 bg-green-50' : 'border-border'}`}>
                         <div>
-                          <h5 className="font-medium">Controle de Estoque (WMS)</h5>
-                          <p className="text-sm text-muted-foreground">Gestão avançada de rolos e chapas</p>
+                          <h5 className="font-medium flex items-center space-x-2">
+                            <span>Controle de Estoque (WMS)</span>
+                            {settings.enableWMS && <span className="px-2 py-1 bg-green-100 text-green-600 text-xs rounded-full">ATIVO</span>}
+                          </h5>
+                          <p className="text-sm text-muted-foreground">Gestão avançada de rolos, chapas e retalhos</p>
                         </div>
                         <input
                           type="checkbox"
                           checked={settings.enableWMS}
                           onChange={(e) => setSettings(prev => ({ ...prev, enableWMS: e.target.checked }))}
+                          className="rounded border-input"
                         />
                       </div>
-                      <div className="flex items-center justify-between p-3 border rounded-lg">
+
+                      <div className={`flex items-center justify-between p-3 border rounded-lg ${settings.enableProduction ? 'border-green-200 bg-green-50' : 'border-border'}`}>
                         <div>
-                          <h5 className="font-medium">Módulo de Produção</h5>
-                          <p className="text-sm text-muted-foreground">Controle de chão de fábrica</p>
+                          <h5 className="font-medium flex items-center space-x-2">
+                            <span>Módulo de Produção</span>
+                            {settings.enableProduction && <span className="px-2 py-1 bg-green-100 text-green-600 text-xs rounded-full">ATIVO</span>}
+                          </h5>
+                          <p className="text-sm text-muted-foreground">Controle de chão de fábrica e filas de impressão</p>
                         </div>
                         <input
                           type="checkbox"
                           checked={settings.enableProduction}
                           onChange={(e) => setSettings(prev => ({ ...prev, enableProduction: e.target.checked }))}
+                          className="rounded border-input"
                         />
                       </div>
+
+                      <div className={`flex items-center justify-between p-3 border rounded-lg ${settings.enableFinance ? 'border-green-200 bg-green-50' : 'border-border'}`}>
+                        <div>
+                          <h5 className="font-medium flex items-center space-x-2">
+                            <span>Módulo Financeiro</span>
+                            {settings.enableFinance && <span className="px-2 py-1 bg-green-100 text-green-600 text-xs rounded-full">ATIVO</span>}
+                          </h5>
+                          <p className="text-sm text-muted-foreground">Contas a pagar, receber e fluxo de caixa</p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={settings.enableFinance}
+                          onChange={(e) => setSettings(prev => ({ ...prev, enableFinance: e.target.checked }))}
+                          className="rounded border-input"
+                        />
+                      </div>
+
+                      <div className={`flex items-center justify-between p-3 border rounded-lg ${settings.enableFinanceReports ? 'border-green-200 bg-green-50' : 'border-border'}`}>
+                        <div>
+                          <h5 className="font-medium flex items-center space-x-2">
+                            <span>Relatórios Financeiros</span>
+                            {settings.enableFinanceReports && <span className="px-2 py-1 bg-green-100 text-green-600 text-xs rounded-full">ATIVO</span>}
+                          </h5>
+                          <p className="text-sm text-muted-foreground">Estatísticas de vendas e ticket médio</p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={settings.enableFinanceReports}
+                          onChange={(e) => setSettings(prev => ({ ...prev, enableFinanceReports: e.target.checked }))}
+                        />
+                      </div>
+
+                      <div className={`flex items-center justify-between p-3 border rounded-lg ${settings.enableAutomation ? 'border-green-200 bg-green-50' : 'border-border'}`}>
+                        <div>
+                          <h5 className="font-medium flex items-center space-x-2">
+                            <span>Automações</span>
+                            {settings.enableAutomation && <span className="px-2 py-1 bg-green-100 text-green-600 text-xs rounded-full">ATIVO</span>}
+                          </h5>
+                          <p className="text-sm text-muted-foreground">WhatsApp automático e notificações</p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={settings.enableAutomation}
+                          onChange={(e) => setSettings(prev => ({ ...prev, enableAutomation: e.target.checked }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 pt-4 border-t">
+                    <h4 className="font-medium">Configurações Gerais</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Validade do Orçamento (dias)</label>
+                        <Input
+                          type="number"
+                          value={settings.validadeOrcamento}
+                          onChange={(e) => setSettings(prev => ({ ...prev, validadeOrcamento: parseInt(e.target.value) }))}
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between p-3 border rounded-lg">
+                      <div>
+                        <h5 className="font-medium text-sm">Permitir Telefones Duplicados</h5>
+                        <p className="text-sm text-muted-foreground">Permite múltiplos clientes com mesmo número</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={settings.allowDuplicatePhones}
+                        onChange={(e) => setSettings(prev => ({ ...prev, allowDuplicatePhones: e.target.checked }))}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 border rounded-lg">
+                      <div>
+                        <h5 className="font-medium text-sm">Exigir Nota Fiscal nas Entradas</h5>
+                        <p className="text-sm text-muted-foreground">Impede registro de estoque sem chave NF</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={settings.requireDocumentKeyForEntry}
+                        onChange={(e) => setSettings(prev => ({ ...prev, requireDocumentKeyForEntry: e.target.checked }))}
+                      />
                     </div>
                   </div>
                   <Button type="submit" disabled={loading}>{loading ? 'Salvando...' : 'Salvar Configurações'}</Button>
