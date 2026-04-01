@@ -4,11 +4,14 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { ChevronDown, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AccountInfoTooltip } from '@/components/financeiro/AccountInfoTooltip';
 
 export interface ComboboxOption {
   id: string;
   label: string;
   sublabel?: string; // Ex: Código da conta
+  rightLabel?: string; // Ex: Contador de vínculos
+  tooltipData?: any; // Dados para o AccountInfoTooltip
 }
 
 interface ComboboxProps {
@@ -22,6 +25,7 @@ interface ComboboxProps {
   clearLabel?: string;
   className?: string;
   triggerClassName?: string;
+  disabled?: boolean;
 }
 
 export const Combobox: React.FC<ComboboxProps> = ({
@@ -34,7 +38,8 @@ export const Combobox: React.FC<ComboboxProps> = ({
   allowClear = false,
   clearLabel = "Remover Seleção",
   className,
-  triggerClassName
+  triggerClassName,
+  disabled = false
 }) => {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -62,26 +67,50 @@ export const Combobox: React.FC<ComboboxProps> = ({
   }, [options, search]);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={disabled ? false : open} onOpenChange={disabled ? () => {} : setOpen}>
       <PopoverTrigger asChild>
-        <div className={cn("relative w-full", className)}>
+        <div className={cn("relative w-full", className, disabled && "opacity-50 cursor-not-allowed")}>
           <Button 
+            type="button"
             variant="outline" 
             role="combobox"
             aria-expanded={open}
+            disabled={disabled}
             className={cn(
               "w-full h-11 justify-between bg-background font-normal text-sm border-border/60 hover:bg-muted/30 transition-all",
               !value && "text-muted-foreground",
-              triggerClassName
+              triggerClassName,
+              disabled && "pointer-events-none"
             )}
           >
-            <span className="truncate">
-              {selectedOption 
-                ? (selectedOption.sublabel ? `${selectedOption.sublabel} - ${selectedOption.label}` : selectedOption.label)
-                : placeholder
-              }
-            </span>
-            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            <div className="flex-1 flex items-center justify-between mr-2 overflow-hidden text-left">
+              <span className="truncate">
+                {selectedOption 
+                  ? (selectedOption.sublabel ? `${selectedOption.sublabel} - ${selectedOption.label}` : selectedOption.label)
+                  : placeholder
+                }
+              </span>
+            </div>
+            {selectedOption && allowClear && (
+              <span 
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onChange('');
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.stopPropagation();
+                    onChange('');
+                  }
+                }}
+                className="mr-1.5 h-6 w-6 flex items-center justify-center rounded-md hover:bg-muted/40 text-muted-foreground/40 hover:text-rose-500 transition-all active:scale-90 cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </span>
+            )}
+            <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </div>
       </PopoverTrigger>
@@ -97,6 +126,7 @@ export const Combobox: React.FC<ComboboxProps> = ({
           />
           {search && (
             <Button 
+              type="button"
               variant="ghost" 
               size="icon" 
               className="h-8 w-8 hover:bg-transparent" 
@@ -126,7 +156,7 @@ export const Combobox: React.FC<ComboboxProps> = ({
               <div
                 key={opt.id}
                 className={cn(
-                  "flex items-center px-3 py-2.5 text-xs cursor-pointer rounded-md transition-colors font-medium",
+                  "flex items-center justify-between px-3 py-2.5 text-xs cursor-pointer rounded-md transition-colors font-medium",
                   value === opt.id ? "bg-primary/10 text-primary" : "hover:bg-primary/5 text-foreground/80 hover:text-foreground"
                 )}
                 onClick={() => {
@@ -135,8 +165,22 @@ export const Combobox: React.FC<ComboboxProps> = ({
                   setSearch('');
                 }}
               >
-                {opt.sublabel && <span className="mr-2 text-primary font-bold">{opt.sublabel}</span>}
-                <span className="truncate">{opt.label}</span>
+                <div className="flex items-center justify-between w-full gap-4">
+                  <div className="flex items-center truncate">
+                    {opt.sublabel && <span className="mr-2 text-primary font-bold shrink-0">{opt.sublabel}</span>}
+                    <span className="truncate">{opt.label}</span>
+                  </div>
+                  {opt.tooltipData && (
+                    <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+                      <AccountInfoTooltip account={opt.tooltipData} side="right" />
+                    </div>
+                  )}
+                </div>
+                {opt.rightLabel && (
+                  <span className="text-[10px] text-muted-foreground/50 ml-4 font-normal">
+                    {opt.rightLabel}
+                  </span>
+                )}
               </div>
             ))
           ) : (

@@ -22,6 +22,7 @@ import { paymentMethodRoutes } from './modules/finance/payment-method.routes';
 import { insumosRoutes } from './modules/insumos/insumos.routes';
 import { budgetRoutes } from './modules/sales/budget.routes';
 import { fichaTecnicaRoutes } from './modules/catalog/ficha-tecnica.routes';
+import { backupRoutes } from './modules/backup/infrastructure/http/routes';
 
 async function registerPlugins(fastify: FastifyInstance) {
   const allowedOrigins = [
@@ -90,6 +91,7 @@ async function registerRoutes(fastify: FastifyInstance, options: { websocketServ
     await api.register(insumosRoutes, { prefix: '/insumos' });
     await api.register(budgetRoutes, { prefix: '/sales/budgets' });
     await api.register(fichaTecnicaRoutes, { prefix: '/catalog/ficha-tecnica' });
+    // await api.register(backupRoutes, { prefix: '/backup' });
   }, { prefix: '/api' });
 }
 

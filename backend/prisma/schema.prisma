@@ -49,6 +49,8 @@ model Organization {
   transactions           Transaction[]
   users                  User[]
   stockMovements         StockMovement[]
+  spedAccountMappings    SpedAccountMapping[]
+  materialTypes          MaterialType[]
 
   @@map("organizations")
 }
@@ -99,6 +101,40 @@ model User {
 
   @@unique([organizationId, email])
   @@map("users")
+}
+
+enum SpedAccountType {
+  INVENTORY
+  EXPENSE
+}
+
+model MaterialType {
+  id              String                @id @default(uuid())
+  name            String                // Nome amigável (ex: Tintas, Chapas, etc)
+  spedCode        String                // Código SPED base (00, 01, 07...)
+  organizationId  String
+  organization    Organization          @relation(fields: [organizationId], references: [id])
+  mappings        SpedAccountMapping[]
+  materials       Material[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([organizationId])
+}
+
+model SpedAccountMapping {
+  id              String                @id @default(uuid())
+  organizationId  String
+  organization    Organization          @relation(fields: [organizationId], references: [id])
+  materialTypeId  String?               // Agora vinculado ao tipo dinâmico
+  materialType    MaterialType?         @relation(fields: [materialTypeId], references: [id], onDelete: Cascade)
+  spedType        String                // Mantido para compatibilidade legado (valor do spedCode do tipo)
+  accountId       String
+  account         ChartOfAccount        @relation(fields: [accountId], references: [id])
+  mappingType     SpedAccountType       @default(EXPENSE) // INVENTORY ou EXPENSE
+  createdAt       DateTime              @default(now())
+
+  @@index([organizationId, materialTypeId])
 }
 
 model AuditLog {
@@ -182,7 +218,9 @@ model Material {
   minStockQuantity         Float?
   sellWithoutStock         Boolean               @default(true)
   trackStock               Boolean               @default(true)
-  spedType                 String?
+  spedType                 String?               // Legado: código do tipo (00, 01...)
+  materialTypeId           String?               // Dinâmico: ID da classificação criada pelo usuário
+  materialType             MaterialType?         @relation(fields: [materialTypeId], references: [id])
   fichasTecnicas           FichaTecnicaInsumo[]
   fornecedores             InsumoFornecedor[]
   inventoryAlerts          InventoryAlert[]
@@ -751,8 +789,6 @@ model Category {
   children       Category[]    @relation("CategoryHierarchy")
   transactions   Transaction[]
 
-  // Relações Contábeis
-  paymentMethodsFee PaymentMethod[] @relation("PaymentMethodFee")
   chartOfAccountId  String?
   chartOfAccount    ChartOfAccount? @relation(fields: [chartOfAccountId], references: [id])
 
@@ -772,9 +808,9 @@ model PaymentMethod {
   accountId        String?
   account          Account?          @relation(fields: [accountId], references: [id])
 
-  // Categoria para Taxas (Plano de Contas)
+  // Categoria/Conta para Taxas (Plano de Contas)
   feeCategoryId String?
-  feeCategory   Category? @relation("PaymentMethodFee", fields: [feeCategoryId], references: [id])
+  feeCategory   ChartOfAccount? @relation("PaymentMethodFee", fields: [feeCategoryId], references: [id])
 
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   transactions Transaction[]
@@ -1104,10 +1140,13 @@ model ChartOfAccount {
   children        ChartOfAccount[] @relation("ChartAccountHierarchy")
   categories      Category[]
   revenueProducts Product[]        @relation("ProductRevenueAccount")
+  systemRole      AccountSystemRole @default(GENERAL)
 
   // Existing relations
   expenseMaterials   Material[] @relation("MaterialExpenseAccount")
   inventoryMaterials Material[] @relation("MaterialInventoryAccount")
+  spedAccountMappings SpedAccountMapping[]
+  paymentMethodsFee  PaymentMethod[] @relation("PaymentMethodFee")
 
   @@unique([organizationId, code], name: "organizationId_code")
   @@map("chart_of_accounts")
@@ -1320,6 +1359,19 @@ enum AccountNature {
   CONTROL
 }
 
+enum AccountSystemRole {
+  GENERAL
+  BANK_ACCOUNT
+  INVENTORY
+  REVENUE_SALE
+  COST_EXPENSE
+  RECEIVABLE
+  PAYABLE
+  TAX
+  FIXED_ASSET
+  EQUITY
+}
+
 enum ConsumptionRule {
   FIXED_UNIT
   PRODUCT_AREA
@@ -1364,3 +1416,5 @@ enum StockMovementType {
   INTERNAL_CONSUMPTION
   ADJUSTMENT
 }
+
+

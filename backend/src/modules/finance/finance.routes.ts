@@ -67,11 +67,11 @@ export async function financeRoutes(fastify: FastifyInstance) {
   });
 
   fastify.get('/chart-of-accounts', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { ListChartOfAccountsUseCase } = await import('../chartOfAccounts/useCases/ListChartOfAccountsUseCase');
     const prisma = getTenantClient(request.user!.organizationId);
-    const chartOfAccounts = await prisma.chartOfAccount.findMany({
-      where: { organizationId: request.user!.organizationId, active: true },
-      orderBy: { code: 'asc' }
-    });
+    const useCase = new ListChartOfAccountsUseCase(prisma as any);
+    const chartOfAccounts = await useCase.execute(request.user!.organizationId, true, undefined, true); // true, undefined, true = includeInactive, role, FLAT!
+    
     return reply.send({ success: true, data: chartOfAccounts });
   });
 

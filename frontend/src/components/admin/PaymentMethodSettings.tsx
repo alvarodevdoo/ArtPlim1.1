@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/Input';
 import { Plus, Edit, Trash, CreditCard, Banknote, DollarSign, Wallet, ArrowDown } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
+import { Combobox } from '@/components/ui/Combobox';
 
 interface PaymentMethod {
     id: string;
@@ -36,7 +37,7 @@ interface Account {
 const PaymentMethodSettings: React.FC = () => {
     const [methods, setMethods] = useState<PaymentMethod[]>([]);
     const [accounts, setAccounts] = useState<Account[]>([]);
-    const [categories, setCategories] = useState<{ id: string, name: string, type: string }[]>([]);
+    const [categories, setCategories] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingMethod, setEditingMethod] = useState<PaymentMethod | null>(null);
@@ -60,14 +61,45 @@ const PaymentMethodSettings: React.FC = () => {
     const loadData = async () => {
         try {
             setLoading(true);
-            const [methodsRes, accountsRes, categoriesRes] = await Promise.all([
+            const [methodsRes, accountsRes, chartRes] = await Promise.all([
                 api.get('/api/payment-methods'),
                 api.get('/api/finance/accounts'),
-                api.get('/api/finance/categories')
+                api.get('/api/finance/v2/chart-of-accounts')
             ]);
+            
             setMethods(methodsRes.data.data);
             setAccounts(accountsRes.data.data);
-            setCategories(categoriesRes.data.data.filter((c: any) => c.active));
+
+            const expenseAccounts: any[] = [];
+            const flatten = (items: any[]) => {
+                items.forEach(item => {
+                    // Restringir apenas para DESPESAS (Grupo 5) conforme solicitado
+                    if (item.type === 'ANALYTIC' && item.nature === 'EXPENSE') {
+                        expenseAccounts.push({ 
+                            id: item.id, 
+                            label: item.name,
+                            sublabel: item.code,
+                            tooltipData: {
+                                ...item,
+                                // Garantir compatibilidade com o componente de tooltip
+                                type: item.type,
+                                nature: item.nature,
+                                systemRole: item.systemRole,
+                                description: item.description
+                            }
+                        });
+                    }
+                    if (item.children && item.children.length > 0) {
+                        flatten(item.children);
+                    }
+                });
+            };
+            flatten(chartRes.data.data || []);
+            
+            // Sort by code (sublabel)
+            expenseAccounts.sort((a, b) => a.sublabel.localeCompare(b.sublabel));
+            setCategories(expenseAccounts);
+
         } catch (error) {
             toast.error('Erro ao carregar dados');
             console.error(error);
@@ -279,17 +311,17 @@ const PaymentMethodSettings: React.FC = () => {
                                         />
                                     </div>
                                     <div>
-                                        <label className="text-sm font-medium">Categoria p/ Taxas</label>
-                                        <select
+                                        <label className="text-sm font-medium mb-1 block">Categoria p/ Taxas</label>
+                                        <Combobox 
                                             value={feeCategoryId}
-                                            onChange={e => setFeeCategoryId(e.target.value)}
-                                            className="w-full h-10 px-3 border rounded-md"
-                                        >
-                                            <option value="">Nenhuma (Padrão)</option>
-                                            {categories.filter(c => c.type === 'EXPENSE').map(cat => (
-                                                <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                            ))}
-                                        </select>
+                                            onChange={setFeeCategoryId}
+                                            options={categories}
+                                            placeholder="Nenhuma (Padrão)"
+                                            searchPlaceholder="Buscar por código ou nome..."
+                                            allowClear={true}
+                                            clearLabel="Remover Vínculo de Taxa"
+                                            triggerClassName="h-10"
+                                        />
                                     </div>
                                 </div>
 

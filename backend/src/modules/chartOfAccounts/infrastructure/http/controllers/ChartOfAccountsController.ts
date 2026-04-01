@@ -15,6 +15,7 @@ const createSchema = z.object({
   type: z.string(),
   parentId: z.string().optional(),
   parentCode: z.string().optional().nullable(),
+  systemRole: z.string().optional().default('GENERAL'),
 });
 
 const updateSchema = createSchema.partial();
@@ -23,12 +24,20 @@ export class ChartOfAccountsController {
   async list(request: FastifyRequest, reply: FastifyReply) {
     try {
       const organizationId = request.user!.organizationId;
-      const { includeInactive } = request.query as { includeInactive?: string };
+      const { includeInactive, role, flat } = request.query as { includeInactive?: string, role?: string, flat?: string };
       const prisma = getTenantClient(organizationId);
       const useCase = new ListChartOfAccountsUseCase(prisma as any);
-      const tree = await useCase.execute(organizationId, includeInactive === 'true');
+      
+      // Determine if it should be flat (default false for V2 tree-based components, 
+      // but override if query says true)
+      const data = await useCase.execute(
+        organizationId, 
+        includeInactive === 'true', 
+        role, 
+        flat === 'true'
+      );
 
-      return reply.send({ success: true, data: tree });
+      return reply.send({ success: true, data });
     } catch (error: any) {
       return reply.status(500).send({ success: false, message: error.message });
     }
@@ -60,6 +69,7 @@ export class ChartOfAccountsController {
         nature: data.nature,
         type: data.type,
         parentId: resolvedParentId,
+        systemRole: data.systemRole,
         organizationId
       });
 
@@ -88,6 +98,7 @@ export class ChartOfAccountsController {
         nature: data.nature,
         type: data.type,
         parentId: data.parentId,
+        systemRole: data.systemRole,
         id,
         organizationId
       });

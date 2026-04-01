@@ -150,6 +150,19 @@ const accountNatureConfig = {
   CONTROL: { label: 'Controle', colors: 'bg-slate-100 text-slate-700' },
 } as Record<string, { label: string; colors: string }>;
 
+const SYSTEM_ROLE_LABELS: Record<string, { label: string, color: string }> = {
+  BANK_ACCOUNT: { label: '🏦 BANCO/CAIXA', color: 'bg-blue-100 text-blue-700 border-blue-200' },
+  INVENTORY: { label: '📦 ESTOQUE', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
+  REVENUE_SALE: { label: '💰 VENDA', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+  COST_EXPENSE: { label: '📉 CUSTO/DESP', color: 'bg-amber-100 text-amber-700 border-amber-200' },
+  RECEIVABLE: { label: '🤝 A RECEBER', color: 'bg-cyan-100 text-cyan-700 border-cyan-200' },
+  PAYABLE: { label: '💳 A PAGAR', color: 'bg-rose-100 text-rose-700 border-rose-200' },
+  TAX: { label: '🏛️ IMPOSTO', color: 'bg-violet-100 text-violet-700 border-violet-200' },
+  FIXED_ASSET: { label: '🏗️ PATRIMÔNIO', color: 'bg-slate-100 text-slate-700 border-slate-300' },
+  EQUITY: { label: '⚖️ CAPITAL', color: 'bg-teal-100 text-teal-700 border-teal-200' },
+  GENERAL: { label: '⚙️ OUTROS', color: 'bg-slate-50 text-slate-500 border-slate-200' },
+};
+
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
 
 const Financeiro: React.FC = () => {
@@ -253,7 +266,7 @@ const Financeiro: React.FC = () => {
         api.get(`/api/finance/transactions?limit=50`),
         api.get(`/api/finance/dashboard?days=${dateRange}`),
         api.get('/api/finance/categories'),
-        api.get(`/api/finance/chart-of-accounts${showInactiveChartAccounts ? '?includeInactive=true' : ''}`),
+        api.get(`/api/finance/v2/chart-of-accounts?flat=true${showInactiveChartAccounts ? '&includeInactive=true' : ''}`),
         api.get('/api/profiles')
       ]);
 
@@ -273,7 +286,7 @@ const Financeiro: React.FC = () => {
   useEffect(() => {
     const fetchCharts = async () => {
       try {
-        const response = await api.get(`/api/finance/chart-of-accounts${showInactiveChartAccounts ? '?includeInactive=true' : ''}`);
+        const response = await api.get(`/api/finance/v2/chart-of-accounts?flat=true${showInactiveChartAccounts ? '&includeInactive=true' : ''}`);
         setChartOfAccounts(response.data.data);
       } catch (error) {}
     };
@@ -1141,14 +1154,15 @@ const Financeiro: React.FC = () => {
                     <tr className="bg-slate-50 border-y border-slate-200">
                       <th className="text-left p-3 font-bold text-slate-600 w-32">Código</th>
                       <th className="text-left p-3 font-bold text-slate-600">Nome da Conta</th>
-                      <th className="text-left p-3 font-bold text-slate-600 w-48">Natureza / Tipo</th>
-                      <th className="text-right p-3 font-bold text-slate-600 w-48">Ações</th>
+                      <th className="text-left p-3 font-bold text-slate-600 w-40">Natureza / Tipo</th>
+                      <th className="text-left p-3 font-bold text-slate-600 w-44">Finalidade</th>
+                      <th className="text-right p-3 font-bold text-slate-600 w-32">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {chartOfAccounts.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="p-12 text-center text-muted-foreground italic">
+                        <td colSpan={5} className="p-12 text-center text-muted-foreground italic">
                           <Target className="w-12 h-12 text-slate-200 mx-auto mb-3" />
                           Nenhuma conta cadastrada no plano de contas.
                         </td>
@@ -1199,6 +1213,13 @@ const Financeiro: React.FC = () => {
                             </span>
                           </div>
                         </td>
+                        <td className="p-3 text-center">
+                          {account.type === 'ANALYTIC' && account.systemRole && SYSTEM_ROLE_LABELS[account.systemRole] && (
+                            <span className={`px-2 py-0.5 rounded border text-[10px] font-bold uppercase whitespace-nowrap transition-all ${SYSTEM_ROLE_LABELS[account.systemRole].color}`}>
+                              {SYSTEM_ROLE_LABELS[account.systemRole].label}
+                            </span>
+                          )}
+                        </td>
                         <td className="p-3 text-right">
                           {account.active === false ? (
                             <Button variant="ghost" size="sm" className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 h-8" onClick={() => handleRestoreChartAccount(account.id)}>
@@ -1227,6 +1248,7 @@ const Financeiro: React.FC = () => {
           </Card>
         </div>
       )}
+
 
       {/* Transactions Tab */}
       {activeTab === 'transactions' && (

@@ -10,6 +10,7 @@ export type UpdateChartOfAccountInput = {
   type?: ChartAccountType;
   parentId?: string | null;
   active?: boolean;
+  systemRole?: any;
 };
 
 export class UpdateChartOfAccountUseCase {
@@ -35,17 +36,57 @@ export class UpdateChartOfAccountUseCase {
       }
     }
 
-    return await this.prisma.chartOfAccount.update({
-      where: { id: input.id },
-      data: {
-        name: input.name ?? undefined,
-        code: input.code ?? undefined,
-        description: input.description ?? undefined,
-        nature: finalNature,
-        type: input.type ?? undefined,
-        parentId: input.parentId,
-        active: input.active ?? undefined
+    const oldCode = account.code;
+    const newCode = input.code;
+    const codeChanged = newCode && oldCode && newCode !== oldCode;
+
+    try {
+      const result = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.chartOfAccount.update({
+          where: { id: input.id },
+          data: {
+            name: input.name ?? undefined,
+            code: newCode ?? undefined,
+            description: input.description ?? undefined,
+            nature: finalNature,
+            type: input.type ?? undefined,
+            parentId: input.parentId,
+            systemRole: (input.type || account.type) === ChartAccountType.SYNTHETIC ? 'GENERAL' : (input.systemRole ?? undefined),
+            active: input.active ?? undefined
+          } as any
+        });
+
+        // Se o código mudou, atualiza recursivamente todos os descendentes que usavam o prefixo antigo
+        if (codeChanged) {
+          const allDescendants = await tx.chartOfAccount.findMany({
+            where: { 
+              organizationId: input.organizationId,
+              code: { startsWith: `${oldCode}.` }
+            }
+          });
+
+          for (const descendant of allDescendants) {
+            if (descendant.code && descendant.code.startsWith(`${oldCode}.`)) {
+              // Substituição atômica baseada apenas no prefixo inicial
+              const updatedDescendantCode = newCode + descendant.code.substring(oldCode.length);
+              
+              await tx.chartOfAccount.update({
+                where: { id: descendant.id },
+                data: { code: updatedDescendantCode }
+              });
+            }
+          }
+        }
+
+        return updated;
+      });
+
+      return result;
+    } catch (error: any) {
+      if (error.code === 'P2002') {
+        throw new Error(`Este código de conta "${newCode}" já está sendo utilizado nesta organização.`);
       }
-    });
+      throw error;
+    }
   }
 }

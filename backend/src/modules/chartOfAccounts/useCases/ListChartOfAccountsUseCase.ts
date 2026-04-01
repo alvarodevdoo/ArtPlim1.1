@@ -3,24 +3,33 @@ import { PrismaClient } from '@prisma/client';
 export class ListChartOfAccountsUseCase {
   constructor(private prisma: PrismaClient) {}
 
-  async execute(organizationId: string, includeInactive: boolean = false) {
+  async execute(organizationId: string, includeInactive: boolean = false, role?: any, flat: boolean = false) {
     const whereClause: any = { organizationId };
     if (!includeInactive) {
       whereClause.active = true;
     }
-
+    
+    if (role) {
+      whereClause.systemRole = role;
+    }
+ 
     const accounts = await this.prisma.chartOfAccount.findMany({
       where: whereClause,
       orderBy: { code: 'asc' }
     });
-
+ 
+    // If we're filtering by role, or if explicitly requested, return a flat list
+    if (whereClause.systemRole || flat) {
+      return accounts;
+    }
+ 
     const accountMap = new Map<string, any>();
     
     // Convert all to nodes with empty children array
     accounts.forEach(acc => accountMap.set(acc.id, { ...acc, children: [] }));
-
+ 
     const tree: any[] = [];
-
+ 
     accountMap.forEach(acc => {
       if (acc.parentId) {
         const parent = accountMap.get(acc.parentId);
@@ -34,7 +43,7 @@ export class ListChartOfAccountsUseCase {
         tree.push(acc);
       }
     });
-
+ 
     return tree;
   }
 }

@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { AccountCombobox } from './AccountCombobox';
 import styles from './AccountEntryForm.module.scss';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
+import { Info, Tag, Settings2, FolderTree, Type, Hash, FileText, ChevronDown } from 'lucide-react';
 
 interface AccountEntryFormProps {
   onSuccess?: () => void;
@@ -21,12 +22,13 @@ export const AccountEntryForm: React.FC<AccountEntryFormProps> = ({ onSuccess, i
       type: accountToEdit?.type || 'ANALYTIC', 
       code: accountToEdit?.code || '',
       parentId: accountToEdit?.parentId || '',
-      description: accountToEdit?.description || ''
+      description: accountToEdit?.description || '',
+      systemRole: accountToEdit?.systemRole || 'GENERAL'
     }
   });
 
   // Re-sync isNew if prop changes
-  React.useEffect(() => {
+  useEffect(() => {
     if (isCreationMode) {
       setValue('isNew', true);
     }
@@ -40,7 +42,7 @@ export const AccountEntryForm: React.FC<AccountEntryFormProps> = ({ onSuccess, i
   const watchNature = watch('nature');
 
   // Suggest next code based on parent Selection
-  React.useEffect(() => {
+  useEffect(() => {
     if (isCreationMode) {
       if (parentId) {
       const parent = parentOptions.find(p => p.id === parentId);
@@ -87,7 +89,13 @@ export const AccountEntryForm: React.FC<AccountEntryFormProps> = ({ onSuccess, i
         
         const suffixStr = nextSuffix.toString().padStart(padding, '0');
         const suggestedCode = `${parent.code}.${suffixStr}`;
-        setValue('code', suggestedCode);
+        
+        // Verificação Crítica: se o código atual do formulário não começa com o prefixo do pai, 
+        // ou se o pai mudou de código, forçamos a atualização para evitar órfãos.
+        const currentCode = watch('code');
+        if (!currentCode || !currentCode.startsWith(parent.code + '.')) {
+          setValue('code', suggestedCode);
+        }
         
         // Auto-set type: Nível 1 a 3 são grupos [S], nível 4 em diante Analítico [A]
         if (parent.level < 2) {
@@ -134,9 +142,15 @@ export const AccountEntryForm: React.FC<AccountEntryFormProps> = ({ onSuccess, i
               const currentMax = Math.max(...rootValues);
               nextRootValue = currentMax < 9 ? 10 : currentMax + 1;
            }
-           setValue('code', nextRootValue.toString());
+           const currentCode = watch('code');
+           if (!currentCode || currentCode.includes('.')) {
+              setValue('code', nextRootValue.toString());
+           }
         } else {
-           setValue('code', suggestedBase);
+           const currentCode = watch('code');
+           if (!currentCode || currentCode.includes('.')) {
+              setValue('code', suggestedBase);
+           }
         }
         
         setValue('type', 'SYNTHETIC');
@@ -144,30 +158,31 @@ export const AccountEntryForm: React.FC<AccountEntryFormProps> = ({ onSuccess, i
     }
   }, [parentId, watchNature, isCreationMode, parentOptions, setValue]);
 
-  React.useEffect(() => {
-    const fetchParents = async () => {
-      try {
-        const response = await api.get('/api/finance/v2/chart-of-accounts');
-        const flatList: any[] = [];
-        const flatten = (arr: any[], level = 0) => {
-          arr.forEach(item => {
-            flatList.push({ ...item, level });
-            if (item.children && item.children.length > 0) {
-              flatten(item.children, level + 1);
-            }
-          });
-        };
-        flatten(response.data.data || []);
-        // Only allow SYNTHETIC or ANALYTIC accounts that can be parents
-        setParentOptions(flatList);
-      } catch (e) {
-        console.error("Falha ao buscar pais", e);
-      }
-    };
+  const fetchParents = async () => {
+    try {
+      const response = await api.get('/api/finance/v2/chart-of-accounts');
+      const flatList: any[] = [];
+      const flatten = (arr: any[], level = 0) => {
+        arr.forEach(item => {
+          flatList.push({ ...item, level });
+          if (item.children && item.children.length > 0) {
+            flatten(item.children, level + 1);
+          }
+        });
+      };
+      flatten(response.data.data || []);
+      setParentOptions(flatList);
+    } catch (e) {
+      console.error("Falha ao buscar pais", e);
+    }
+  };
+
+  useEffect(() => {
     fetchParents();
-  }, []);
+  }, [isCreationMode, accountToEdit]);
 
   const isNew = watch('isNew');
+  const watchType = watch('type');
 
   const onSubmit = async (data: any) => {
     setLoading(true);
@@ -181,7 +196,8 @@ export const AccountEntryForm: React.FC<AccountEntryFormProps> = ({ onSuccess, i
             type: data.type,
             code: data.code || undefined,
             parentId: data.parentId || undefined,
-            description: data.description
+            description: data.description,
+            systemRole: data.systemRole
           });
           toast.success('Categoria atualizada com sucesso!');
         } else {
@@ -192,7 +208,8 @@ export const AccountEntryForm: React.FC<AccountEntryFormProps> = ({ onSuccess, i
             type: data.type, 
             code: data.code || undefined,
             parentId: data.parentId || undefined,
-            description: data.description
+            description: data.description,
+            systemRole: data.systemRole
           });
           toast.success('Categoria criada com sucesso!');
           setValue('accountId', res.data.data.id);
@@ -216,13 +233,15 @@ export const AccountEntryForm: React.FC<AccountEntryFormProps> = ({ onSuccess, i
   return (
     <div className={styles.wrapper}>
       <h2 className={styles.title}>
-        {accountToEdit ? `Editando: ${accountToEdit.name}` : (isCreationMode ? 'Nova Categoria / Conta' : 'Lançamento / Categoria')}
+        {accountToEdit ? `Editar Conta` : (isCreationMode ? 'Nova Conta / Categoria' : 'Vincular Categoria')}
       </h2>
       
       <form onSubmit={handleSubmit(onSubmit)}>
         {(!isCreationMode && !accountToEdit) ? (
           <div className={styles.fieldGroup}>
-            <label className={styles.label}>O que é este lançamento?</label>
+            <label className={styles.label}>
+              <Tag className="w-4 h-4 text-primary" /> O que é este lançamento?
+            </label>
             <Controller
               control={control}
               name="accountId"
@@ -241,7 +260,9 @@ export const AccountEntryForm: React.FC<AccountEntryFormProps> = ({ onSuccess, i
           </div>
         ) : (
           <div className={styles.fieldGroup}>
-            <label className={styles.label}>Nome da Categoria / Conta</label>
+            <label className={styles.label}>
+              <FileText className="w-4 h-4 text-primary" /> Nome da categoria / conta
+            </label>
             <input 
               {...register('newName', { required: true })} 
               className={styles.textInput} 
@@ -254,7 +275,9 @@ export const AccountEntryForm: React.FC<AccountEntryFormProps> = ({ onSuccess, i
         {isNew && (
           <div className={styles.creationSection}>
             <div className={styles.fieldGroup}>
-              <label className={styles.label}>Tipo de Conta (Governo/SPED) *</label>
+              <label className={styles.label}>
+                <Type className="w-4 h-4" /> Tipo de conta (Referência Fiscal)
+              </label>
               <Controller
                 control={control}
                 name="type"
@@ -268,7 +291,7 @@ export const AccountEntryForm: React.FC<AccountEntryFormProps> = ({ onSuccess, i
                         checked={field.value === 'SYNTHETIC'} 
                         className={styles.radioInput}
                       />
-                      <span>Sintética [S] - Grupo</span>
+                      <span>Grupo (S)</span>
                     </label>
                     <label className={styles.radioLabel}>
                       <input 
@@ -278,7 +301,7 @@ export const AccountEntryForm: React.FC<AccountEntryFormProps> = ({ onSuccess, i
                         checked={field.value === 'ANALYTIC'} 
                         className={styles.radioInput}
                       />
-                      <span>Analítica [A] - Lançamentos</span>
+                      <span>Analítica (A)</span>
                     </label>
                   </div>
                 )}
@@ -286,46 +309,58 @@ export const AccountEntryForm: React.FC<AccountEntryFormProps> = ({ onSuccess, i
             </div>
 
             <div className={styles.fieldGroup}>
-              <label className={styles.label}>Natureza da Categoria</label>
+              <label className={styles.label}>
+                <FolderTree className="w-4 h-4" /> Natureza da conta
+              </label>
               <Controller
                 control={control}
                 name="nature"
                 render={({ field }) => (
                   <select {...field} className={styles.select}>
-                    <option value="ASSET">1 - Ativo (Bens e direitos)</option>
-                    <option value="LIABILITY">2 - Passivo (Dívidas)</option>
-                    <option value="EQUITY">3 - Patrimônio Líquido (Capital dos Sócios)</option>
-                    <option value="REVENUE">4 - Receita (Venda/Serviço)</option>
-                    <option value="REVENUE_DEDUCTION">5 - Dedução (Impostos sobre vendas/Devoluções)</option>
-                    <option value="COST">6 - Custo (Gasto direto de materiais)</option>
-                    <option value="EXPENSE">7 - Despesa (Gasto fixo/operacional)</option>
-                    <option value="RESULT_CALCULATION">8 - Apuração de Resultado (DRE)</option>
-                    <option value="CONTROL">9 - Contas de Controle (Informações)</option>
+                    <option value="ASSET">1 Ativo (Bens e direitos)</option>
+                    <option value="LIABILITY">2 Passivo (Dívidas)</option>
+                    <option value="EQUITY">3 Patrimônio Líquido (Capital)</option>
+                    <option value="REVENUE">4 Receita (Venda/Serviço)</option>
+                    <option value="REVENUE_DEDUCTION">5 Dedução (Impostos/Devoluções)</option>
+                    <option value="COST">6 Custo (Produção/Materiais)</option>
+                    <option value="EXPENSE">7 Despesa (Fixa/Operacional)</option>
+                    <option value="RESULT_CALCULATION">8 Apuração de Resultado (DRE)</option>
+                    <option value="CONTROL">9 Contas de Controle</option>
                   </select>
                 )}
               />
             </div>
 
-            <div className={styles.fieldGroup}>
-              <label className={styles.label}>Categoria Pai / Hierarquia</label>
-              <Controller
-                control={control}
-                name="parentId"
-                render={({ field }) => (
-                  <select {...field} className={styles.select}>
-                    <option value="">Nenhuma (Conta Principal)</option>
-                    {parentOptions.map(p => (
-                      <option key={p.id} value={p.id}>
-                         {Array(p.level).fill('—\u00A0').join('')} {p.code ? p.code + ' - ' : ''} {p.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              />
-            </div>
+            {watchType === 'ANALYTIC' && (
+              <div className={styles.fieldGroup}>
+                <label className={styles.label}>
+                  <Settings2 className="w-4 h-4" /> Para que serve esta conta?
+                </label>
+                <Controller
+                  control={control}
+                  name="systemRole"
+                  render={({ field }) => (
+                    <select {...field} className={styles.select}>
+                      <option value="GENERAL">⚙️ Outros (Lançamentos comuns)</option>
+                      <option value="BANK_ACCOUNT">🏦 Conta Bancária / Caixa</option>
+                      <option value="INVENTORY">📦 Estoque / Matéria-prima</option>
+                      <option value="REVENUE_SALE">💰 Receita de Venda / Serviço</option>
+                      <option value="COST_EXPENSE">📉 Custo / Despesa / Gasto</option>
+                      <option value="RECEIVABLE">🤝 A Receber (Clientes)</option>
+                      <option value="PAYABLE">💳 A Pagar (Fornecedores/Dívidas)</option>
+                      <option value="TAX">🏛️ Impostos (Simples/ICMS/ISS)</option>
+                      <option value="FIXED_ASSET">🏗️ Patrimônio (Máquinas/Móveis)</option>
+                      <option value="EQUITY">⚖️ Capital Social (Sócios)</option>
+                    </select>
+                  )}
+                />
+              </div>
+            )}
 
             <div className={styles.fieldGroup}>
-              <label className={styles.label}>Código Contábil *</label>
+              <label className={styles.label}>
+                <Hash className="w-4 h-4" /> Código contábil
+              </label>
               <Controller
                 control={control}
                 name="code"
@@ -344,7 +379,9 @@ export const AccountEntryForm: React.FC<AccountEntryFormProps> = ({ onSuccess, i
             </div>
             
             <div className={styles.fieldGroup}>
-              <label className={styles.label}>Descrição para ajudar no dia-a-dia (Opcional)</label>
+              <label className={styles.label}>
+                <Info className="w-4 h-4" /> Observações (Opcional)
+              </label>
               <Controller
                 control={control}
                 name="description"

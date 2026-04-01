@@ -8,6 +8,7 @@ export type CreateChartOfAccountInput = {
   nature: AccountNature;
   type: ChartAccountType;
   parentId?: string;
+  systemRole?: any;
 };
 
 export class CreateChartOfAccountUseCase {
@@ -53,17 +54,25 @@ export class CreateChartOfAccountUseCase {
       }
     }
 
-    return await this.prisma.chartOfAccount.create({
-      data: {
-        organizationId: input.organizationId,
-        name: input.name,
-        code: input.code,
-        description: input.description,
-        nature: finalNature,
-        type: input.type,
-        parentId: input.parentId,
-        active: true
-      } as any
-    });
+    try {
+      return await this.prisma.chartOfAccount.create({
+        data: {
+          organizationId: input.organizationId,
+          name: input.name,
+          code: input.code,
+          description: input.description,
+          nature: finalNature,
+          type: input.type,
+          parentId: input.parentId,
+          systemRole: input.type === ChartAccountType.SYNTHETIC ? 'GENERAL' : (input.systemRole || 'GENERAL'),
+          active: true
+        } as any
+      });
+    } catch (error: any) {
+      if (error.code === 'P2002') {
+        throw new Error(`Este código de conta "${input.code}" já está sendo utilizado nesta organização.`);
+      }
+      throw error;
+    }
   }
 }
