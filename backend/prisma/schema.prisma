@@ -74,6 +74,9 @@ model OrganizationSettings {
   defaultReceivableCategoryId String?
   defaultRevenueCategoryId    String?
 
+  // Criptografia e Segurança
+  defaultBackupPassword       String? // Senha Cofre Mestra (Hash) para Backups
+
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("organization_settings")

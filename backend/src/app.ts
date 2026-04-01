@@ -1,6 +1,7 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
+import multipart from '@fastify/multipart';
 import { authMiddleware } from './shared/infrastructure/auth/middleware';
 import { AppError } from './shared/infrastructure/errors/AppError';
 
@@ -55,6 +56,13 @@ async function registerPlugins(fastify: FastifyInstance) {
     secret: process.env.JWT_SECRET || 'your-super-secret-jwt-key'
   });
 
+  // Upload Limits para importação de Backups de grande volume
+  await fastify.register(multipart, {
+    limits: {
+      fileSize: 100 * 1024 * 1024 // 100MB
+    }
+  });
+
   fastify.decorate('authenticate', authMiddleware);
 }
 
@@ -93,7 +101,7 @@ async function registerRoutes(fastify: FastifyInstance, options: { websocketServ
     await api.register(budgetRoutes, { prefix: '/sales/budgets' });
     await api.register(fichaTecnicaRoutes, { prefix: '/catalog/ficha-tecnica' });
     await api.register(roleRoutes, { prefix: '/roles' });
-    // await api.register(backupRoutes, { prefix: '/backup' });
+    await api.register(backupRoutes, { prefix: '/backup' });
   }, { prefix: '/api' });
 }
 

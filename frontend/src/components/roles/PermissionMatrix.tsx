@@ -38,6 +38,10 @@ const PERMISSIONS: PermissionDef[] = [
   { id: 'admin.users', name: 'Gerenciar Usuários', description: 'Criar, editar e remover usuários', module: 'Administração', icon: Users },
   { id: 'admin.settings', name: 'Configurações', description: 'Alterar configurações do sistema', module: 'Administração', icon: Settings },
   { id: 'admin.organization', name: 'Dados da Empresa', description: 'Alterar dados da organização', module: 'Administração', icon: Settings },
+  
+  // Segurança e Backup
+  { id: 'backup.export', name: 'Gerar Backups', description: 'Permite exportar um pacote com os dados da empresa', module: 'Administração', icon: Database },
+  { id: 'backup.import', name: 'Restaurar Dados', description: 'Permissão crítica: Permite sobrescrever os dados com um backup', module: 'Administração', icon: Database },
 ];
 
 const MODULE_COLORS: Record<string, string> = {

@@ -76,6 +76,16 @@ const Configuracoes: React.FC = () => {
     language: 'pt-BR'
   });
 
+  const [selectedModules, setSelectedModules] = useState({
+    config: true,
+    profiles: true,
+    materials: true,
+    products: true,
+    production: true,
+    sales: true,
+    finance: true
+  });
+
   useEffect(() => {
     loadSettings();
   }, []);
@@ -149,20 +159,32 @@ const Configuracoes: React.FC = () => {
   const handleExportBackup = async () => {
     setLoading(true);
     try {
-      const response = await api.get('/api/backup/export');
-      const data = response.data.data;
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = window.URL.createObjectURL(blob);
+      const activeModules = Object.entries(selectedModules)
+        .filter(([_, active]) => active)
+        .map(([module]) => module);
+
+      if (activeModules.length === 0) {
+        toast.error('Selecione pelo menos um módulo para exportar');
+        return;
+      }
+
+      const response = await api.get('/api/backup/export', {
+        params: { modules: activeModules.join(',') },
+        responseType: 'blob' 
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `backup-artplim-${new Date().toISOString().split('T')[0]}.json`);
+      const date = new Date().toISOString().split('T')[0];
+      link.setAttribute('download', `backup-artplim-${date}.bdb`);
       document.body.appendChild(link);
       link.click();
       link.parentNode?.removeChild(link);
-      toast.success('Backup exportado com sucesso!');
+      toast.success('Pacote de backup modular (.bdb) gerado com sucesso!');
     } catch (error: any) {
       console.error('Erro ao exportar backup:', error);
-      toast.error('Erro ao exportar backup');
+      toast.error('Erro ao gerar pacote de backup modular');
     } finally {
       setLoading(false);
     }
@@ -486,17 +508,43 @@ const Configuracoes: React.FC = () => {
                 <div className="space-y-6">
                   <div className="space-y-4">
                     <h4 className="font-medium">Backup Manual</h4>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Selecione os módulos que deseja incluir no arquivo comprimido (.json.gz):
+                    </p>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                      {Object.entries(selectedModules).map(([module, active]) => (
+                        <label key={module} className={`flex items-center gap-2 p-2 border rounded-lg cursor-pointer transition-colors ${active ? 'bg-primary/5 border-primary' : 'bg-white border-border'}`}>
+                          <input 
+                            type="checkbox" 
+                            checked={active}
+                            onChange={() => setSelectedModules(prev => ({ ...prev, [module]: !active }))}
+                            className="rounded border-input text-primary"
+                          />
+                          <span className="text-xs font-medium capitalize">
+                            {module === 'config' ? 'Configurações' : 
+                             module === 'profiles' ? 'Clientes/Usuários' :
+                             module === 'materials' ? 'Insumos/Estoque' :
+                             module === 'products' ? 'Produtos/Catálogo' :
+                             module === 'production' ? 'Produção' :
+                             module === 'sales' ? 'Vendas' :
+                             module === 'finance' ? 'Financeiro' : module}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+
                     <div className="flex space-x-2">
-                      <Button onClick={handleExportBackup} disabled={loading}>
+                      <Button onClick={handleExportBackup} disabled={loading} className="flex-1 md:flex-none">
                         <Download className="w-4 h-4 mr-2" />
-                        {loading ? 'Processando...' : 'Fazer Backup'}
+                        {loading ? 'Preparando Pacote...' : 'Gerar Backup Modular (.bdb)'}
                       </Button>
                       <input
                         type="file"
                         ref={fileInputRef}
                         onChange={handleImportBackup}
                         className="hidden"
-                        accept=".json"
+                        accept=".bdb,.json"
                       />
                       <Button 
                         variant="outline" 
@@ -504,7 +552,7 @@ const Configuracoes: React.FC = () => {
                         disabled={loading}
                       >
                         <Upload className="w-4 h-4 mr-2" />
-                        Restaurar Backup
+                        Restaurar (.bdb)
                       </Button>
                     </div>
                   </div>

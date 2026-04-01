@@ -23,7 +23,8 @@ const updateSettingsSchema = z.object({
   allowDuplicatePhones: z.boolean().optional(),
   requireDocumentKeyForEntry: z.boolean().optional(),
   defaultReceivableCategoryId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
-  defaultRevenueCategoryId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional()
+  defaultRevenueCategoryId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
+  defaultBackupPassword: z.string().min(6, 'Senha mestre muito curta').or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional()
 });
 
 const createUserSchema = z.object({
@@ -87,8 +88,16 @@ export async function organizationRoutes(fastify: FastifyInstance) {
     preHandler: [fastify.authenticate, requirePermission(['admin.settings'])]
   }, async (request, reply) => {
     const body = updateSettingsSchema.parse(request.body);
-    const organizationService = new OrganizationService(prisma);
+    
+    // Criptografa a senha mestre se ela foi enviada no payload, pois é reversível apenas pelo motor do sistema
+    if (body.defaultBackupPassword) {
+       const { BackupCryptoService } = require('../backup/infrastructure/crypto/BackupCryptoService');
+       body.defaultBackupPassword = BackupCryptoService.encryptMasterPassword(body.defaultBackupPassword);
+    } else if (body.defaultBackupPassword === '') {
+       body.defaultBackupPassword = null; // Permite o dono remover a senha se quiser exportar livremente
+    }
 
+    const organizationService = new OrganizationService(prisma);
     const settings = await organizationService.updateSettings(request.user!.organizationId, body);
 
     return reply.send({

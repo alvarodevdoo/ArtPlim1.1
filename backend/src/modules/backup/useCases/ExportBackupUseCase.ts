@@ -1,87 +1,100 @@
 import { PrismaClient } from '@prisma/client';
-import { BackupPayload, BackupModule } from '../backup.types';
+import { BackupModule } from '../backup.types';
 
 export class ExportBackupUseCase {
+  private readonly CHUNK_SIZE = 1000;
+
   constructor(private prisma: PrismaClient) {}
 
-  async execute(organizationId: string): Promise<BackupPayload> {
-    const payload: BackupPayload['payload'] = {};
+  // Mapeamento de tabelas por módulo (Nomes Reais do Prisma Schema)
+  private readonly moduleMap: Record<BackupModule, string[]> = {
+    config: ['organization', 'organizationSettings', 'automationRule'],
+    profiles: ['profile', 'user'],
+    materials: ['materialType', 'material', 'insumoFornecedor', 'materialSupplier', 'inventoryItem', 'inventoryMovement'],
+    products: ['pricingRule', 'product', 'productComponent', 'productConfiguration', 'configurationOption', 'fichaTecnicaInsumo'],
+    production: ['processStatus', 'machine', 'productionQueue', 'productionOperation'],
+    sales: ['budget', 'budgetItem', 'order', 'orderItem', 'delivery', 'deliveryItem'],
+    finance: ['account', 'chartOfAccount', 'category', 'paymentMethod', 'transaction', 'accountPayable', 'accountReceivable'],
+  };
 
-    // Módulo: Configurações
-    payload.config = {
-      organization: await this.prisma.organization.findMany({ where: { id: organizationId } }),
-      organizationSettings: await this.prisma.organizationSettings.findMany({ where: { organizationId } }),
-      automationRules: await this.prisma.automationRule.findMany({ where: { organizationId } })
-    };
+  /**
+   * Gera um JSON para um módulo específico como AsyncGenerator para streaming
+   */
+  async *generateModuleJSON(organizationId: string, module: BackupModule) {
+    const tables = this.moduleMap[module];
+    if (!tables) {
+       yield '{}';
+       return;
+    }
 
-    // Módulo: Perfis/Clientes
-    payload.profiles = {
-      profile: await this.prisma.profile.findMany({ where: { organizationId } })
-    };
+    yield '{';
 
-    // Módulo: Insumos
-    payload.materials = {
-      materialType: await this.prisma.materialType.findMany({ where: { organizationId } }),
-      material: await this.prisma.material.findMany({ where: { organizationId } }),
-      insumoFornecedores: await this.prisma.insumoFornecedor.findMany({ 
-        where: { material: { organizationId } } 
-      }),
-      materialSuppliers: await this.prisma.materialSupplier.findMany({
-        where: { material: { organizationId } }
-      })
-    };
+    for (let j = 0; j < tables.length; j++) {
+      const table = tables[j];
+      yield `"${table}":[`;
 
-    // Módulo: Produtos/Catálogo
-    payload.products = {
-      pricingRules: await this.prisma.pricingRule.findMany({ where: { organizationId } }),
-      product: await this.prisma.product.findMany({ where: { organizationId } }),
-      productComponents: await this.prisma.productComponent.findMany({ 
-        where: { product: { organizationId } } 
-      }),
-      productConfigurations: await this.prisma.productConfiguration.findMany({
-        where: { product: { organizationId } }
-      }),
-      configurationOptions: await this.prisma.configurationOption.findMany({
-        where: { configuration: { product: { organizationId } } }
-      }),
-      fichaTecnicaInsumos: await this.prisma.fichaTecnicaInsumo.findMany({ where: { organizationId } })
-    };
+      let skip = 0;
+      let hasMore = true;
 
-    // Módulo: Produção
-    payload.production = {
-      processStatuses: await this.prisma.processStatus.findMany({ where: { organizationId } }),
-      machines: await this.prisma.machine.findMany({ where: { organizationId } }),
-      productionQueue: await this.prisma.productionQueue.findMany({ where: { organizationId } })
-    };
+      while (hasMore) {
+        // Lógica de filtro específica herdada da versão anterior
+        let where: any = { organizationId };
+        
+        switch (table) {
+          case 'organization':
+            where = { id: organizationId };
+            break;
+          case 'insumoFornecedor':
+          case 'materialSupplier':
+          case 'inventoryItem':
+            where = { material: { organizationId } };
+            break;
+          case 'productComponent':
+          case 'productConfiguration':
+            where = { product: { organizationId } };
+            break;
+          case 'configurationOption':
+            where = { configuration: { product: { organizationId } } };
+            break;
+          case 'orderItem':
+            where = { order: { organizationId } };
+            break;
+          case 'budgetItem':
+            where = { budget: { organizationId } };
+            break;
+          case 'deliveryItem':
+            where = { delivery: { organizationId } };
+            break;
+          case 'productionOperation':
+            where = { productionQueue: { organizationId } };
+            break;
+        }
 
-    // Módulo: Vendas
-    payload.sales = {
-      budgets: await this.prisma.budget.findMany({ where: { organizationId } }),
-      budgetItems: await this.prisma.budgetItem.findMany({ 
-        where: { budget: { organizationId } } 
-      }),
-      orders: await this.prisma.order.findMany({ where: { organizationId } }),
-      orderItems: await this.prisma.orderItem.findMany({ 
-        where: { order: { organizationId } } 
-      })
-    };
+        const records = await (this.prisma as any)[table].findMany({
+          where,
+          take: this.CHUNK_SIZE,
+          skip: skip,
+          orderBy: { id: 'asc' }
+        });
 
-    // Módulo: Financeiro
-    payload.finance = {
-      accounts: await this.prisma.account.findMany({ where: { organizationId } }),
-      chartOfAccounts: await this.prisma.chartOfAccount.findMany({ where: { organizationId } }),
-      categories: await this.prisma.category.findMany({ where: { organizationId } }),
-      paymentMethods: await this.prisma.paymentMethod.findMany({ where: { organizationId } }),
-      transactions: await this.prisma.transaction.findMany({ where: { organizationId } }),
-      accountsPayable: await this.prisma.accountPayable.findMany({ where: { organizationId } }),
-      accountsReceivable: await this.prisma.accountReceivable.findMany({ where: { organizationId } })
-    };
+        if (records.length > 0) {
+          const jsonChunk = records.map((r: any) => JSON.stringify(r)).join(',');
+          yield jsonChunk;
+          
+          skip += this.CHUNK_SIZE;
+          if (records.length === this.CHUNK_SIZE) {
+            yield ',';
+          } else {
+            hasMore = false;
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+      
+      yield j === tables.length - 1 ? ']' : '],';
+    }
 
-    return {
-      version: '1.0.0',
-      organizationId,
-      createdAt: new Date().toISOString(),
-      payload
-    };
+    yield '}';
   }
 }
