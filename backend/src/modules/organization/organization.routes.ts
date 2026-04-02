@@ -7,8 +7,18 @@ import { requirePermission } from '../../shared/infrastructure/auth/middleware';
 
 const updateOrganizationSchema = z.object({
   name: z.string().min(2).optional(),
-  cnpj: z.string().optional(),
-  plan: z.enum(['basic', 'pro', 'enterprise', 'PREMIUM']).optional()
+  razaoSocial: z.string().min(2).nullable().optional(),
+  cnpj: z.string().nullable().optional(),
+  plan: z.enum(['basic', 'pro', 'enterprise', 'PREMIUM']).optional(),
+  email: z.string().email().or(z.literal('')).nullable().optional(),
+  phone: z.string().nullable().optional(),
+  zipCode: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
+  addressNumber: z.string().nullable().optional(),
+  complement: z.string().nullable().optional(),
+  neighborhood: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
+  state: z.string().length(2).nullable().optional()
 });
 
 const updateSettingsSchema = z.object({
@@ -24,7 +34,8 @@ const updateSettingsSchema = z.object({
   requireDocumentKeyForEntry: z.boolean().optional(),
   defaultReceivableCategoryId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   defaultRevenueCategoryId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
-  defaultBackupPassword: z.string().min(6, 'Senha mestre muito curta').or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional()
+  defaultBackupPassword: z.string().min(6, 'Senha mestre muito curta').or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
+  recoveryToken: z.string().nullable().optional()
 });
 
 const createUserSchema = z.object({
@@ -93,6 +104,12 @@ export async function organizationRoutes(fastify: FastifyInstance) {
     if (body.defaultBackupPassword) {
        const { BackupCryptoService } = require('../backup/infrastructure/crypto/BackupCryptoService');
        body.defaultBackupPassword = BackupCryptoService.encryptMasterPassword(body.defaultBackupPassword);
+       
+       // Se definiu uma nova senha mestre mas não tem token de recuperação, gera um agora
+       if (!body.recoveryToken) {
+         const crypto = require('crypto');
+         body.recoveryToken = `REC-${crypto.randomBytes(4).toString('hex').toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+       }
     } else if (body.defaultBackupPassword === '') {
        body.defaultBackupPassword = null; // Permite o dono remover a senha se quiser exportar livremente
     }

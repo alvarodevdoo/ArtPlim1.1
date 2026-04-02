@@ -34,11 +34,13 @@ export class BackupController {
         ? BackupCryptoService.decryptMasterPassword(settings.defaultBackupPassword)
         : null;
 
+      // Fastify v5: hijack() necessário antes de escrever diretamente no reply.raw
+      reply.hijack();
+
       // Configurar headers para download binário com extensão customizada (.bdb)
       reply.raw.writeHead(200, {
-        'Content-Type': 'application/octet-stream', // 'bdb' para curiosos
+        'Content-Type': 'application/octet-stream',
         'Content-Disposition': `attachment; filename="${filename}"`,
-        // 'Transfer-Encoding': 'chunked', (já gerenciado pelo fastify / node http na vdd)
         'X-Content-Type-Options': 'nosniff'
       });
 
@@ -97,11 +99,9 @@ export class BackupController {
       return reply;
     } catch (error: any) {
       console.error('Erro na exportação ZIP (.bdb):', error);
-      if (!reply.raw.headersSent) {
-        return reply.status(500).send({ 
-          success: false, 
-          error: { message: 'Erro ao gerar pacote de backup modular', statusCode: 500 } 
-        });
+      // Se o hijack já foi ativado, encerra o socket diretamente
+      if (!reply.raw.writableEnded) {
+        reply.raw.end();
       }
     }
   }

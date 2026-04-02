@@ -2,8 +2,18 @@ import { NotFoundError } from '../../../shared/infrastructure/errors/AppError';
 
 interface UpdateOrganizationInput {
   name?: string;
-  cnpj?: string;
+  razaoSocial?: string | null;
+  cnpj?: string | null;
   plan?: string;
+  email?: string | null;
+  phone?: string | null;
+  zipCode?: string | null;
+  address?: string | null;
+  addressNumber?: string | null;
+  complement?: string | null;
+  neighborhood?: string | null;
+  city?: string | null;
+  state?: string | null;
 }
 
 interface UpdateSettingsInput {
@@ -19,6 +29,8 @@ interface UpdateSettingsInput {
   requireDocumentKeyForEntry?: boolean;
   defaultReceivableCategoryId?: string | null;
   defaultRevenueCategoryId?: string | null;
+  defaultBackupPassword?: string | null;
+  recoveryToken?: string | null;
 }
 
 export class OrganizationService {

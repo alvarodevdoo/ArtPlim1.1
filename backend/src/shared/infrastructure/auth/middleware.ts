@@ -54,6 +54,13 @@ export async function authMiddleware(request: FastifyRequest, reply: FastifyRepl
     let permissions: string[] = [];
     if (userExists.customRole) {
       permissions = userExists.customRole.permissions.map((p) => p.permissionKey);
+    } else {
+      // Fallback para Administradores e Proprietários sem Role vinculada
+      if (userExists.role === 'OWNER') {
+        permissions = ['admin.organization', 'admin.settings', 'admin.users', 'finance.view', 'sales.view', 'production.view', 'inventory.view'];
+      } else if (userExists.role === 'ADMIN') {
+        permissions = ['admin.settings', 'admin.users', 'finance.view', 'sales.view', 'production.view', 'inventory.view', 'finance.reports'];
+      }
     }
 
     request.user = { 

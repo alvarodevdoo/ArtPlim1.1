@@ -81,7 +81,9 @@ export class AuthService {
         role: user.role,
         organizationId: user.organizationId,
         organizationName: organization.name,
-        permissions: user.customRole?.permissions.map(p => p.permissionKey) || []
+        permissions: user.customRole?.permissions.map(p => p.permissionKey) || 
+          (user.role === 'OWNER' ? ['admin.organization', 'admin.settings', 'admin.users', 'finance.view', 'sales.view', 'production.view', 'inventory.view', 'finance.reports'] : 
+           user.role === 'ADMIN' ? ['admin.settings', 'admin.users', 'finance.view', 'sales.view', 'production.view', 'inventory.view', 'finance.reports'] : [])
       }
     };
   }
@@ -210,7 +212,9 @@ export class AuthService {
       email: user.email,
       role: user.role,
       organization: user.organization,
-      permissions: user.customRole?.permissions.map(p => p.permissionKey) || []
+      permissions: user.customRole?.permissions.map(p => p.permissionKey) || 
+        (user.role === 'OWNER' ? ['admin.organization', 'admin.settings', 'admin.users', 'finance.view', 'sales.view', 'production.view', 'inventory.view', 'finance.reports'] : 
+         user.role === 'ADMIN' ? ['admin.settings', 'admin.users', 'finance.view', 'sales.view', 'production.view', 'inventory.view', 'finance.reports'] : [])
     };
   }
 }

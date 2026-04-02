@@ -10,11 +10,24 @@ datasource db {
 
 model Organization {
   id                     String                  @id @default(uuid())
-  name                   String
+  name                   String                  // Nome Fantasia
+  razaoSocial            String?                 // Razão Social (Legal Name)
   cnpj                   String?                 @unique
   slug                   String                  @unique
   plan                   String                  @default("basic")
   active                 Boolean                 @default(true)
+  
+  // Contato e Endereço
+  email                  String?
+  phone                  String?
+  zipCode                String?                 // CEP
+  address                String?                 // Logradouro
+  addressNumber          String?                 // Número
+  complement             String?                 // Complemento
+  neighborhood           String?                 // Bairro
+  city                   String?                 // Cidade
+  state                  String?                 // UF (Ex: SP)
+
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   accounts               Account[]
@@ -76,6 +89,7 @@ model OrganizationSettings {
 
   // Criptografia e Segurança
   defaultBackupPassword       String? // Senha Cofre Mestra (Hash) para Backups
+  recoveryToken               String? // Token Master de Recuperação (Habilitado para PDF)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 

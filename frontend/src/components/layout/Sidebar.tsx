@@ -16,7 +16,9 @@ import {
   Warehouse,
   Factory,
   DollarSign,
-  TrendingUp
+  TrendingUp,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -29,9 +31,10 @@ interface MenuItem {
   icon: any;
   alwaysVisible?: boolean;
   permission?: PermissionType;
+  subItems?: MenuItem[];
 }
 
-// Definir todos os itens de menu possíveis
+// Definir todos os itens de menu possíveis com hierarquia
 const allMenuItems: MenuItem[] = [
   {
     title: 'Dashboard',
@@ -91,25 +94,27 @@ const allMenuItems: MenuItem[] = [
     title: 'Financeiro',
     href: '/financeiro',
     icon: DollarSign,
-    permission: 'finance.view'
-  },
-  {
-    title: 'A Receber',
-    href: '/financeiro?tab=receivables',
-    icon: DollarSign,
-    permission: 'finance.view'
-  },
-  {
-    title: 'DRE',
-    href: '/financeiro?tab=dre',
-    icon: BarChart3,
-    permission: 'finance.reports'
-  },
-  {
-    title: 'Fluxo de Caixa',
-    href: '/financeiro?tab=cash-flow',
-    icon: TrendingUp,
-    permission: 'finance.reports'
+    permission: 'finance.view',
+    subItems: [
+      {
+        title: 'A Receber',
+        href: '/financeiro?tab=receivables',
+        icon: DollarSign,
+        permission: 'finance.view'
+      },
+      {
+        title: 'DRE',
+        href: '/financeiro?tab=dre',
+        icon: BarChart3,
+        permission: 'finance.reports'
+      },
+      {
+        title: 'Fluxo de Caixa',
+        href: '/financeiro?tab=cash-flow',
+        icon: TrendingUp,
+        permission: 'finance.reports'
+      }
+    ]
   },
   {
     title: 'Relatórios',
@@ -128,6 +133,18 @@ const allMenuItems: MenuItem[] = [
 const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
   const location = useLocation();
   const { hasPermission } = useAuth();
+  
+  // Estado para controlar quais menus estão expandidos
+  const [expandedMenus, setExpandedMenus] = React.useState<Record<string, boolean>>({
+    'Financeiro': true // Inicia financeiro aberto se desejar
+  });
+
+  const toggleMenu = (title: string) => {
+    setExpandedMenus(prev => ({
+      ...prev,
+      [title]: !prev[title]
+    }));
+  };
 
   // Filtrar itens do menu baseado nas permissões
   const getVisibleMenuItems = () => {
@@ -153,43 +170,92 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
           </div>
           {isOpen && (
             <div className="transition-all duration-300 transform origin-left">
-              <h1 className="font-bold text-lg text-foreground">ArtPlim</h1>
-              <p className="text-xs text-muted-foreground">ERP Gráfico</p>
+              <h1 className="font-bold text-lg text-foreground leading-tight">ArtPlim</h1>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest">ERP Gráfico</p>
             </div>
           )}
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-4 overflow-y-auto min-h-0">
-        <ul className="space-y-2">
+      <nav className="flex-1 p-4 overflow-y-auto min-h-0 custom-scrollbar">
+        <ul className="space-y-1.5 focus:outline-none">
           {visibleMenuItems.map((item) => {
             const Icon = item.icon;
-            const isActive = location.pathname === item.href;
+            const hasSubItems = item.subItems && item.subItems.length > 0;
+            const isExpanded = expandedMenus[item.title];
+            const isActive = location.pathname === item.href && !hasSubItems;
 
             return (
-              <li key={item.href}>
-                <Link
-                  to={item.href}
-                  className={cn(
-                    "flex items-center rounded-lg transition-all duration-200 h-10 px-3",
-                    isOpen ? "space-x-3 w-full" : "justify-center px-0 w-10 mx-auto",
-                    isActive
-                      ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
-                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                  )}
-                  title={!isOpen ? item.title : undefined}
-                >
-                  <Icon className="w-5 h-5 flex-shrink-0" />
-                  {isOpen && (
-                    <span className="font-medium whitespace-nowrap overflow-hidden text-ellipsis">{item.title}</span>
-                  )}
-                </Link>
+              <li key={item.title}>
+                {hasSubItems ? (
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => toggleMenu(item.title)}
+                      className={cn(
+                        "flex items-center rounded-lg transition-all duration-200 h-10 px-3 w-full text-left",
+                        "text-muted-foreground hover:text-foreground hover:bg-accent focus:outline-none",
+                        !isOpen && "justify-center"
+                      )}
+                    >
+                      <Icon className="w-5 h-5 flex-shrink-0" />
+                      {isOpen && (
+                        <>
+                          <span className="ml-3 font-medium flex-1 text-sm">{item.title}</span>
+                          {isExpanded ? <ChevronDown className="w-4 h-4 opacity-50" /> : <ChevronRight className="w-4 h-4 opacity-50" />}
+                        </>
+                      )}
+                    </button>
+                    {isOpen && isExpanded && (
+                      <ul className="ml-4 pl-4 border-l border-border/60 space-y-1 mt-1 transition-all">
+                        {item.subItems!.map(sub => {
+                          const SubIcon = sub.icon;
+                          const isSubActive = location.pathname + location.search === sub.href;
+                          
+                          return (
+                            <li key={sub.title}>
+                              <Link
+                                to={sub.href}
+                                className={cn(
+                                  "flex items-center rounded-md h-9 px-3 transition-colors text-xs",
+                                  isSubActive
+                                    ? "bg-primary/10 text-primary font-bold"
+                                    : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                                )}
+                              >
+                                <SubIcon className="w-4 h-4 mr-2.5 opacity-70" />
+                                <span>{sub.title}</span>
+                              </Link>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                ) : (
+                  <Link
+                    to={item.href}
+                    className={cn(
+                      "flex items-center rounded-lg transition-all duration-200 h-10 px-3",
+                      isOpen ? "w-full" : "justify-center px-0 w-10 mx-auto",
+                      isActive
+                        ? "bg-primary text-primary-foreground shadow-md shadow-primary/20 font-bold"
+                        : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                    )}
+                    title={!isOpen ? item.title : undefined}
+                  >
+                    <Icon className="w-5 h-5 flex-shrink-0" />
+                    {isOpen && (
+                      <span className="ml-3 font-medium text-sm whitespace-nowrap overflow-hidden text-ellipsis">{item.title}</span>
+                    )}
+                  </Link>
+                )}
               </li>
             );
           })}
         </ul>
       </nav>
+
 
       {/* Footer */}
       {isOpen && (
