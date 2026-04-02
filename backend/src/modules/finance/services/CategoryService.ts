@@ -8,6 +8,8 @@ interface CreateCategoryInput {
   color?: string;
   parentId?: string;
   chartOfAccountId?: string;
+  inventoryAccountId?: string;
+  expenseAccountId?: string;
 }
 
 export class CategoryService {
@@ -21,7 +23,9 @@ export class CategoryService {
         type: data.type,
         color: data.color,
         parentId: data.parentId,
-        chartOfAccountId: data.chartOfAccountId
+        chartOfAccountId: data.chartOfAccountId,
+        inventoryAccountId: data.inventoryAccountId,
+        expenseAccountId: data.expenseAccountId
       },
       include: {
         parent: {
@@ -56,6 +60,20 @@ export class CategoryService {
           }
         },
         chartOfAccount: {
+          select: {
+            id: true,
+            code: true,
+            name: true
+          }
+        },
+        inventoryAccount: {
+          select: {
+            id: true,
+            code: true,
+            name: true
+          }
+        },
+        expenseAccount: {
           select: {
             id: true,
             code: true,

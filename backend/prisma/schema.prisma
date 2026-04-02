@@ -9,24 +9,24 @@ datasource db {
 }
 
 model Organization {
-  id                     String                  @id @default(uuid())
-  name                   String                  // Nome Fantasia
-  razaoSocial            String?                 // Razão Social (Legal Name)
-  cnpj                   String?                 @unique
-  slug                   String                  @unique
-  plan                   String                  @default("basic")
-  active                 Boolean                 @default(true)
-  
+  id          String  @id @default(uuid())
+  name        String // Nome Fantasia
+  razaoSocial String? // Razão Social (Legal Name)
+  cnpj        String? @unique
+  slug        String  @unique
+  plan        String  @default("basic")
+  active      Boolean @default(true)
+
   // Contato e Endereço
-  email                  String?
-  phone                  String?
-  zipCode                String?                 // CEP
-  address                String?                 // Logradouro
-  addressNumber          String?                 // Número
-  complement             String?                 // Complemento
-  neighborhood           String?                 // Bairro
-  city                   String?                 // Cidade
-  state                  String?                 // UF (Ex: SP)
+  email         String?
+  phone         String?
+  zipCode       String? // CEP
+  address       String? // Logradouro
+  addressNumber String? // Número
+  complement    String? // Complemento
+  neighborhood  String? // Bairro
+  city          String? // Cidade
+  state         String? // UF (Ex: SP)
 
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
@@ -70,26 +70,29 @@ model Organization {
 }
 
 model OrganizationSettings {
-  id                   String  @id @default(uuid())
-  organizationId       String  @unique
-  enableWMS            Boolean @default(false)
-  enableProduction     Boolean @default(false)
-  enableFinance        Boolean @default(true)
-  enableAutomation     Boolean @default(true)
-  defaultMarkup        Float   @default(2.0)
-  taxRate              Float   @default(0.0)
-  validadeOrcamento    Int     @default(7)
-  enableFinanceReports Boolean @default(true)
-  allowDuplicatePhones Boolean @default(true)
+  id                         String  @id @default(uuid())
+  organizationId             String  @unique
+  enableWMS                  Boolean @default(false)
+  enableProduction           Boolean @default(false)
+  enableFinance              Boolean @default(true)
+  enableAutomation           Boolean @default(true)
+  defaultMarkup              Float   @default(2.0)
+  taxRate                    Float   @default(0.0)
+  validadeOrcamento          Int     @default(7)
+  enableFinanceReports       Boolean @default(true)
+  allowDuplicatePhones       Boolean @default(true)
   requireDocumentKeyForEntry Boolean @default(false)
 
   // Configurações de Apropriação Financeira (Plano de Contas)
   defaultReceivableCategoryId String?
   defaultRevenueCategoryId    String?
 
+  // Método de Valoração de Estoque (AVERAGE_COST ou PEPS)
+  inventoryValuationMethod String @default("AVERAGE")
+
   // Criptografia e Segurança
-  defaultBackupPassword       String? // Senha Cofre Mestra (Hash) para Backups
-  recoveryToken               String? // Token Master de Recuperação (Habilitado para PDF)
+  defaultBackupPassword String? // Senha Cofre Mestra (Hash) para Backups
+  recoveryToken         String? // Token Master de Recuperação (Habilitado para PDF)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -103,7 +106,7 @@ model User {
   password           String
   name               String
   role               UserRole             @default(USER) // Mantido para retrocompatibilidade
-  roleId             String?              // Novo: Relacionamento com Role (Departamento) customizado
+  roleId             String? // Novo: Relacionamento com Role (Departamento) customizado
   customRole         Role?                @relation(fields: [roleId], references: [id])
   active             Boolean              @default(true)
   createdAt          DateTime             @default(now())
@@ -129,30 +132,30 @@ enum SpedAccountType {
 }
 
 model MaterialType {
-  id              String                @id @default(uuid())
-  name            String                // Nome amigável (ex: Tintas, Chapas, etc)
-  spedCode        String                // Código SPED base (00, 01, 07...)
-  organizationId  String
-  organization    Organization          @relation(fields: [organizationId], references: [id])
-  mappings        SpedAccountMapping[]
-  materials       Material[]
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
+  id             String               @id @default(uuid())
+  name           String // Nome amigável (ex: Tintas, Chapas, etc)
+  spedCode       String // Código SPED base (00, 01, 07...)
+  organizationId String
+  organization   Organization         @relation(fields: [organizationId], references: [id])
+  mappings       SpedAccountMapping[]
+  materials      Material[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
   @@index([organizationId])
 }
 
 model SpedAccountMapping {
-  id              String                @id @default(uuid())
-  organizationId  String
-  organization    Organization          @relation(fields: [organizationId], references: [id])
-  materialTypeId  String?               // Agora vinculado ao tipo dinâmico
-  materialType    MaterialType?         @relation(fields: [materialTypeId], references: [id], onDelete: Cascade)
-  spedType        String                // Mantido para compatibilidade legado (valor do spedCode do tipo)
-  accountId       String
-  account         ChartOfAccount        @relation(fields: [accountId], references: [id])
-  mappingType     SpedAccountType       @default(EXPENSE) // INVENTORY ou EXPENSE
-  createdAt       DateTime              @default(now())
+  id             String          @id @default(uuid())
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  materialTypeId String? // Agora vinculado ao tipo dinâmico
+  materialType   MaterialType?   @relation(fields: [materialTypeId], references: [id], onDelete: Cascade)
+  spedType       String // Mantido para compatibilidade legado (valor do spedCode do tipo)
+  accountId      String
+  account        ChartOfAccount  @relation(fields: [accountId], references: [id])
+  mappingType    SpedAccountType @default(EXPENSE) // INVENTORY ou EXPENSE
+  createdAt      DateTime        @default(now())
 
   @@index([organizationId, materialTypeId])
 }
@@ -230,7 +233,8 @@ model Material {
   active                   Boolean               @default(true)
   createdAt                DateTime              @default(now())
   updatedAt                DateTime              @updatedAt
-  category                 String                @default("Outros")
+  categoryId               String // Nova chave estrangeira
+  category                 Category              @relation(fields: [categoryId], references: [id])
   defaultConsumptionFactor Decimal               @default(1.0) @db.Decimal(10, 4)
   defaultConsumptionRule   ConsumptionRule       @default(FIXED_UNIT)
   expenseAccountId         String?
@@ -238,8 +242,8 @@ model Material {
   minStockQuantity         Float?
   sellWithoutStock         Boolean               @default(true)
   trackStock               Boolean               @default(true)
-  spedType                 String?               // Legado: código do tipo (00, 01...)
-  materialTypeId           String?               // Dinâmico: ID da classificação criada pelo usuário
+  spedType                 String? // Legado: código do tipo (00, 01...)
+  materialTypeId           String? // Dinâmico: ID da classificação criada pelo usuário
   materialType             MaterialType?         @relation(fields: [materialTypeId], references: [id])
   fichasTecnicas           FichaTecnicaInsumo[]
   fornecedores             InsumoFornecedor[]
@@ -258,7 +262,7 @@ model Material {
 
   @@unique([organizationId, name], name: "organizationId_name")
   @@index([organizationId])
-  @@index([organizationId, category])
+  @@index([organizationId, categoryId])
   @@index([organizationId, active])
   @@map("materials")
 }
@@ -722,21 +726,21 @@ model ProductionOperation {
 }
 
 model Machine {
-  id              String        @id @default(uuid())
+  id              String          @id @default(uuid())
   organizationId  String
   name            String
   type            MachineType
   model           String?
   serialNumber    String?
-  status          MachineStatus @default(AVAILABLE)
+  status          MachineStatus   @default(AVAILABLE)
   maxWidth        Float?
   maxHeight       Float?
   speedPerMinute  Float?
   lastMaintenance DateTime?
   nextMaintenance DateTime?
-  active          Boolean       @default(true)
-  createdAt       DateTime      @default(now())
-  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  active          Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   stockMovements  StockMovement[]
 
   @@map("machines")
@@ -809,8 +813,15 @@ model Category {
   children       Category[]    @relation("CategoryHierarchy")
   transactions   Transaction[]
 
-  chartOfAccountId  String?
-  chartOfAccount    ChartOfAccount? @relation(fields: [chartOfAccountId], references: [id])
+  chartOfAccountId String?
+  chartOfAccount   ChartOfAccount? @relation(fields: [chartOfAccountId], references: [id])
+  Material         Material[]
+
+  // Novos relacionamentos para Material
+  inventoryAccountId String?
+  expenseAccountId   String?
+  inventoryAccount   ChartOfAccount? @relation("CategoryInventoryAccount", fields: [inventoryAccountId], references: [id])
+  expenseAccount     ChartOfAccount? @relation("CategoryExpenseAccount", fields: [expenseAccountId], references: [id])
 
   @@map("categories")
 }
@@ -1072,19 +1083,19 @@ model MaterialReceipt {
 }
 
 model MaterialSupplier {
-  id           String   @id @default(uuid())
-  materialId   String
-  supplierId   String
-  supplierCode String?
-  costPrice    Decimal  @db.Decimal(10, 4)
-  notes        String?
-  paymentTerms String?
+  id                  String   @id @default(uuid())
+  materialId          String
+  supplierId          String
+  supplierCode        String?
+  costPrice           Decimal  @db.Decimal(10, 4)
+  notes               String?
+  paymentTerms        String?
   preferredPaymentDay Int?
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  material     Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
-  supplier     Profile  @relation(fields: [supplierId], references: [id])
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  material            Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  supplier            Profile  @relation(fields: [supplierId], references: [id])
 
   @@unique([materialId, supplierId])
   @@map("material_suppliers")
@@ -1144,7 +1155,7 @@ model AccountReceivable {
 }
 
 model ChartOfAccount {
-  id              String           @id @default(uuid())
+  id              String            @id @default(uuid())
   organizationId  String
   name            String
   code            String?
@@ -1152,21 +1163,23 @@ model ChartOfAccount {
   nature          AccountNature
   type            ChartAccountType
   parentId        String?
-  active          Boolean          @default(true)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  parent          ChartOfAccount?  @relation("ChartAccountHierarchy", fields: [parentId], references: [id])
-  children        ChartOfAccount[] @relation("ChartAccountHierarchy")
+  active          Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent          ChartOfAccount?   @relation("ChartAccountHierarchy", fields: [parentId], references: [id])
+  children        ChartOfAccount[]  @relation("ChartAccountHierarchy")
   categories      Category[]
-  revenueProducts Product[]        @relation("ProductRevenueAccount")
+  revenueProducts Product[]         @relation("ProductRevenueAccount")
   systemRole      AccountSystemRole @default(GENERAL)
 
   // Existing relations
-  expenseMaterials   Material[] @relation("MaterialExpenseAccount")
-  inventoryMaterials Material[] @relation("MaterialInventoryAccount")
+  expenseMaterials    Material[]           @relation("MaterialExpenseAccount")
+  inventoryMaterials  Material[]           @relation("MaterialInventoryAccount")
+  categoryInventoryAccounts Category[]     @relation("CategoryInventoryAccount")
+  categoryExpenseAccounts   Category[]     @relation("CategoryExpenseAccount")
   spedAccountMappings SpedAccountMapping[]
-  paymentMethodsFee  PaymentMethod[] @relation("PaymentMethodFee")
+  paymentMethodsFee   PaymentMethod[]      @relation("PaymentMethodFee")
 
   @@unique([organizationId, code], name: "organizationId_code")
   @@map("chart_of_accounts")
@@ -1438,30 +1451,30 @@ enum StockMovementType {
 }
 
 model Role {
-  id              String       @id @default(uuid())
-  organizationId  String
-  name            String
-  description     String?
-  isSystem        Boolean      @default(false)
-  active          Boolean      @default(true)
-  createdAt       DateTime     @default(now())
-  
-  users           User[]
-  permissions     RolePermission[]
-  
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  isSystem       Boolean  @default(false)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  users       User[]
+  permissions RolePermission[]
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   @@unique([organizationId, name])
   @@map("roles")
 }
 
 model RolePermission {
-  id              String       @id @default(uuid())
-  roleId          String
-  permissionKey   String
-  
-  role            Role         @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  
+  id            String @id @default(uuid())
+  roleId        String
+  permissionKey String
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
   @@unique([roleId, permissionKey])
   @@map("role_permissions")
 }

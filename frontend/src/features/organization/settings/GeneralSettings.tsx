@@ -59,6 +59,18 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
       .substring(0, 9);
   };
 
+  // Capitalização de nomes
+  const toTitleCaseBR = (str: string) => {
+    if (!str) return str;
+    const lowerExceptions = ['de', 'da', 'do', 'dos', 'das', 'e'];
+    return str.toLowerCase().split(' ').map((word, index) => {
+      if (index !== 0 && lowerExceptions.includes(word)) {
+        return word;
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    }).join(' ');
+  };
+
   const fetchCepData = async (cepRaw: string) => {
     const cep = cepRaw.replace(/\D/g, '');
     if (cep.length !== 8) return;
@@ -73,9 +85,9 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
       setOrganizationData(prev => ({
         ...prev,
         zipCode: maskCep(cep),
-        address: data.street || prev.address,
-        neighborhood: data.neighborhood || prev.neighborhood,
-        city: data.city || prev.city,
+        address: toTitleCaseBR(data.street) || prev.address,
+        neighborhood: toTitleCaseBR(data.neighborhood) || prev.neighborhood,
+        city: toTitleCaseBR(data.city) || prev.city,
         state: data.state || prev.state
       }));
 
@@ -105,16 +117,16 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
       setOrganizationData(prev => ({
         ...prev,
         cnpj: maskCnpj(cnpj),
-        name: data.nome_fantasia || data.razao_social || prev.name,
-        razaoSocial: data.razao_social || prev.razaoSocial,
-        email: data.email || prev.email,
+        name: toTitleCaseBR(data.nome_fantasia || data.razao_social) || prev.name,
+        razaoSocial: toTitleCaseBR(data.razao_social) || prev.razaoSocial,
+        email: data.email ? data.email.toLowerCase() : prev.email,
         phone: data.ddd_telefone_1 || prev.phone,
         zipCode: data.cep || prev.zipCode,
-        address: data.logradouro || prev.address,
+        address: toTitleCaseBR(data.logradouro) || prev.address,
         addressNumber: data.numero || prev.addressNumber,
-        complement: data.complemento || prev.complement,
-        neighborhood: data.bairro || prev.neighborhood,
-        city: data.municipio || prev.city,
+        complement: toTitleCaseBR(data.complemento) || prev.complement,
+        neighborhood: toTitleCaseBR(data.bairro) || prev.neighborhood,
+        city: toTitleCaseBR(data.municipio) || prev.city,
         state: data.uf || prev.state
       }));
 

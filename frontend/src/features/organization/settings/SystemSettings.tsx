@@ -15,6 +15,7 @@ interface SystemSettingsData {
   validadeOrcamento: number;
   allowDuplicatePhones: boolean;
   requireDocumentKeyForEntry: boolean;
+  inventoryValuationMethod: string;
 }
 
 interface SystemSettingsProps {
@@ -129,6 +130,19 @@ export const SystemSettings: React.FC<SystemSettingsProps> = ({
                       type="checkbox"
                       checked={settings.requireDocumentKeyForEntry}
                       onChange={(e) => setSettings(prev => ({ ...prev, requireDocumentKeyForEntry: e.target.checked }))}
+                      className="w-5 h-5 rounded-md border-input text-primary"
+                    />
+                  </div>
+                </label>
+
+                <label className="flex items-center justify-between p-4 border rounded-xl hover:border-primary/30 transition-all cursor-pointer bg-muted/20">
+                  <span className="text-xs font-bold uppercase tracking-wide">Método de Custeio</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-medium text-muted-foreground">{settings.inventoryValuationMethod === 'PEPS' ? 'PEPS (FIFO)' : 'Média Ponderada'}</span>
+                    <input
+                      type="checkbox"
+                      checked={settings.inventoryValuationMethod === 'PEPS'}
+                      onChange={(e) => setSettings(prev => ({ ...prev, inventoryValuationMethod: e.target.checked ? 'PEPS' : 'AVERAGE' }))}
                       className="w-5 h-5 rounded-md border-input text-primary"
                     />
                   </div>

@@ -10,7 +10,8 @@ import { toast } from 'sonner';
 interface Material {
   id: string;
   name: string;
-  category: string;
+  categoryId: string;
+  category?: { id: string; name: string };
   description?: string;
   format: 'ROLL' | 'SHEET' | 'UNIT';
   costPerUnit: number;
@@ -52,10 +53,11 @@ const Materiais: React.FC = () => {
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
   const [chartOfAccounts, setChartOfAccounts] = useState<any[]>([]);
   const [fornecedores, setFornecedores] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
 
   const [formData, setFormData] = useState({
     name: '',
-    category: 'Outros',
+    categoryId: '',
     description: '',
     format: 'SHEET' as Material['format'],
     costPerUnit: '',
@@ -75,7 +77,18 @@ const Materiais: React.FC = () => {
     loadMateriais();
     loadChartOfAccounts();
     loadFornecedores();
+    loadCategories();
   }, []);
+
+  const loadCategories = async () => {
+    try {
+      const resp = await api.get('/api/finance/categories');
+      // Filtra apenas de despesa (onde os materiais geralmente se encaixam) ou todas
+      setCategories(resp.data.data.filter((c: any) => c.type === 'EXPENSE'));
+    } catch (e) {
+      console.error('Erro ao carregar categorias', e);
+    }
+  };
 
   const loadChartOfAccounts = async () => {
     try {
@@ -111,7 +124,7 @@ const Materiais: React.FC = () => {
 
     const payload = {
       name: formData.name,
-      category: formData.category,
+      categoryId: formData.categoryId,
       description: formData.description || undefined,
       format: formData.format,
       costPerUnit: parseFloat(formData.costPerUnit),
@@ -153,7 +166,7 @@ const Materiais: React.FC = () => {
     setEditingMaterial(material);
     setFormData({
       name: material.name,
-      category: material.category || 'Outros',
+      categoryId: material.categoryId || '',
       description: material.description || '',
       format: material.format,
       costPerUnit: material.costPerUnit.toString(),
@@ -190,7 +203,7 @@ const Materiais: React.FC = () => {
   const resetForm = () => {
     setFormData({
       name: '',
-      category: 'Outros',
+      categoryId: '',
       description: '',
       format: 'SHEET',
       costPerUnit: '',
@@ -226,7 +239,7 @@ const Materiais: React.FC = () => {
 
   const filteredMateriais = materiais.filter(material =>
     material.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    material.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    material.category?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     material.description?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -304,12 +317,17 @@ const Materiais: React.FC = () => {
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Categoria *</label>
-                    <Input
-                      value={formData.category}
-                      onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-                      placeholder="Ex: Chapas, Tintas..."
+                    <select
+                      value={formData.categoryId}
+                      onChange={(e) => setFormData(prev => ({ ...prev, categoryId: e.target.value }))}
+                      className="w-full h-10 px-3 py-2 border border-input rounded-md bg-background"
                       required
-                    />
+                    >
+                      <option value="">— Selecione a Categoria —</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
@@ -660,7 +678,7 @@ const Materiais: React.FC = () => {
               <div className="flex justify-between items-start">
                 <div className="pr-12">
                   <span className="px-2 py-1 bg-primary/10 text-primary text-[10px] rounded-full uppercase font-bold">
-                    {material.category || 'Outros'}
+                    {material.category?.name || 'Sem Categoria'}
                   </span>
                   <CardTitle className="text-lg mt-1">{material.name}</CardTitle>
                   <CardDescription>

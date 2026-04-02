@@ -4,21 +4,23 @@ import { OrganizationService } from './services/OrganizationService';
 import { UserService } from './services/UserService';
 import { getTenantClient, prisma } from '../../shared/infrastructure/database/tenant';
 import { requirePermission } from '../../shared/infrastructure/auth/middleware';
+import crypto from 'crypto';
+import { BackupCryptoService } from '../backup/infrastructure/crypto/BackupCryptoService';
 
 const updateOrganizationSchema = z.object({
-  name: z.string().min(2).optional(),
-  razaoSocial: z.string().min(2).nullable().optional(),
-  cnpj: z.string().nullable().optional(),
+  name: z.string().min(1).optional(),
+  razaoSocial: z.string().nullable().optional().transform(v => v === '' ? null : v),
+  cnpj: z.string().nullable().optional().transform(v => v === '' ? null : v),
   plan: z.enum(['basic', 'pro', 'enterprise', 'PREMIUM']).optional(),
-  email: z.string().email().or(z.literal('')).nullable().optional(),
-  phone: z.string().nullable().optional(),
-  zipCode: z.string().nullable().optional(),
-  address: z.string().nullable().optional(),
-  addressNumber: z.string().nullable().optional(),
-  complement: z.string().nullable().optional(),
-  neighborhood: z.string().nullable().optional(),
-  city: z.string().nullable().optional(),
-  state: z.string().length(2).nullable().optional()
+  email: z.string().email().or(z.literal('')).nullable().optional().transform(v => v === '' ? null : v),
+  phone: z.string().nullable().optional().transform(v => v === '' ? null : v),
+  zipCode: z.string().nullable().optional().transform(v => v === '' ? null : v),
+  address: z.string().nullable().optional().transform(v => v === '' ? null : v),
+  addressNumber: z.string().nullable().optional().transform(v => v === '' ? null : v),
+  complement: z.string().nullable().optional().transform(v => v === '' ? null : v),
+  neighborhood: z.string().nullable().optional().transform(v => v === '' ? null : v),
+  city: z.string().nullable().optional().transform(v => v === '' ? null : v),
+  state: z.string().length(2).or(z.literal('')).nullable().optional().transform(v => v === '' ? null : (v ? v.toUpperCase() : null))
 });
 
 const updateSettingsSchema = z.object({
@@ -67,15 +69,24 @@ export async function organizationRoutes(fastify: FastifyInstance) {
   fastify.put('/', {
     preHandler: [fastify.authenticate, requirePermission(['admin.organization'])]
   }, async (request, reply) => {
-    const body = updateOrganizationSchema.parse(request.body);
-    const organizationService = new OrganizationService(prisma);
+    try {
+      const body = updateOrganizationSchema.parse(request.body);
+      const organizationService = new OrganizationService(prisma);
 
-    const organization = await organizationService.update(request.user!.organizationId, body);
+      const organization = await organizationService.update(request.user!.organizationId, body);
 
-    return reply.send({
-      success: true,
-      data: organization
-    });
+      return reply.send({
+        success: true,
+        data: organization
+      });
+    } catch (error: any) {
+      console.error('ERRO INTERNO PUT /api/organization:', error);
+      return reply.code(500).send({
+        success: false,
+        message: 'Erro Interno: ' + error.message,
+        details: error
+      });
+    }
   });
 
   // ========== CONFIGURAÇÕES ==========
@@ -102,12 +113,10 @@ export async function organizationRoutes(fastify: FastifyInstance) {
     
     // Criptografa a senha mestre se ela foi enviada no payload, pois é reversível apenas pelo motor do sistema
     if (body.defaultBackupPassword) {
-       const { BackupCryptoService } = require('../backup/infrastructure/crypto/BackupCryptoService');
        body.defaultBackupPassword = BackupCryptoService.encryptMasterPassword(body.defaultBackupPassword);
        
        // Se definiu uma nova senha mestre mas não tem token de recuperação, gera um agora
        if (!body.recoveryToken) {
-         const crypto = require('crypto');
          body.recoveryToken = `REC-${crypto.randomBytes(4).toString('hex').toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
        }
     } else if (body.defaultBackupPassword === '') {

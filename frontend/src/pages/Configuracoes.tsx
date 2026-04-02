@@ -45,6 +45,7 @@ interface OrganizationSettings {
   defaultReceivableCategoryId?: string;
   defaultRevenueCategoryId?: string;
   defaultBackupPassword?: string;
+  inventoryValuationMethod: string;
 }
 
 const Configuracoes: React.FC = () => {
@@ -69,7 +70,8 @@ const Configuracoes: React.FC = () => {
     taxRate: 0.0,
     validadeOrcamento: 7,
     allowDuplicatePhones: true,
-    requireDocumentKeyForEntry: false
+    requireDocumentKeyForEntry: false,
+    inventoryValuationMethod: 'AVERAGE'
   });
 
   const [selectedModules, setSelectedModules] = useState<Record<string, boolean>>({

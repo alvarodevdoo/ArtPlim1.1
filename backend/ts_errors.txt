@@ -1,0 +1,164 @@
+src/app.ts(119,9): error TS18046: 'error' is of type 'unknown'.
+src/app.ts(122,72): error TS18046: 'error' is of type 'unknown'.
+src/app.ts(126,9): error TS18046: 'error' is of type 'unknown'.
+src/app.ts(126,49): error TS18046: 'error' is of type 'unknown'.
+src/app.ts(136,87): error TS18046: 'error' is of type 'unknown'.
+src/modules/admin/admin.routes.ts(58,38): error TS2345: Argument of type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to parameter of type 'AuthenticatedRequest'.
+  Types of property 'user' are incompatible.
+    Property 'id' is missing in type 'JWTPayload & { permissions: string[]; }' but required in type '{ id: string; organizationId: string; role: string; }'.
+src/modules/admin/admin.routes.ts(67,39): error TS2345: Argument of type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly body: { type: string; required: string[]; properties: { name: { ...; }; email: { ...; }; role: { ...; }; }; }; }, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to parameter of type 'AuthenticatedRequest'.
+  Types of property 'user' are incompatible.
+    Property 'id' is missing in type 'JWTPayload & { permissions: string[]; }' but required in type '{ id: string; organizationId: string; role: string; }'.
+src/modules/admin/admin.routes.ts(83,39): error TS2345: Argument of type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly body: { type: string; required: string[]; properties: { name: { ...; }; email: { ...; }; role: { ...; }; active: { ...; }; }; }; readonly params: { ...; }; }, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequ...' is not assignable to parameter of type 'AuthenticatedRequest'.
+  Types of property 'user' are incompatible.
+    Property 'id' is missing in type 'JWTPayload & { permissions: string[]; }' but required in type '{ id: string; organizationId: string; role: string; }'.
+src/modules/admin/admin.routes.ts(99,45): error TS2345: Argument of type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly body: { type: string; required: string[]; properties: { active: { ...; }; }; }; readonly params: { ...; }; }, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to parameter of type 'AuthenticatedRequest'.
+  Types of property 'user' are incompatible.
+    Property 'id' is missing in type 'JWTPayload & { permissions: string[]; }' but required in type '{ id: string; organizationId: string; role: string; }'.
+src/modules/admin/admin.routes.ts(114,39): error TS2345: Argument of type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly params: { readonly type: "object"; readonly properties: { readonly userId: { ...; }; }; readonly required: readonly [...]; }; }, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to parameter of type 'AuthenticatedRequest'.
+  Types of property 'user' are incompatible.
+    Property 'id' is missing in type 'JWTPayload & { permissions: string[]; }' but required in type '{ id: string; organizationId: string; role: string; }'.
+src/modules/admin/admin.routes.ts(119,50): error TS2345: Argument of type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to parameter of type 'AuthenticatedRequest'.
+  Types of property 'user' are incompatible.
+    Property 'id' is missing in type 'JWTPayload & { permissions: string[]; }' but required in type '{ id: string; organizationId: string; role: string; }'.
+src/modules/admin/admin.routes.ts(123,42): error TS2345: Argument of type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to parameter of type 'AuthenticatedRequest'.
+  Types of property 'user' are incompatible.
+    Property 'id' is missing in type 'JWTPayload & { permissions: string[]; }' but required in type '{ id: string; organizationId: string; role: string; }'.
+src/modules/admin/admin.routes.ts(127,39): error TS2345: Argument of type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to parameter of type 'AuthenticatedRequest'.
+  Types of property 'user' are incompatible.
+    Property 'id' is missing in type 'JWTPayload & { permissions: string[]; }' but required in type '{ id: string; organizationId: string; role: string; }'.
+src/modules/admin/admin.routes.ts(131,44): error TS2345: Argument of type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to parameter of type 'AuthenticatedRequest'.
+  Types of property 'user' are incompatible.
+    Property 'id' is missing in type 'JWTPayload & { permissions: string[]; }' but required in type '{ id: string; organizationId: string; role: string; }'.
+src/modules/admin/AdminController.ts(9,11): error TS2430: Interface 'AuthenticatedRequest' incorrectly extends interface 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+  Types of property 'user' are incompatible.
+    Type '{ id: string; organizationId: string; role: string; }' is not assignable to type 'JWTPayload & { permissions: string[]; }'.
+      Property 'userId' is missing in type '{ id: string; organizationId: string; role: string; }' but required in type 'JWTPayload'.
+src/modules/analytics/AnalyticsEngine.ts(297,12): error TS18046: 'result' is of type 'unknown'.
+src/modules/catalog/controllers/FinishController.ts(6,35): error TS2307: Cannot find module 'express' or its corresponding type declarations.
+src/modules/catalog/controllers/ProductionMaterialController.ts(10,35): error TS2307: Cannot find module 'express' or its corresponding type declarations.
+src/modules/catalog/controllers/ProductionMaterialController.ts(98,17): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/modules/catalog/controllers/StandardSizeController.ts(10,35): error TS2307: Cannot find module 'express' or its corresponding type declarations.
+src/modules/catalog/routes/finish.routes.ts(6,24): error TS2307: Cannot find module 'express' or its corresponding type declarations.
+src/modules/catalog/routes/finish.routes.ts(10,32): error TS2307: Cannot find module '../../../middleware/auth' or its corresponding type declarations.
+src/modules/catalog/routes/finish.routes.ts(21,18): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/finish.routes.ts(21,23): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/finish.routes.ts(22,19): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/finish.routes.ts(22,24): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/finish.routes.ts(25,31): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/finish.routes.ts(25,36): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/finish.routes.ts(26,39): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/finish.routes.ts(26,44): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/finish.routes.ts(27,38): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/finish.routes.ts(27,43): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/finish.routes.ts(30,21): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/finish.routes.ts(30,26): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/finish.routes.ts(31,21): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/finish.routes.ts(31,26): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/finish.routes.ts(32,24): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/finish.routes.ts(32,29): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/finish.routes.ts(35,41): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/finish.routes.ts(35,46): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/finish.routes.ts(36,38): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/finish.routes.ts(36,43): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(8,24): error TS2307: Cannot find module 'express' or its corresponding type declarations.
+src/modules/catalog/routes/productionMaterial.routes.ts(18,18): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(18,23): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(21,23): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(21,28): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(24,28): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(24,33): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(27,31): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(27,36): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(30,24): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(30,29): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(33,36): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(33,41): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(36,21): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(36,26): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(39,19): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(39,24): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(42,21): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(42,26): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(45,24): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/productionMaterial.routes.ts(45,29): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/standardSize.routes.ts(8,24): error TS2307: Cannot find module 'express' or its corresponding type declarations.
+src/modules/catalog/routes/standardSize.routes.ts(18,18): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/standardSize.routes.ts(18,23): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/standardSize.routes.ts(21,23): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/standardSize.routes.ts(21,28): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/standardSize.routes.ts(24,31): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/standardSize.routes.ts(24,36): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/standardSize.routes.ts(27,24): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/standardSize.routes.ts(27,29): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/standardSize.routes.ts(30,21): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/standardSize.routes.ts(30,26): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/standardSize.routes.ts(33,19): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/standardSize.routes.ts(33,24): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/standardSize.routes.ts(36,21): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/standardSize.routes.ts(36,26): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/routes/standardSize.routes.ts(39,24): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/modules/catalog/routes/standardSize.routes.ts(39,29): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/catalog/services/ConfigurationValidationService.ts(184,49): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/modules/catalog/services/ConfigurationValidationService.ts(195,53): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/modules/catalog/services/ConfigurationValidationService.ts(365,54): error TS7006: Parameter 'machine' implicitly has an 'any' type.
+src/modules/catalog/services/FichaTecnicaService.ts(37,44): error TS7006: Parameter 'tx' implicitly has an 'any' type.
+src/modules/catalog/services/FichaTecnicaService.ts(52,45): error TS7006: Parameter 'i' implicitly has an 'any' type.
+src/modules/catalog/services/FichaTecnicaService.ts(63,27): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/modules/catalog/services/FichaTecnicaService.ts(115,26): error TS7006: Parameter 'total' implicitly has an 'any' type.
+src/modules/catalog/services/FichaTecnicaService.ts(115,33): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/modules/catalog/services/WasteCalculationService.ts(197,47): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+src/modules/catalog/services/WasteCalculationService.ts(197,52): error TS7006: Parameter 'waste' implicitly has an 'any' type.
+src/modules/catalog/services/WasteCalculationService.ts(198,46): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+src/modules/catalog/services/WasteCalculationService.ts(198,51): error TS7006: Parameter 'waste' implicitly has an 'any' type.
+src/modules/catalog/services/WasteCalculationService.ts(199,45): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+src/modules/catalog/services/WasteCalculationService.ts(199,50): error TS7006: Parameter 'waste' implicitly has an 'any' type.
+src/modules/chartOfAccounts/useCases/ListSpedMappingsUseCase.ts(10,9): error TS2353: Object literal may only specify known properties, and 'chartOfAccount' does not exist in type 'SpedAccountMappingInclude<DefaultArgs>'.
+src/modules/production/services/PendingChangesService.ts(291,54): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(o: { [s: string]: string | number | boolean | JsonObject | JsonArray | null | undefined; } | ArrayLike<string | number | boolean | JsonObject | JsonArray | null | undefined>): [...][]', gave the following error.
+    Argument of type 'JsonValue' is not assignable to parameter of type '{ [s: string]: string | number | boolean | JsonObject | JsonArray | null | undefined; } | ArrayLike<string | number | boolean | JsonObject | JsonArray | null | undefined>'.
+      Type 'null' is not assignable to type '{ [s: string]: string | number | boolean | JsonObject | JsonArray | null | undefined; } | ArrayLike<string | number | boolean | JsonObject | JsonArray | null | undefined>'.
+  Overload 2 of 2, '(o: {}): [string, any][]', gave the following error.
+    Argument of type 'JsonValue' is not assignable to parameter of type '{}'.
+      Type 'null' is not assignable to type '{}'.
+src/modules/production/services/PendingChangesService.ts(407,52): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(o: { [s: string]: string | number | boolean | JsonObject | JsonArray | null | undefined; } | ArrayLike<string | number | boolean | JsonObject | JsonArray | null | undefined>): [...][]', gave the following error.
+    Argument of type 'JsonValue' is not assignable to parameter of type '{ [s: string]: string | number | boolean | JsonObject | JsonArray | null | undefined; } | ArrayLike<string | number | boolean | JsonObject | JsonArray | null | undefined>'.
+      Type 'null' is not assignable to type '{ [s: string]: string | number | boolean | JsonObject | JsonArray | null | undefined; } | ArrayLike<string | number | boolean | JsonObject | JsonArray | null | undefined>'.
+  Overload 2 of 2, '(o: {}): [string, any][]', gave the following error.
+    Argument of type 'JsonValue' is not assignable to parameter of type '{}'.
+      Type 'null' is not assignable to type '{}'.
+src/modules/production/services/PendingChangesService.ts(413,30): error TS18047: 'originalData' is possibly 'null'.
+src/modules/production/services/PendingChangesService.ts(413,43): error TS2339: Property 'items' does not exist on type 'string | number | boolean | JsonObject | JsonArray'.
+  Property 'items' does not exist on type 'string'.
+src/modules/production/services/PendingChangesService.ts(417,20): error TS18047: 'originalData' is possibly 'null'.
+src/modules/production/services/PendingChangesService.ts(417,20): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type 'string | number | boolean | JsonObject | JsonArray'.
+  No index signature with a parameter of type 'string' was found on type 'string | number | boolean | JsonObject | JsonArray'.
+src/modules/sales/automation.routes.ts(1,24): error TS2307: Cannot find module 'express' or its corresponding type declarations.
+src/modules/sales/automation.routes.ts(81,43): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/sales/automation.routes.ts(104,44): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/sales/automation.routes.ts(130,47): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/sales/automation.routes.ts(151,17): error TS18046: 'error' is of type 'unknown'.
+src/modules/sales/automation.routes.ts(167,50): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/sales/automation.routes.ts(183,17): error TS18046: 'error' is of type 'unknown'.
+src/modules/sales/automation.routes.ts(199,56): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/modules/sales/automation.routes.ts(236,56): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/shared/application/pricing/PricingEngine.ts(124,51): error TS2339: Property 'normalizeUnit' does not exist on type 'typeof import("D:/www/NArtPlim/backend/src/shared/application/pricing/formulaUtils")'.
+src/shared/infrastructure/http/middleware/authMiddleware.ts(1,49): error TS2307: Cannot find module 'express' or its corresponding type declarations.
+src/shared/infrastructure/http/middleware/authMiddleware.ts(23,28): error TS2339: Property 'headers' does not exist on type 'AuthenticatedRequest'.
+src/shared/infrastructure/http/middleware/performanceMiddleware.ts(1,49): error TS2307: Cannot find module 'express' or its corresponding type declarations.
+src/shared/infrastructure/http/middleware/performanceMiddleware.ts(132,23): error TS7006: Parameter 'data' implicitly has an 'any' type.
+src/shared/infrastructure/http/middleware/performanceMiddleware.ts(181,25): error TS7006: Parameter 'data' implicitly has an 'any' type.
+src/shared/infrastructure/websocket/WebSocketServer.ts(6,39): error TS2304: Cannot find name 'Socket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(36,30): error TS2345: Argument of type '(socket: AuthenticatedSocket) => void' is not assignable to parameter of type '(socket: Socket<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, any>) => void'.
+  Types of parameters 'socket' and 'socket' are incompatible.
+    Type 'Socket<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, any>' has no properties in common with type 'AuthenticatedSocket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(46,52): error TS2339: Property 'id' does not exist on type 'AuthenticatedSocket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(50,14): error TS2339: Property 'on' does not exist on type 'AuthenticatedSocket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(56,14): error TS2339: Property 'on' does not exist on type 'AuthenticatedSocket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(60,14): error TS2339: Property 'on' does not exist on type 'AuthenticatedSocket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(61,16): error TS2339: Property 'emit' does not exist on type 'AuthenticatedSocket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(99,12): error TS2339: Property 'join' does not exist on type 'AuthenticatedSocket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(105,51): error TS2339: Property 'id' does not exist on type 'AuthenticatedSocket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(117,34): error TS2339: Property 'id' does not exist on type 'AuthenticatedSocket'.
+src/shared/infrastructure/websocket/WebSocketServer.ts(152,18): error TS2339: Property 'emit' does not exist on type 'AuthenticatedSocket'.

@@ -22,6 +22,7 @@ import Configuracoes from '@/pages/Configuracoes';
 import Estoque from '@/pages/Estoque';
 import Producao from '@/pages/Producao';
 import Financeiro from '@/pages/Financeiro';
+import EntradaNota from '@/pages/EntradaNota';
 
 // Criar QueryClient
 const queryClient = new QueryClient({
@@ -163,6 +164,14 @@ function App() {
                 <ProtectedRoute permission="inventory.view">
                   <Layout>
                     <Insumos />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/entrada-nfe" element={
+                <ProtectedRoute permission="inventory.view">
+                  <Layout>
+                    <EntradaNota />
                   </Layout>
                 </ProtectedRoute>
               } />

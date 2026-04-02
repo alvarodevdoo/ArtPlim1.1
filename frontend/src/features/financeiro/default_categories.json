@@ -1,0 +1,119 @@
+[
+  {
+    "id": "inc_1",
+    "name": "Gráfica Rápida e Impressos",
+    "type": "INCOME",
+    "color": "#10B981",
+    "accountCode": "3.1.1.01",
+    "expectedAccountName": "Gráfica e Encadernação",
+    "description": "Use para tudo que sai em impressoras digitais de pequeno porte: cartões de visita, panfletos, apostilas, fotos, convites, plastificações e encadernações simples."
+  },
+  {
+    "id": "inc_2",
+    "name": "Comunicação Visual",
+    "type": "INCOME",
+    "color": "#059669",
+    "accountCode": "3.1.1.02",
+    "expectedAccountName": "Comunicação Visual",
+    "description": "Serviços de grande formato: banners, lonas, adesivos para veículos ou vitrines, placas de sinalização, fachadas e totens que exigem instalação."
+  },
+  {
+    "id": "inc_3",
+    "name": "Corte e Gravação a Laser",
+    "type": "INCOME",
+    "color": "#34D399",
+    "accountCode": "3.1.1.03",
+    "expectedAccountName": "Corte e Gravação Laser",
+    "description": "Produtos feitos na máquina laser: topo de bolo, nomes em MDF/Acrílico, brindes personalizados e gravação em copos ou garrafas térmicas (ex: Stanley)."
+  },
+  {
+    "id": "inc_4",
+    "name": "Carimbos Personalizados",
+    "type": "INCOME",
+    "color": "#6EE7B7",
+    "accountCode": "3.1.1.04",
+    "expectedAccountName": "Carimbos Personalizados",
+    "description": "Venda de carimbos automáticos ou de madeira. Inclui a base do carimbo e a borracha personalizada gravada no laser."
+  },
+  {
+    "id": "inc_5",
+    "name": "Revenda (Produção Externa)",
+    "type": "INCOME",
+    "color": "#A7F3D0",
+    "accountCode": "3.1.2.01",
+    "expectedAccountName": "Revenda Sob Demanda",
+    "description": "Itens que você vende mas manda outra gráfica rodar por não ter a máquina (ex: milheiros de cartões offset, calendários ou agendas prontas)."
+  },
+  {
+    "id": "inc_6",
+    "name": "Impressão 3D",
+    "type": "INCOME",
+    "color": "#8B5CF6",
+    "accountCode": "3.1.1.05",
+    "expectedAccountName": "Impressão 3D",
+    "description": "Venda de peças produzidas em impressoras 3D (FDM ou Resina), protótipos, miniaturas e peças técnicas sob encomenda."
+  },
+  {
+    "id": "inc_7",
+    "name": "Criação de Arte e Design",
+    "type": "INCOME",
+    "color": "#F59E0B",
+    "accountCode": "3.1.1.06",
+    "expectedAccountName": "Criação de Arte e Design",
+    "description": "Cobrança por serviços de criação de layouts, logos, vetorização de artes e fechamento de arquivos para produção."
+  },
+  {
+    "id": "exp_1",
+    "name": "Tintas, Toners e Gases",
+    "type": "EXPENSE",
+    "color": "#EF4444",
+    "accountCode": "4.1.1.02",
+    "expectedAccountName": "Tintas, Gases e Insumos",
+    "description": "Custos com recarga de tinta para plotters, toners de impressoras a laser e a recarga do gás CO2 (tubo) da máquina de corte laser."
+  },
+  {
+    "id": "exp_2",
+    "name": "Papéis, Lonas e Mídias",
+    "type": "EXPENSE",
+    "color": "#DC2626",
+    "accountCode": "4.1.1.01",
+    "expectedAccountName": "Matéria-Prima Consumida",
+    "description": "Compra de bobinas de lona, rolos de vinil adesivo, resmas de papel couché/sulfite e filmes para plastificação (Polaseal/BOPP)."
+  },
+  {
+    "id": "exp_3",
+    "name": "Chapas e Brindes Brutos",
+    "type": "EXPENSE",
+    "color": "#B91C1C",
+    "accountCode": "4.1.1.01",
+    "expectedAccountName": "Matéria-Prima Consumida",
+    "description": "Matéria-prima rígida: chapas de MDF, acrílico e PS. Também inclui a compra de copos e garrafas 'lisos' para serem personalizados."
+  },
+  {
+    "id": "exp_4",
+    "name": "Pagamento a Gráficas Parceiras",
+    "type": "EXPENSE",
+    "color": "#991B1B",
+    "accountCode": "4.1.3.01",
+    "expectedAccountName": "Pagamento a Gráficas Parceiras",
+    "description": "Custo direto da terceirização. O boleto que você paga para a gráfica que produziu o item da categoria 'Revenda (Produção Externa)'."
+  },
+  {
+    "id": "exp_5",
+    "name": "Manutenção e Peças",
+    "type": "EXPENSE",
+    "color": "#7F1D1D",
+    "accountCode": "4.1.1.04",
+    "expectedAccountName": "Manutenção e Peças",
+    "description": "Troca de cabeças de impressão, correias, lentes do laser, agulhas de corte e visitas técnicas para conserto de máquinas."
+  },
+  {
+    "id": "exp_10",
+    "name": "Desperdício e Erros de Produção",
+    "type": "EXPENSE",
+    "color": "#444444",
+    "accountCode": "4.1.1.05",
+    "expectedAccountName": "Perdas e Desperdícios",
+    "description": "Valor do material perdido por erro humano, arquivo mal configurado ou falha da máquina (ex: lona que riscou no meio da impressão)."
+  }
+]

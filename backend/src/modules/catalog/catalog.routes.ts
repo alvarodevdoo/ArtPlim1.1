@@ -41,7 +41,7 @@ const updateProductSchema = createProductSchema.partial();
 
 const createMaterialSchema = z.object({
   name: z.string().min(2),
-  category: z.string().optional().default("Outros"),
+  categoryId: z.string().uuid(),
   description: z.string().optional(),
   format: z.enum(['ROLL', 'SHEET', 'UNIT']),
   costPerUnit: z.number().min(0),

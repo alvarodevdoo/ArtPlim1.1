@@ -59,7 +59,7 @@ export async function authMiddleware(request: FastifyRequest, reply: FastifyRepl
       if (userExists.role === 'OWNER') {
         permissions = ['admin.organization', 'admin.settings', 'admin.users', 'finance.view', 'sales.view', 'production.view', 'inventory.view'];
       } else if (userExists.role === 'ADMIN') {
-        permissions = ['admin.settings', 'admin.users', 'finance.view', 'sales.view', 'production.view', 'inventory.view', 'finance.reports'];
+        permissions = ['admin.organization', 'admin.settings', 'admin.users', 'finance.view', 'sales.view', 'production.view', 'inventory.view', 'finance.reports'];
       }
     }
 
@@ -91,7 +91,8 @@ export function requirePermission(permissionKeys: string[]) {
     const hasPermission = permissionKeys.some(key => request.user.permissions.includes(key));
     
     if (!hasPermission) {
-      throw new UnauthorizedError('Permissão insuficiente para acessar este recurso');
+      reply.status(403).send({ error: { message: 'Permissão insuficiente para acessar este recurso' } });
+      return;
     }
   };
 }

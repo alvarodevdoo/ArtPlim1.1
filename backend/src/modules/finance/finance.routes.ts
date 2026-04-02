@@ -35,7 +35,9 @@ const createCategorySchema = z.object({
   type: z.nativeEnum(CategoryType),
   color: z.string().optional().nullable(),
   parentId: z.string().optional().nullable(),
-  chartOfAccountId: z.string().optional().nullable()
+  chartOfAccountId: z.string().optional().nullable(),
+  inventoryAccountId: z.string().optional().nullable(),
+  expenseAccountId: z.string().optional().nullable()
 });
 
 const createTransactionSchema = z.object({
@@ -147,7 +149,9 @@ export async function financeRoutes(fastify: FastifyInstance) {
       organizationId: request.user!.organizationId,
       color: data.color || undefined,
       parentId: data.parentId || undefined,
-      chartOfAccountId: data.chartOfAccountId || undefined
+      chartOfAccountId: data.chartOfAccountId || undefined,
+      inventoryAccountId: data.inventoryAccountId || undefined,
+      expenseAccountId: data.expenseAccountId || undefined
     });
     return reply.code(201).send({ success: true, data: category });
   });
@@ -163,7 +167,9 @@ export async function financeRoutes(fastify: FastifyInstance) {
       organizationId: request.user!.organizationId,
       color: data.color || undefined,
       parentId: data.parentId || undefined,
-      chartOfAccountId: data.chartOfAccountId || undefined
+      chartOfAccountId: data.chartOfAccountId || undefined,
+      inventoryAccountId: data.inventoryAccountId || undefined,
+      expenseAccountId: data.expenseAccountId || undefined
     } as any);
 
     return reply.send({ success: true, data: category });
@@ -351,9 +357,12 @@ export async function financeRoutes(fastify: FastifyInstance) {
       amount: body.amount,
       dueDate: new Date(body.dueDate),
       receivableAccountId: body.receivableAccountId,
-      revenueAccountId: body.revenueAccountId,
+      splits: [{
+        revenueAccountId: body.revenueAccountId,
+        categoryId: body.categoryId || '',
+        amount: body.amount
+      }],
       notes: body.notes,
-      categoryId: body.categoryId,
       userId: request.user!.userId
     });
 

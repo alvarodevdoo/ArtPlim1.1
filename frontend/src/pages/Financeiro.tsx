@@ -26,13 +26,15 @@ import { formatCurrency, formatDateTime } from '@/lib/utils';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { AccountEntryForm } from '@/components/chartOfAccounts/AccountEntryForm';
-import { AccountCombobox } from '@/components/chartOfAccounts/AccountCombobox';
+import { Combobox } from '@/components/ui/Combobox';
 import { DefaultCategoriesModal } from '@/features/financeiro/DefaultCategoriesModal';
 import { DefaultChartOfAccountsModal } from '@/features/financeiro/DefaultChartOfAccountsModal';
 import { ContasAPagar } from '@/features/financeiro/ContasAPagar';
 import { ContasAReceber } from '@/features/financeiro/ContasAReceber';
 import { RelatorioDRE } from '@/features/financeiro/RelatorioDRE';
 import { RelatorioFluxoCaixa } from '@/features/financeiro/RelatorioFluxoCaixa';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+
 
 interface Account {
   id: string;
@@ -174,6 +176,23 @@ const Financeiro: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'dashboard');
+  
+  const getCategoryValidation = (cat: any) => {
+    // 1. Se não tem vínculo nenhum
+    if (!cat.chartOfAccountId) {
+      return { 
+        status: 'MISSING' as const, 
+        message: 'Categoria sem conta definida'
+      };
+    }
+
+    // 2. Verificar se a conta vinculada existe
+    const linkedAccount = chartOfAccounts.find(a => a.id === cat.chartOfAccountId);
+    if (!linkedAccount) return { status: 'MISSING' as const, message: 'Categoria sem conta definida' };
+
+    return { status: 'OK' as const };
+  };
+
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [showAddTransaction, setShowAddTransaction] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
@@ -233,7 +252,9 @@ const Financeiro: React.FC = () => {
     name: '',
     type: 'EXPENSE' as 'EXPENSE' | 'INCOME',
     color: '#EF4444',
-    chartOfAccountId: ''
+    chartOfAccountId: '',
+    inventoryAccountId: '',
+    expenseAccountId: ''
   });
 
   // Sincronizar tab com URL
@@ -393,7 +414,7 @@ const Financeiro: React.FC = () => {
       }
       setShowAddCategory(false);
       setEditingCategoryId(null);
-      setCategoryForm({ name: '', type: 'EXPENSE', color: '#EF4444', chartOfAccountId: '' });
+      setCategoryForm({ name: '', type: 'EXPENSE', color: '#EF4444', chartOfAccountId: '', inventoryAccountId: '', expenseAccountId: '' });
       loadData();
     } catch (error: any) {
       toast.error(error.response?.data?.error?.message || 'Erro ao processar categoria');
@@ -406,7 +427,9 @@ const Financeiro: React.FC = () => {
       name: category.name,
       type: category.type,
       color: category.color || (category.type === 'INCOME' ? '#10B981' : '#EF4444'),
-      chartOfAccountId: category.chartOfAccountId || ''
+      chartOfAccountId: category.chartOfAccountId || '',
+      inventoryAccountId: category.inventoryAccountId || '',
+      expenseAccountId: category.expenseAccountId || ''
     });
     setShowAddCategory(true);
   };
@@ -1061,11 +1084,28 @@ const Financeiro: React.FC = () => {
               <CardHeader><CardTitle className="text-green-600 flex items-center gap-2"><TrendingUp className="w-5 h-5" /> Receitas</CardTitle></CardHeader>
               <CardContent className="space-y-2">
                 {categories.filter(c => c.type === 'INCOME').length === 0 && <p className="text-sm text-muted-foreground">Nenhuma categoria encontrada.</p>}
-                {categories.filter(c => c.type === 'INCOME').map(c => (
+                {categories.filter(c => c.type === 'INCOME').map(c => {
+                  const validation = getCategoryValidation(c);
+                  return (
                   <div key={c.id} className="flex justify-between items-center p-3 text-sm border rounded hover:bg-slate-50">
                     <div className="flex items-center gap-3">
                       <div className="w-4 h-4 rounded-full" style={{ backgroundColor: c.color || '#10B981' }} />
-                      <span className="font-medium">{c.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{c.name}</span>
+                        {validation.status === 'MISSING' && (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button onClick={(e) => e.stopPropagation()} className="text-rose-500 hover:scale-110 transition-transform cursor-help">
+                                <AlertCircle size={14} className="animate-pulse" />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-64 p-3 rounded-xl bg-rose-50 border-rose-100 text-rose-700 text-[11px] font-bold leading-tight z-[99999]" side="top">
+                              ⚠️ {validation.message}
+                            </PopoverContent>
+                          </Popover>
+                        )}
+
+                      </div>
                     </div>
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="icon" onClick={() => handleEditCategory(c)}>
@@ -1076,7 +1116,7 @@ const Financeiro: React.FC = () => {
                       </Button>
                     </div>
                   </div>
-                ))}
+                )})}
               </CardContent>
             </Card>
 
@@ -1084,11 +1124,28 @@ const Financeiro: React.FC = () => {
               <CardHeader><CardTitle className="text-red-600 flex items-center gap-2"><TrendingDown className="w-5 h-5" /> Despesas</CardTitle></CardHeader>
               <CardContent className="space-y-2">
                 {categories.filter(c => c.type === 'EXPENSE').length === 0 && <p className="text-sm text-muted-foreground">Nenhuma categoria encontrada.</p>}
-                {categories.filter(c => c.type === 'EXPENSE').map(c => (
+                {categories.filter(c => c.type === 'EXPENSE').map(c => {
+                  const validation = getCategoryValidation(c);
+                  return (
                   <div key={c.id} className="flex justify-between items-center p-3 text-sm border rounded hover:bg-slate-50">
                     <div className="flex items-center gap-3">
                       <div className="w-4 h-4 rounded-full" style={{ backgroundColor: c.color || '#EF4444' }} />
-                      <span className="font-medium">{c.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{c.name}</span>
+                        {validation.status === 'MISSING' && (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button onClick={(e) => e.stopPropagation()} className="text-rose-500 hover:scale-110 transition-transform cursor-help">
+                                <AlertCircle size={14} className="animate-pulse" />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-64 p-3 rounded-xl bg-rose-50 border-rose-100 text-rose-700 text-[11px] font-bold leading-tight z-[99999]" side="top">
+                              ⚠️ {validation.message}
+                            </PopoverContent>
+                          </Popover>
+                        )}
+
+                      </div>
                     </div>
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="icon" onClick={() => handleEditCategory(c)}>
@@ -1099,7 +1156,7 @@ const Financeiro: React.FC = () => {
                       </Button>
                     </div>
                   </div>
-                ))}
+                )})}
               </CardContent>
             </Card>
           </div>
@@ -1626,20 +1683,75 @@ const Financeiro: React.FC = () => {
                         </Button>
                       </div>
                     ) : (
-                      <AccountCombobox 
-                         value={categoryForm.chartOfAccountId}
+                      <Combobox
+                         value={categoryForm.chartOfAccountId || ''}
                          onChange={(val) => setCategoryForm(prev => ({ ...prev, chartOfAccountId: val }))}
+                         options={chartOfAccounts.filter(acc => {
+                           if (acc.type !== 'ANALYTIC') return false;
+                           if (categoryForm.type === 'INCOME') return acc.nature === 'REVENUE';
+                           return acc.nature === 'EXPENSE' || acc.nature === 'COST';
+                         }).map(acc => ({
+                           id: acc.id,
+                           label: acc.name,
+                           sublabel: acc.code,
+                           tooltipData: acc
+                         }))}
                          placeholder="Vincular a uma conta analítica..."
+                         searchPlaceholder="Buscar por nome ou código..."
+                         emptyMessage={categoryForm.type === 'INCOME' ? "Nenhuma conta de receita encontrada." : "Nenhuma conta de despesa encontrada."}
+                         allowClear
                       />
                     )}
                     <p className="text-[10px] text-muted-foreground italic">Vincule a uma conta analítica [A] para que esta categoria reflita nos relatórios de faturamento e lucro.</p>
                   </div>
 
+                  {categoryForm.type === 'EXPENSE' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Conta de Ativo (Estoque)</label>
+                        <Combobox
+                           value={categoryForm.inventoryAccountId || ''}
+                           onChange={(val) => setCategoryForm(prev => ({ ...prev, inventoryAccountId: val }))}
+                           options={chartOfAccounts.filter(acc => acc.type === 'ANALYTIC' && acc.nature === 'ASSET').map(acc => ({
+                             id: acc.id,
+                             label: acc.name,
+                             sublabel: acc.code,
+                             tooltipData: acc
+                           }))}
+                           placeholder="Ex: 1.1.x - Estoque..."
+                           searchPlaceholder="Buscar conta..."
+                           emptyMessage="Nenhuma conta de Ativo (Estoque) encontrada."
+                           allowClear
+                        />
+                        <p className="text-[10px] text-muted-foreground leading-tight">Será herdada em novos materiais para controlar o saldo no balanço.</p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Conta de Resultado (CVM)</label>
+                        <Combobox
+                           value={categoryForm.expenseAccountId || ''}
+                           onChange={(val) => setCategoryForm(prev => ({ ...prev, expenseAccountId: val }))}
+                           options={chartOfAccounts.filter(acc => acc.type === 'ANALYTIC' && (acc.nature === 'EXPENSE' || acc.nature === 'COST')).map(acc => ({
+                             id: acc.id,
+                             label: acc.name,
+                             sublabel: acc.code,
+                             tooltipData: acc
+                           }))}
+                           placeholder="Ex: 3.1.x - Consumo..."
+                           searchPlaceholder="Buscar conta..."
+                           emptyMessage="Nenhuma conta de Custo/CPV encontrada."
+                           allowClear
+                        />
+                        <p className="text-[10px] text-muted-foreground leading-tight">Afetará o DRE nos meses em que ocorrer consumo do material.</p>
+                      </div>
+                    </div>
+                  )}
+
                 <div className="flex justify-end gap-2 pt-4">
                   <Button type="button" variant="ghost" onClick={() => {
                     setShowAddCategory(false);
                     setEditingCategoryId(null);
-                    setCategoryForm({ name: '', type: 'EXPENSE', color: '#EF4444', chartOfAccountId: '' });
+                    setCategoryForm({ name: '', type: 'EXPENSE', color: '#EF4444', chartOfAccountId: '', inventoryAccountId: '', expenseAccountId: '' });
                   }}>Cancelar</Button>
                   <Button 
                     type="submit" 

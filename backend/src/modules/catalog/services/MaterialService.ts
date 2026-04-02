@@ -3,7 +3,7 @@ import { NotFoundError } from '../../../shared/infrastructure/errors/AppError';
 
 interface CreateMaterialInput {
   name: string;
-  category?: string;
+  categoryId: string;
   description?: string;
   format: MaterialFormat;
   costPerUnit: number;
@@ -33,10 +33,23 @@ export class MaterialService {
   constructor(private prisma: any) {}
 
   async create(data: CreateMaterialInput) {
+    // 1. Busca a categoria para verificar vínculos padrões
+    const category = await this.prisma.category.findUnique({
+      where: { id: data.categoryId }
+    });
+
+    if (!category) {
+      throw new Error("Categoria não encontrada.");
+    }
+
+    // 2. Herança Contábil: Prioriza o que vem do formulário, senão usa o padrão da categoria
+    const finalInventoryAccountId = data.inventoryAccountId || category.inventoryAccountId;
+    const finalExpenseAccountId = data.expenseAccountId || category.expenseAccountId;
+
     const material = await this.prisma.material.create({
       data: {
         name: data.name,
-        category: data.category || "Outros",
+        categoryId: data.categoryId,
         description: data.description,
         format: data.format,
         costPerUnit: data.costPerUnit,
@@ -47,8 +60,8 @@ export class MaterialService {
         height: data.height,
         defaultConsumptionRule: data.defaultConsumptionRule,
         defaultConsumptionFactor: data.defaultConsumptionFactor,
-        inventoryAccountId: data.inventoryAccountId,
-        expenseAccountId: data.expenseAccountId,
+        inventoryAccountId: finalInventoryAccountId,
+        expenseAccountId: finalExpenseAccountId,
         minStockQuantity: data.minStockQuantity,
         sellWithoutStock: data.sellWithoutStock,
         trackStock: data.trackStock,
@@ -62,6 +75,9 @@ export class MaterialService {
             preferredPaymentDay: s.preferredPaymentDay
           }))
         } : undefined
+      },
+      include: {
+        category: true
       }
     });
 
@@ -85,6 +101,7 @@ export class MaterialService {
             isOffcut: true
           }
         },
+        category: true,
         _count: {
           select: {
             components: true,
@@ -160,7 +177,7 @@ export class MaterialService {
       const updateFields: any = { updatedAt: new Date() };
 
       if (data.name !== undefined)                    updateFields.name = data.name;
-      if (data.category !== undefined)                updateFields.category = data.category;
+      if (data.categoryId !== undefined)              updateFields.categoryId = data.categoryId;
       if (data.description !== undefined)             updateFields.description = data.description;
       if (data.format !== undefined)                  updateFields.format = data.format;
       if (data.costPerUnit !== undefined)             updateFields.costPerUnit = data.costPerUnit;
@@ -171,8 +188,30 @@ export class MaterialService {
       if (data.height !== undefined)                  updateFields.height = data.height;
       if (data.defaultConsumptionRule !== undefined)  updateFields.defaultConsumptionRule = data.defaultConsumptionRule;
       if (data.defaultConsumptionFactor !== undefined) updateFields.defaultConsumptionFactor = data.defaultConsumptionFactor;
-      if (data.inventoryAccountId !== undefined)      updateFields.inventoryAccountId = data.inventoryAccountId;
-      if (data.expenseAccountId !== undefined)        updateFields.expenseAccountId = data.expenseAccountId;
+      
+      let finalInventoryAccountId = data.inventoryAccountId;
+      let finalExpenseAccountId = data.expenseAccountId;
+
+      // Herança de Categoria na atualização se a categoria ou as contas estiverem mudando
+      if (data.categoryId || finalInventoryAccountId === null || finalExpenseAccountId === null) {
+        const materialAtual = await tx.material.findUnique({ where: { id }, select: { categoryId: true } });
+        const categoriaParaUsar = data.categoryId || materialAtual?.categoryId;
+        if (categoriaParaUsar) {
+           const category = await tx.category.findUnique({ where: { id: categoriaParaUsar } });
+           if (category) {
+              if (finalInventoryAccountId === null || data.inventoryAccountId === undefined) {
+                 finalInventoryAccountId = data.inventoryAccountId !== undefined && data.inventoryAccountId !== null ? data.inventoryAccountId : (category.inventoryAccountId || finalInventoryAccountId);
+              }
+              if (finalExpenseAccountId === null || data.expenseAccountId === undefined) {
+                 finalExpenseAccountId = data.expenseAccountId !== undefined && data.expenseAccountId !== null ? data.expenseAccountId : (category.expenseAccountId || finalExpenseAccountId);
+              }
+           }
+        }
+      }
+
+      if (finalInventoryAccountId !== undefined)      updateFields.inventoryAccountId = finalInventoryAccountId;
+      if (finalExpenseAccountId !== undefined)        updateFields.expenseAccountId = finalExpenseAccountId;
+
       if (data.minStockQuantity !== undefined)        updateFields.minStockQuantity = data.minStockQuantity;
       if (data.sellWithoutStock !== undefined)        updateFields.sellWithoutStock = data.sellWithoutStock;
       if (data.trackStock !== undefined)              updateFields.trackStock = data.trackStock;

@@ -67,6 +67,12 @@ const allMenuItems: MenuItem[] = [
     permission: 'inventory.view'
   },
   {
+    title: 'Entrada NF-e',
+    href: '/entrada-nfe',
+    icon: FileText,
+    permission: 'inventory.view'
+  },
+  {
     title: 'Orçamentos',
     href: '/orcamentos',
     icon: FileText,

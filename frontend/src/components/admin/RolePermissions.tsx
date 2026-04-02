@@ -79,12 +79,12 @@ const RolePermissions: React.FC = () => {
         )}
       </div>
 
-      {loading ? (
+      {loading && roles.length === 0 ? (
         <div className="flex items-center justify-center p-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </div>
       ) : (
-        <>
+        <div className={loading ? 'opacity-50 pointer-events-none transition-opacity' : 'transition-opacity'}>
           <RoleList 
             roles={roles} 
             selectedRoleId={selectedRoleId} 
@@ -143,7 +143,7 @@ const RolePermissions: React.FC = () => {
               </CardContent>
             </Card>
           )}
-        </>
+        </div>
       )}
 
       <RoleFormModal 
