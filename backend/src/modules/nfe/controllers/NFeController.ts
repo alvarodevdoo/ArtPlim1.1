@@ -42,6 +42,13 @@ export class NFeController {
         quantidade: z.number(),
         valorUnitario: z.number(),
         valorTotal: z.number(),
+        custoEfetivoUnitario: z.number().optional(), // opcional para manter retrocompatibilidade
+        custosAcessorios: z.object({
+          frete: z.number(),
+          ipi: z.number(),
+          st: z.number(),
+          difal: z.number()
+        }).optional(),
         mappedMaterialId: z.string(),
         createNew: z.boolean().optional(),
         newMaterialCategory: z.string().optional(),

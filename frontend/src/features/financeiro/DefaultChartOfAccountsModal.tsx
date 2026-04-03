@@ -180,10 +180,10 @@ export const DefaultChartOfAccountsModal: React.FC<DefaultChartOfAccountsModalPr
     });
   };
 
-  // Counts: selected NEW accounts only (not existing)
+  // Counts: selected NEW accounts only (not existing) - ONLY ANALYTIC counts for user perception
   const newToImportCount = [...selectedCodes].filter(code => {
     const acc = ALL_ACCOUNTS.find(a => a.code === code);
-    if (!acc) return false;
+    if (!acc || acc.type === 'SYNTHETIC') return false;
     const idKey = `${acc.name.trim().toLowerCase()}|${acc.nature}`;
     return !existingCodes.has(acc.code) && !existingIdentity.has(idKey);
   }).length;
@@ -281,7 +281,11 @@ export const DefaultChartOfAccountsModal: React.FC<DefaultChartOfAccountsModalPr
               {GROUPS.map(group => {
               const groupAccounts = ALL_ACCOUNTS.filter(a => a.code === group.code || a.code.startsWith(group.code + '.'));
               const expanded = expandedGroups.has(group.code);
-              const selectedInGroup = groupAccounts.filter(a => {
+              
+              // Contagem exclusiva de Analíticas para exibição no grupo
+              const totalAnalyticInGroup = groupAccounts.filter(a => a.type === 'ANALYTIC').length;
+              const selectedAnalyticInGroup = groupAccounts.filter(a => {
+                if (a.type !== 'ANALYTIC') return false;
                 const idKey = `${a.name.trim().toLowerCase()}|${a.nature}`;
                 return selectedCodes.has(a.code) || existingCodes.has(a.code) || existingIdentity.has(idKey);
               }).length;
@@ -299,7 +303,7 @@ export const DefaultChartOfAccountsModal: React.FC<DefaultChartOfAccountsModalPr
                         <Info className="w-4 h-4 text-slate-400 hover:text-primary transition-colors" />
                       </HelpTooltip>
                       <span className="ml-2 font-normal text-slate-500 text-xs">
-                        ({selectedInGroup}/{groupAccounts.length} selecionadas)
+                        ({selectedAnalyticInGroup}/{totalAnalyticInGroup} selecionadas)
                       </span>
                     </span>
                     <button className="text-slate-400 hover:text-slate-700 transition">

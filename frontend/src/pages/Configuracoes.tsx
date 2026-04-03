@@ -19,6 +19,7 @@ import { BackupManager } from '@/features/organization/backup/BackupManager';
 import { SecurityManager } from '@/features/organization/security/SecurityManager';
 import { GeneralSettings } from '@/features/organization/settings/GeneralSettings';
 import { SystemSettings } from '@/features/organization/settings/SystemSettings';
+import { FinanceIntegrationSettings } from '@/features/organization/settings/FinanceIntegrationSettings';
 
 // Shared Components
 import UserManagement from '@/components/admin/UserManagement';
@@ -46,6 +47,8 @@ interface OrganizationSettings {
   defaultRevenueCategoryId?: string;
   defaultBackupPassword?: string;
   inventoryValuationMethod: string;
+  freightExpenseAccountId?: string;
+  taxExpenseAccountId?: string;
 }
 
 const Configuracoes: React.FC = () => {
@@ -214,6 +217,12 @@ const Configuracoes: React.FC = () => {
 
           {activeTab === 'financeiro' && (
             <div className="space-y-6">
+              <FinanceIntegrationSettings
+                settings={settings}
+                setSettings={setSettings}
+                handleSaveSettings={handleSaveSettings}
+                loading={loading}
+              />
               <PaymentMethodSettings />
               <SpedMappingManager />
             </div>

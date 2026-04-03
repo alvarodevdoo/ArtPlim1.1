@@ -16,6 +16,8 @@ interface SystemSettingsData {
   allowDuplicatePhones: boolean;
   requireDocumentKeyForEntry: boolean;
   inventoryValuationMethod: string;
+  freightExpenseAccountId?: string;
+  taxExpenseAccountId?: string;
 }
 
 interface SystemSettingsProps {
@@ -150,7 +152,6 @@ export const SystemSettings: React.FC<SystemSettingsProps> = ({
               </div>
             </div>
           </div>
-
           
           <Button type="submit" disabled={loading} className="w-full md:w-auto px-10 shadow-lg">
             {loading ? 'Sincronizando...' : 'Salvar Configurações do Sistema'}

@@ -18,10 +18,19 @@ interface NFeImportPayload {
     quantidade: number;
     valorUnitario: number;
     valorTotal: number;
+    custoEfetivoUnitario?: number;
+    custosAcessorios?: {
+      frete: number;
+      ipi: number;
+      st: number;
+      difal: number;
+    };
     mappedMaterialId: string; // O UUID do material interno no ArtPlim
     createNew?: boolean; // Caso o usuário tenha marcado para criar um novo insumo ao invés de buscar existente
     newMaterialCategory?: string;
+    skip?: boolean;
   }>;
+  costDistributionMode?: 'STRICT' | 'REDISTRIBUTE';
 }
 
 export class NFeImportService {
@@ -71,8 +80,25 @@ export class NFeImportService {
       const settings = await tx.organizationSettings.findUnique({ where: { organizationId } });
       const valuationMethod = settings?.inventoryValuationMethod || 'AVERAGE';
 
-      // 3. Processar Itens
+      // 3. Calcular Rateio de Custos de Itens Ignorados (se habilitado)
+      let extraCostToRedistribute = 0;
+      const importedItems = payload.items.filter(i => !i.skip);
+      const skippedItems = payload.items.filter(i => i.skip);
+
+      if (payload.costDistributionMode === 'REDISTRIBUTE' && skippedItems.length > 0) {
+        extraCostToRedistribute = skippedItems.reduce((acc, item) => {
+          const extras = item.custosAcessorios;
+          const totalExtras = (extras?.frete || 0) + (extras?.ipi || 0) + (extras?.st || 0) + (extras?.difal || 0);
+          return acc + totalExtras;
+        }, 0);
+      }
+
+      const totalImportedValue = importedItems.reduce((acc, i) => acc + i.valorTotal, 0);
+
+      // 4. Processar Itens
       for (const item of payload.items) {
+        if (item.skip) continue;
+
         let materialId = item.mappedMaterialId;
 
         if (item.createNew) {
@@ -118,6 +144,15 @@ export class NFeImportService {
         });
 
         // Lógica de Estoque e Custeio
+        let itemExtraCostFromSkip = 0;
+        if (extraCostToRedistribute > 0 && totalImportedValue > 0) {
+          itemExtraCostFromSkip = (item.valorTotal / totalImportedValue) * extraCostToRedistribute;
+        }
+
+        const baseEffectiveCost = item.custoEfetivoUnitario ?? item.valorUnitario;
+        const totalEffectiveCostForItem = (baseEffectiveCost * item.quantidade) + itemExtraCostFromSkip;
+        const finalEffectiveUnitCost = item.quantidade > 0 ? (totalEffectiveCostForItem / item.quantidade) : 0;
+
         const currentStock = Number(material.currentStock ?? 0);
         const averageCost = Number(material.averageCost ?? 0);
         const totalStockAfterEntry = currentStock + item.quantidade;
@@ -125,18 +160,12 @@ export class NFeImportService {
 
         if (valuationMethod === 'AVERAGE') {
           const currentTotalValue = currentStock * averageCost;
-          const newTotalValue = item.quantidade * item.valorUnitario;
+          const newTotalValue = item.quantidade * finalEffectiveUnitCost;
           newCost = totalStockAfterEntry > 0 ? (currentTotalValue + newTotalValue) / totalStockAfterEntry : 0;
         } else if (valuationMethod === 'PEPS') {
-          // PEPS simples: Mantém o custo de entrada para lote visual? 
-          // O custo médio da ficha técnica muitas vezes acaba puxando 'averageCost'.
-          // No PEPS, a precificação puxaria lotes, mas vamos atualizar o averageCost com o preço mais recente por segurança provisória ou não mudar.
-          // Para PEPS restrito, o averageCost pode representar apenas o custo do lote mais antigo a ser consumido. 
-          // Se o estoque estava zerado, passamos a usar o da nota.
           if (currentStock <= 0) {
-            newCost = item.valorUnitario;
+            newCost = finalEffectiveUnitCost;
           }
-          // Caso contrário, não atualiza o "AverageCost" pois ele preserva o preço do primeiro lote (até que ele se esgote, cuja lógica ocorrerá no consumo).
         }
 
         await tx.stockMovement.create({
@@ -145,9 +174,9 @@ export class NFeImportService {
             materialId: material.id,
             type: 'ENTRY',
             quantity: new Prisma.Decimal(item.quantidade),
-            unitCost: new Prisma.Decimal(item.valorUnitario),
-            totalCost: new Prisma.Decimal(item.valorTotal),
-            notes: `NF-e Chave: ${payload.chaveAcesso}`,
+            unitCost: new Prisma.Decimal(finalEffectiveUnitCost),
+            totalCost: new Prisma.Decimal(totalEffectiveCostForItem),
+            notes: `NF-e Chave: ${payload.chaveAcesso}${itemExtraCostFromSkip > 0 ? ' | Inclui Rateio de Itens Ignorados' : ''}`,
             documentKey: payload.chaveAcesso,
             supplierId: supplier.id,
           }

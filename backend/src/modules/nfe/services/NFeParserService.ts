@@ -29,7 +29,25 @@ export class NFeParserService {
     const items = det.map((item: any) => {
       const prod = item.prod;
       const impostos = item.imposto;
-      // Extrair informações do ICMS, IPI etc, caso necessário
+      
+      const vProd = parseFloat(prod.vProd || 0);
+      const vUnCom = parseFloat(prod.vUnCom || 0);
+      const qtd = parseFloat(prod.qCom || 1);
+      
+      const itemFrete = parseFloat(prod.vFrete || 0);
+      const itemIpi = parseFloat(impostos?.IPI?.IPITrib?.vIPI || 0);
+      const itemDIFAL = parseFloat(impostos?.ICMSUFDest?.vICMSUFDest || 0);
+      
+      const icmsKeys = impostos?.ICMS ? Object.keys(impostos.ICMS) : [];
+      let itemST = 0;
+      for (const k of icmsKeys) {
+        if (impostos.ICMS[k]?.vICMSST) {
+           itemST += parseFloat(impostos.ICMS[k].vICMSST);
+        }
+      }
+
+      const effectiveTotalCost = vProd + itemFrete + itemIpi + itemST + itemDIFAL;
+      const effectiveUnitCost = qtd > 0 ? (effectiveTotalCost / qtd) : 0;
 
       return {
         itemNumber: item["@_nItem"],
@@ -38,10 +56,16 @@ export class NFeParserService {
         ncm: prod.NCM,
         cfop: prod.CFOP,
         unidade: prod.uCom,
-        quantidade: parseFloat(prod.qCom),
-        valorUnitario: parseFloat(prod.vUnCom),
-        valorTotal: parseFloat(prod.vProd),
-        // impostos podem ser extraídos aqui se ajudar no custeio
+        quantidade: qtd,
+        valorUnitario: vUnCom,
+        valorTotal: vProd,
+        custosAcessorios: {
+          frete: itemFrete,
+          ipi: itemIpi,
+          st: itemST,
+          difal: itemDIFAL
+        },
+        custoEfetivoUnitario: effectiveUnitCost
       };
     });
 

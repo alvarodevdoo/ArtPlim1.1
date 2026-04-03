@@ -5,23 +5,21 @@
       "name": "Ativo",
       "nature": "ASSET",
       "type": "SYNTHETIC",
-      "description": "Tudo o que a empresa \"Tem\". Representa os bens e direitos."
+      "description": "Bens e Direitos da empresa."
     },
     {
       "code": "1.1",
       "name": "Ativo Circulante",
       "nature": "ASSET",
       "type": "SYNTHETIC",
-      "parentCode": "1",
-      "description": "Itens de \"giro rápido\" que viram dinheiro em menos de 1 ano."
+      "parentCode": "1"
     },
     {
       "code": "1.1.1",
       "name": "Disponibilidades",
       "nature": "ASSET",
       "type": "SYNTHETIC",
-      "parentCode": "1.1",
-      "description": "Dinheiro vivo ou saldo bancário pronto para uso imediato."
+      "parentCode": "1.1"
     },
     {
       "code": "1.1.1.01",
@@ -30,7 +28,7 @@
       "type": "ANALYTIC",
       "parentCode": "1.1.1",
       "systemRole": "BANK_ACCOUNT",
-      "description": "Dinheiro em espécie na gaveta da gráfica (troco e pequenas vendas)."
+      "description": "Dinheiro em espécie na loja."
     },
     {
       "code": "1.1.1.02",
@@ -39,15 +37,14 @@
       "type": "ANALYTIC",
       "parentCode": "1.1.1",
       "systemRole": "BANK_ACCOUNT",
-      "description": "Saldo em contas correntes (Itaú, Nubank, etc). Use para conciliação."
+      "description": "Saldos em contas bancárias."
     },
     {
       "code": "1.1.3",
       "name": "Estoques",
       "nature": "ASSET",
       "type": "SYNTHETIC",
-      "parentCode": "1.1",
-      "description": "Valor financeiro de todos os materiais parados na prateleira."
+      "parentCode": "1.1"
     },
     {
       "code": "1.1.3.01",
@@ -55,8 +52,7 @@
       "nature": "ASSET",
       "type": "ANALYTIC",
       "parentCode": "1.1.3",
-      "systemRole": "INVENTORY",
-      "description": "Papéis, Lonas, Vinil Adesivo e filmes de plastificação/encadernação."
+      "systemRole": "INVENTORY"
     },
     {
       "code": "1.1.3.02",
@@ -64,8 +60,7 @@
       "nature": "ASSET",
       "type": "ANALYTIC",
       "parentCode": "1.1.3",
-      "systemRole": "INVENTORY",
-      "description": "Chapas de MDF, Acrílico, PS e metais para corte/gravação."
+      "systemRole": "INVENTORY"
     },
     {
       "code": "1.1.3.03",
@@ -73,24 +68,21 @@
       "nature": "ASSET",
       "type": "ANALYTIC",
       "parentCode": "1.1.3",
-      "systemRole": "INVENTORY",
-      "description": "Copos, garrafas brutas e aparelhos de carimbos (sem a borracha)."
+      "systemRole": "INVENTORY"
     },
     {
       "code": "1.2",
       "name": "Ativo Não Circulante",
       "nature": "ASSET",
       "type": "SYNTHETIC",
-      "parentCode": "1",
-      "description": "Bens que a empresa não pretende vender rápido; são sua estrutura."
+      "parentCode": "1"
     },
     {
       "code": "1.2.1",
       "name": "Imobilizado",
       "nature": "ASSET",
       "type": "SYNTHETIC",
-      "parentCode": "1.2",
-      "description": "Patrimônio físico e durável necessário para a gráfica operar."
+      "parentCode": "1.2"
     },
     {
       "code": "1.2.1.01",
@@ -99,30 +91,28 @@
       "type": "ANALYTIC",
       "parentCode": "1.2.1",
       "systemRole": "FIXED_ASSET",
-      "description": "Impressoras, Routers, Máquinas Laser e Prensas Térmicas."
+      "description": "Impressoras, Máquinas Laser, etc."
     },
     {
       "code": "2",
       "name": "Passivo",
       "nature": "LIABILITY",
       "type": "SYNTHETIC",
-      "description": "Tudo o que a empresa \"Deve\". Indica obrigações com terceiros."
+      "description": "Obrigações com terceiros."
     },
     {
       "code": "2.1",
       "name": "Passivo Circulante",
       "nature": "LIABILITY",
       "type": "SYNTHETIC",
-      "parentCode": "2",
-      "description": "Dívidas que vencem nos próximos 12 meses (curto prazo)."
+      "parentCode": "2"
     },
     {
       "code": "2.1.1",
-      "name": "Obrigações com Fornecedores",
+      "name": "Fornecedores e Compras",
       "nature": "LIABILITY",
       "type": "SYNTHETIC",
-      "parentCode": "2.1",
-      "description": "Contas a pagar referentes a materiais e serviços comprados."
+      "parentCode": "2.1"
     },
     {
       "code": "2.1.1.01",
@@ -130,16 +120,45 @@
       "nature": "LIABILITY",
       "type": "ANALYTIC",
       "parentCode": "2.1.1",
-      "systemRole": "PAYABLE",
-      "description": "Boletos de chapas de MDF, papelaria, tintas e lona."
+      "systemRole": "PAYABLE"
+    },
+    {
+      "code": "2.1.1.02",
+      "name": "Fornecedores de Serviços/Terceiros",
+      "nature": "LIABILITY",
+      "type": "ANALYTIC",
+      "parentCode": "2.1.1",
+      "systemRole": "PAYABLE"
+    },
+    {
+      "code": "2.1.2",
+      "name": "Pessoal e Encargos",
+      "nature": "LIABILITY",
+      "type": "SYNTHETIC",
+      "parentCode": "2.1"
+    },
+    {
+      "code": "2.1.2.01",
+      "name": "Pró-Labore a Pagar",
+      "nature": "LIABILITY",
+      "type": "ANALYTIC",
+      "parentCode": "2.1.2",
+      "systemRole": "GENERAL"
+    },
+    {
+      "code": "2.1.2.02",
+      "name": "Salários e Ordenados a Pagar",
+      "nature": "LIABILITY",
+      "type": "ANALYTIC",
+      "parentCode": "2.1.2",
+      "systemRole": "GENERAL"
     },
     {
       "code": "2.1.3",
       "name": "Obrigações Tributárias",
       "nature": "LIABILITY",
       "type": "SYNTHETIC",
-      "parentCode": "2.1",
-      "description": "Impostos que você \"guardou\" da venda para entregar ao governo."
+      "parentCode": "2.1"
     },
     {
       "code": "2.1.3.01",
@@ -147,24 +166,68 @@
       "nature": "LIABILITY",
       "type": "ANALYTIC",
       "parentCode": "2.1.3",
-      "systemRole": "TAX",
-      "description": "A guia mensal unificada de impostos da sua MEI ou Simples."
+      "systemRole": "TAX"
+    },
+    {
+      "code": "2.1.3.02",
+      "name": "ISS a Recolher",
+      "nature": "LIABILITY",
+      "type": "ANALYTIC",
+      "parentCode": "2.1.3",
+      "systemRole": "TAX"
+    },
+    {
+      "code": "2.1.3.05",
+      "name": "ICMS ST / DIFAL a Recolher",
+      "nature": "LIABILITY",
+      "type": "ANALYTIC",
+      "parentCode": "2.1.3",
+      "systemRole": "TAX"
+    },
+    {
+      "code": "2.1.4",
+      "name": "Contas de Consumo e Utilidades",
+      "nature": "LIABILITY",
+      "type": "SYNTHETIC",
+      "parentCode": "2.1"
+    },
+    {
+      "code": "2.1.4.01",
+      "name": "Energia Elétrica a Pagar",
+      "nature": "LIABILITY",
+      "type": "ANALYTIC",
+      "parentCode": "2.1.4",
+      "systemRole": "PAYABLE"
+    },
+    {
+      "code": "2.1.4.02",
+      "name": "Água e Esgoto a Pagar",
+      "nature": "LIABILITY",
+      "type": "ANALYTIC",
+      "parentCode": "2.1.4",
+      "systemRole": "PAYABLE"
+    },
+    {
+      "code": "2.1.4.03",
+      "name": "Internet e Telefonia a Pagar",
+      "nature": "LIABILITY",
+      "type": "ANALYTIC",
+      "parentCode": "2.1.4",
+      "systemRole": "PAYABLE"
     },
     {
       "code": "2.3",
       "name": "Patrimônio Líquido",
       "nature": "EQUITY",
       "type": "SYNTHETIC",
-      "parentCode": "2",
-      "description": "O valor real que sobra para os sócios após pagar todas as dívidas."
+      "parentCode": "2"
     },
     {
       "code": "2.3.1",
       "name": "Capital Social",
       "nature": "EQUITY",
       "type": "SYNTHETIC",
-      "parentCode": "2.3",
-      "description": "Valor investido pelos sócios."
+      "parentCode": "2.3"
     },
     {
       "code": "2.3.1.01",
@@ -172,31 +235,27 @@
       "nature": "EQUITY",
       "type": "ANALYTIC",
       "parentCode": "2.3.1",
-      "systemRole": "EQUITY",
-      "description": "Dinheiro que os sócios investiram para abrir a loja."
+      "systemRole": "EQUITY"
     },
     {
       "code": "3",
       "name": "Receitas",
       "nature": "REVENUE",
-      "type": "SYNTHETIC",
-      "description": "O faturamento da Gráfica. Entrada bruta de dinheiro."
+      "type": "SYNTHETIC"
     },
     {
       "code": "3.1",
       "name": "Receita Bruta Operacional",
       "nature": "REVENUE",
       "type": "SYNTHETIC",
-      "parentCode": "3",
-      "description": "Faturamento total antes de descontar impostos ou devoluções."
+      "parentCode": "3"
     },
     {
       "code": "3.1.1",
       "name": "Produção Própria",
       "nature": "REVENUE",
       "type": "SYNTHETIC",
-      "parentCode": "3.1",
-      "description": "Tudo o que passa pelas suas máquinas (Impressão, Laser, Carimbos)."
+      "parentCode": "3.1"
     },
     {
       "code": "3.1.1.01",
@@ -204,8 +263,7 @@
       "nature": "REVENUE",
       "type": "ANALYTIC",
       "parentCode": "3.1.1",
-      "systemRole": "REVENUE_SALE",
-      "description": "Vendas de impressos, plastificações, apostilas e banners simples."
+      "systemRole": "REVENUE_SALE"
     },
     {
       "code": "3.1.1.02",
@@ -213,8 +271,7 @@
       "nature": "REVENUE",
       "type": "ANALYTIC",
       "parentCode": "3.1.1",
-      "systemRole": "REVENUE_SALE",
-      "description": "Serviços de grande formato: banners, lonas (Vinil), adesivos, fachadas e totens."
+      "systemRole": "REVENUE_SALE"
     },
     {
       "code": "3.1.1.03",
@@ -222,8 +279,7 @@
       "nature": "REVENUE",
       "type": "ANALYTIC",
       "parentCode": "3.1.1",
-      "systemRole": "REVENUE_SALE",
-      "description": "Vendas de itens em MDF, Acrílico e gravação em Copos/Garrafas."
+      "systemRole": "REVENUE_SALE"
     },
     {
       "code": "3.1.1.04",
@@ -231,8 +287,7 @@
       "nature": "REVENUE",
       "type": "ANALYTIC",
       "parentCode": "3.1.1",
-      "systemRole": "REVENUE_SALE",
-      "description": "Venda do conjunto (Aparelho + Borracha gravada no laser)."
+      "systemRole": "REVENUE_SALE"
     },
     {
       "code": "3.1.1.05",
@@ -240,8 +295,7 @@
       "nature": "REVENUE",
       "type": "ANALYTIC",
       "parentCode": "3.1.1",
-      "systemRole": "REVENUE_SALE",
-      "description": "Venda de peças produzidas em impressoras 3D (FDM/Resina), protótipos e miniaturas."
+      "systemRole": "REVENUE_SALE"
     },
     {
       "code": "3.1.1.06",
@@ -249,16 +303,14 @@
       "nature": "REVENUE",
       "type": "ANALYTIC",
       "parentCode": "3.1.1",
-      "systemRole": "REVENUE_SALE",
-      "description": "Cobrança por horas de criação, logos, vetorização e fechamento de arquivos."
+      "systemRole": "REVENUE_SALE"
     },
     {
       "code": "3.1.2",
-      "name": "Revenda e Terceirização",
+      "name": "Revenda (Faturamento Bruto)",
       "nature": "REVENUE",
       "type": "SYNTHETIC",
-      "parentCode": "3.1",
-      "description": "Itens que você vende mas não produz fisicamente na sua loja."
+      "parentCode": "3.1"
     },
     {
       "code": "3.1.2.01",
@@ -266,131 +318,255 @@
       "nature": "REVENUE",
       "type": "ANALYTIC",
       "parentCode": "3.1.2",
-      "systemRole": "REVENUE_SALE",
-      "description": "Quando você vende um serviço (ex: milheiro de cartão) e manda rodar fora."
+      "systemRole": "REVENUE_SALE"
+    },
+    {
+      "code": "3.1.9",
+      "name": "Outras Receitas e Ganhos",
+      "nature": "REVENUE",
+      "type": "SYNTHETIC",
+      "parentCode": "3.1"
+    },
+    {
+      "code": "3.1.9.01",
+      "name": "Descontos Obtidos em Compras",
+      "nature": "REVENUE",
+      "type": "ANALYTIC",
+      "parentCode": "3.1.9",
+      "systemRole": "GENERAL"
     },
     {
       "code": "4",
       "name": "Custos",
       "nature": "COST",
-      "type": "SYNTHETIC",
-      "description": "Gastos Variáveis de Produção. Se não produzir nada hoje, o custo é zero."
+      "type": "SYNTHETIC"
     },
     {
       "code": "4.1",
-      "name": "Custos Operacionais",
+      "name": "Custos Operacionais (CPV/CSV)",
       "nature": "COST",
       "type": "SYNTHETIC",
       "parentCode": "4",
-      "description": "Soma de tudo o que foi gasto para fabricar os produtos vendidos."
+      "description": "Gastos ligados diretamente à produção."
     },
     {
       "code": "4.1.1",
-      "name": "Custo dos Produtos (CPV)",
+      "name": "Insumos e Matérias-Primas",
       "nature": "COST",
       "type": "SYNTHETIC",
       "parentCode": "4.1",
-      "description": "Valor dos insumos que \"sumiram\" do estoque para virar pedido."
+      "description": "Materiais que compõem o produto final."
     },
     {
       "code": "4.1.1.01",
-      "name": "Matéria-Prima Consumida",
+      "name": "Chapas e Mídias Consumidas",
       "nature": "COST",
       "type": "ANALYTIC",
       "parentCode": "4.1.1",
       "systemRole": "COST_EXPENSE",
-      "description": "Custo do MDF, Acrílico, Papel ou Lona que foi usado no trabalho."
+      "description": "Papéis, MDF, Acrílico, Lona."
     },
     {
       "code": "4.1.1.02",
-      "name": "Tintas, Gases e Insumos",
+      "name": "Tintas e Gases",
       "nature": "COST",
       "type": "ANALYTIC",
       "parentCode": "4.1.1",
-      "systemRole": "COST_EXPENSE",
-      "description": "Custo das recargas de tinta e do gás CO2 usado no tubo do Laser."
+      "systemRole": "COST_EXPENSE"
     },
     {
-      "code": "4.1.1.04",
-      "name": "Manutenção e Peças",
+      "code": "4.1.2",
+      "name": "Logística e Fretes de Compra",
       "nature": "COST",
-      "type": "ANALYTIC",
-      "parentCode": "4.1.1",
-      "systemRole": "COST_EXPENSE",
-      "description": "Troca de cabeças de impressão, correias, lentes do laser e visitas técnicas."
+      "type": "SYNTHETIC",
+      "parentCode": "4.1",
+      "description": "Custos para trazer a mercadoria e embalar."
     },
     {
-      "code": "4.1.1.05",
-      "name": "Perdas e Desperdícios",
+      "code": "4.1.2.01",
+      "name": "Fretes e Carretos (NFe)",
       "nature": "COST",
       "type": "ANALYTIC",
-      "parentCode": "4.1.1",
+      "parentCode": "4.1.2",
       "systemRole": "COST_EXPENSE",
-      "description": "Material que deu erro na impressão ou laser e teve que ser jogado fora."
+      "description": "Rateio de frete de entrada conforme NF-e."
+    },
+    {
+      "code": "4.1.2.02",
+      "name": "Seguros e Taxas de Carga",
+      "nature": "COST",
+      "type": "ANALYTIC",
+      "parentCode": "4.1.2",
+      "systemRole": "COST_EXPENSE"
+    },
+    {
+      "code": "4.1.2.03",
+      "name": "Embalagens e Consumíveis de Envio",
+      "nature": "COST",
+      "type": "ANALYTIC",
+      "parentCode": "4.1.2",
+      "systemRole": "COST_EXPENSE"
     },
     {
       "code": "4.1.3",
       "name": "Terceirização de Produção",
       "nature": "COST",
       "type": "SYNTHETIC",
-      "parentCode": "4.1",
-      "description": "Serviços contratados de terceiros para entrega final ao cliente."
+      "parentCode": "4.1"
     },
     {
       "code": "4.1.3.01",
-      "name": "Pagamento a Gráficas Parceiras",
+      "name": "Custos com Gráficas Parceiras",
       "nature": "COST",
       "type": "ANALYTIC",
       "parentCode": "4.1.3",
-      "systemRole": "COST_EXPENSE",
-      "description": "Custo do serviço de terceiros para itens de revenda."
+      "systemRole": "COST_EXPENSE"
+    },
+    {
+      "code": "4.1.4",
+      "name": "Apoio e Manutenção Fabril",
+      "nature": "COST",
+      "type": "SYNTHETIC",
+      "parentCode": "4.1"
+    },
+    {
+      "code": "4.1.4.01",
+      "name": "Manutenção de Máquinas e Peças",
+      "nature": "COST",
+      "type": "ANALYTIC",
+      "parentCode": "4.1.4",
+      "systemRole": "COST_EXPENSE"
+    },
+    {
+      "code": "4.1.4.02",
+      "name": "Perdas e Desperdícios",
+      "nature": "COST",
+      "type": "ANALYTIC",
+      "parentCode": "4.1.4",
+      "systemRole": "COST_EXPENSE"
     },
     {
       "code": "5",
       "name": "Despesas",
       "nature": "EXPENSE",
-      "type": "SYNTHETIC",
-      "description": "Gastos Fixos de Estrutura. Custos para manter o ArtPlim aberto."
+      "type": "SYNTHETIC"
     },
     {
       "code": "5.1",
-      "name": "Despesas Operacionais",
+      "name": "Despesas Fixas e Operacionais",
       "nature": "EXPENSE",
       "type": "SYNTHETIC",
-      "parentCode": "5",
-      "description": "Gastos administrativos, comerciais e financeiros de suporte."
+      "parentCode": "5"
     },
     {
       "code": "5.1.1",
-      "name": "Administrativas",
+      "name": "Ocupação",
       "nature": "EXPENSE",
       "type": "SYNTHETIC",
       "parentCode": "5.1"
     },
     {
-      "code": "5.1.1.02",
-      "name": "Aluguel e IPTU",
+      "code": "5.1.1.01",
+      "name": "Aluguel e Condomínio",
       "nature": "EXPENSE",
       "type": "ANALYTIC",
       "parentCode": "5.1.1",
+      "systemRole": "COST_EXPENSE"
+    },
+    {
+      "code": "5.1.1.02",
+      "name": "IPTU e Taxas Imobiliárias",
+      "nature": "EXPENSE",
+      "type": "ANALYTIC",
+      "parentCode": "5.1.1",
+      "systemRole": "COST_EXPENSE"
+    },
+    {
+      "code": "5.1.1.03",
+      "name": "Limpeza e Conservação",
+      "nature": "EXPENSE",
+      "type": "ANALYTIC",
+      "parentCode": "5.1.1",
+      "systemRole": "COST_EXPENSE"
+    },
+    {
+      "code": "5.1.2",
+      "name": "Tecnologia e Marketing",
+      "nature": "EXPENSE",
+      "type": "SYNTHETIC",
+      "parentCode": "5.1"
+    },
+    {
+      "code": "5.1.2.01",
+      "name": "Assinaturas de Software/Design",
+      "nature": "EXPENSE",
+      "type": "ANALYTIC",
+      "parentCode": "5.1.2",
       "systemRole": "COST_EXPENSE",
-      "description": "Custo mensal do espaço físico da sua gráfica/oficina."
+      "description": "Adobe, Canva, Corel Draw."
+    },
+    {
+      "code": "5.1.2.02",
+      "name": "Hospedagem e Gestão ERP",
+      "nature": "EXPENSE",
+      "type": "ANALYTIC",
+      "parentCode": "5.1.2",
+      "systemRole": "COST_EXPENSE"
+    },
+    {
+      "code": "5.1.2.05",
+      "name": "Propaganda e Anúncios",
+      "nature": "EXPENSE",
+      "type": "ANALYTIC",
+      "parentCode": "5.1.2",
+      "systemRole": "COST_EXPENSE",
+      "description": "Google Ads, Meta Ads."
     },
     {
       "code": "5.1.3",
+      "name": "Administrativas e Diversas",
+      "nature": "EXPENSE",
+      "type": "SYNTHETIC",
+      "parentCode": "5.1"
+    },
+    {
+      "code": "5.1.3.01",
+      "name": "Escritório e Papelaria Interna",
+      "nature": "EXPENSE",
+      "type": "ANALYTIC",
+      "parentCode": "5.1.3",
+      "systemRole": "COST_EXPENSE"
+    },
+    {
+      "code": "5.1.3.05",
+      "name": "Honorários Contábeis",
+      "nature": "EXPENSE",
+      "type": "ANALYTIC",
+      "parentCode": "5.1.3",
+      "systemRole": "COST_EXPENSE"
+    },
+    {
+      "code": "5.1.4",
       "name": "Financeiras",
       "nature": "EXPENSE",
       "type": "SYNTHETIC",
       "parentCode": "5.1"
     },
     {
-      "code": "5.1.3.02",
-      "name": "Taxas de Maquininha e Boletos",
+      "code": "5.1.4.01",
+      "name": "Taxas Bancárias e Maquininhas",
       "nature": "EXPENSE",
       "type": "ANALYTIC",
-      "parentCode": "5.1.3",
-      "systemRole": "COST_EXPENSE",
-      "description": "A \"mordida\" que o banco ou a operadora dá em cada venda."
+      "parentCode": "5.1.4",
+      "systemRole": "COST_EXPENSE"
+    },
+    {
+      "code": "5.1.4.02",
+      "name": "Juros e Multas Pagos",
+      "nature": "EXPENSE",
+      "type": "ANALYTIC",
+      "parentCode": "5.1.4",
+      "systemRole": "COST_EXPENSE"
     },
     {
       "code": "9",
@@ -430,8 +606,7 @@
       "color": "text-blue-700",
       "bg": "bg-blue-50",
       "border": "border-blue-200",
-      "accent": "#2563EB",
-      "description": "Representa todos os bens e direitos da empresa (dinheiro, equipamentos, estoques)."
+      "accent": "#2563EB"
     },
     {
       "code": "2",
@@ -439,8 +614,7 @@
       "color": "text-orange-700",
       "bg": "bg-orange-50",
       "border": "border-orange-200",
-      "accent": "#EA580C",
-      "description": "Indica as obrigações da empresa: dívidas com fornecedores, impostos e sócios."
+      "accent": "#EA580C"
     },
     {
       "code": "3",
@@ -448,8 +622,7 @@
       "color": "text-green-700",
       "bg": "bg-green-50",
       "border": "border-green-200",
-      "accent": "#16A34A",
-      "description": "Entrada bruta de dinheiro pelas vendas e serviços prestados."
+      "accent": "#16A34A"
     },
     {
       "code": "4",
@@ -457,8 +630,7 @@
       "color": "text-yellow-700",
       "bg": "bg-yellow-50",
       "border": "border-yellow-200",
-      "accent": "#CA8A04",
-      "description": "Gastos variáveis que ocorrem conforme você produz ou vende."
+      "accent": "#CA8A04"
     },
     {
       "code": "5",
@@ -466,8 +638,7 @@
       "color": "text-red-700",
       "bg": "bg-red-50",
       "border": "border-red-200",
-      "accent": "#DC2626",
-      "description": "Gastos fixos necessários para manter a estrutura mínima do negócio."
+      "accent": "#DC2626"
     },
     {
       "code": "9",
@@ -476,7 +647,7 @@
       "bg": "bg-slate-50",
       "border": "border-slate-200",
       "accent": "#475569",
-      "description": "Registros de materiais de terceiros trazidos por clientes."
+      "description": "Registros de materiais de terceiros trazidos por clientes (ex: Stanley)."
     }
   ]
 }

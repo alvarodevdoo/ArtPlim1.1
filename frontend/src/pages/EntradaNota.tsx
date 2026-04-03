@@ -18,6 +18,8 @@ export default function EntradaNota() {
     processFile,
     handleCreateNewToggle,
     handleBindExisting,
+    handleToggleSkip,
+    handleSetDistributionMode,
     importNFe
   } = useNFeImport();
 
@@ -54,6 +56,8 @@ export default function EntradaNota() {
           onImport={importNFe}
           onToggleNew={handleCreateNewToggle}
           onBindExisting={handleBindExisting}
+          onToggleSkip={handleToggleSkip}
+          onSetDistributionMode={handleSetDistributionMode}
         />
       )}
     </div>

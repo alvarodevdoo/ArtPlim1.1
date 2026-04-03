@@ -37,7 +37,19 @@ export const NFeSupplierSummary: React.FC<NFeSupplierSummaryProps> = ({ nfeData,
 
       <Card className="shadow-sm border-emerald-100 bg-emerald-50/50">
         <CardContent className="p-6 flex flex-col justify-center h-full text-emerald-900 text-center">
-          <p className="text-sm uppercase font-black tracking-widest text-emerald-700/60 mb-2">Valor da Nota</p>
+          <p className="text-xs uppercase font-black text-emerald-700/60 mb-1">Total Produtos: R$ {nfeData.valorTotalProdutos.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+          {(nfeData.valorFrete || 0) > 0 && (
+            <p className="text-[10px] uppercase font-bold text-slate-500 mb-0.5">
+              + Frete: R$ {(nfeData.valorFrete || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </p>
+          )}
+          {(nfeData.valorOutros || 0) > 0 && (
+            <p className="text-[10px] uppercase font-bold text-slate-500 mb-0.5">
+              + Outras Desp.: R$ {(nfeData.valorOutros || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </p>
+          )}
+
+          <p className="text-sm uppercase font-black tracking-widest text-emerald-700/60 mb-2 mt-2 border-t border-emerald-200/50 pt-2">Valor da Nota</p>
           <p className="text-4xl font-black tabular-nums">
             R$ {nfeData.valorTotalNota.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </p>

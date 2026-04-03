@@ -84,18 +84,41 @@ export function useNFeImport() {
       nm.items[index] = {
         ...nm.items[index],
         createNew: false,
+        skip: false,
         mappedMaterialId: materialId
       };
       return nm;
     });
   };
 
+  const handleToggleSkip = (index: number) => {
+    setNfeData(prev => {
+      if (!prev) return prev;
+      const nm = { ...prev };
+      const isSkipping = !nm.items[index].skip;
+      nm.items[index] = {
+        ...nm.items[index],
+        skip: isSkipping,
+        createNew: isSkipping ? false : nm.items[index].createNew,
+        mappedMaterialId: isSkipping ? undefined : nm.items[index].mappedMaterialId
+      };
+      return nm;
+    });
+  };
+
+  const handleSetDistributionMode = (mode: 'STRICT' | 'REDISTRIBUTE') => {
+    setNfeData(prev => {
+      if (!prev) return prev;
+      return { ...prev, costDistributionMode: mode };
+    });
+  };
+
   const importNFe = async () => {
     if (!nfeData) return;
 
-    const hasUnmapped = nfeData.items.some(i => !i.createNew && !i.mappedMaterialId);
+    const hasUnmapped = nfeData.items.some(i => !i.createNew && !i.mappedMaterialId && !i.skip);
     if (hasUnmapped) {
-      toast.error('Por favor, vincule todos os itens (ou marque como Novo Insumo) antes de importar.');
+      toast.error('Por favor, vincule todos os itens (ou marque como Novo ou Ignorado) antes de importar.');
       return;
     }
 
@@ -125,6 +148,8 @@ export function useNFeImport() {
     processFile,
     handleCreateNewToggle,
     handleBindExisting,
+    handleToggleSkip,
+    handleSetDistributionMode,
     importNFe
   };
 }

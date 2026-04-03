@@ -86,6 +86,8 @@ model OrganizationSettings {
   // Configurações de Apropriação Financeira (Plano de Contas)
   defaultReceivableCategoryId String?
   defaultRevenueCategoryId    String?
+  freightExpenseAccountId     String?
+  taxExpenseAccountId         String?
 
   // Método de Valoração de Estoque (AVERAGE_COST ou PEPS)
   inventoryValuationMethod String @default("AVERAGE")

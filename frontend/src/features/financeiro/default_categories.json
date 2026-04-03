@@ -68,7 +68,7 @@
     "type": "EXPENSE",
     "color": "#EF4444",
     "accountCode": "4.1.1.02",
-    "expectedAccountName": "Tintas, Gases e Insumos",
+    "expectedAccountName": "Tintas e Gases",
     "description": "Custos com recarga de tinta para plotters, toners de impressoras a laser e a recarga do gás CO2 (tubo) da máquina de corte laser."
   },
   {
@@ -77,7 +77,7 @@
     "type": "EXPENSE",
     "color": "#DC2626",
     "accountCode": "4.1.1.01",
-    "expectedAccountName": "Matéria-Prima Consumida",
+    "expectedAccountName": "Chapas e Mídias Consumidas",
     "description": "Compra de bobinas de lona, rolos de vinil adesivo, resmas de papel couché/sulfite e filmes para plastificação (Polaseal/BOPP)."
   },
   {
@@ -86,7 +86,7 @@
     "type": "EXPENSE",
     "color": "#B91C1C",
     "accountCode": "4.1.1.01",
-    "expectedAccountName": "Matéria-Prima Consumida",
+    "expectedAccountName": "Chapas e Mídias Consumidas",
     "description": "Matéria-prima rígida: chapas de MDF, acrílico e PS. Também inclui a compra de copos e garrafas 'lisos' para serem personalizados."
   },
   {
@@ -95,7 +95,7 @@
     "type": "EXPENSE",
     "color": "#991B1B",
     "accountCode": "4.1.3.01",
-    "expectedAccountName": "Pagamento a Gráficas Parceiras",
+    "expectedAccountName": "Custos com Gráficas Parceiras",
     "description": "Custo direto da terceirização. O boleto que você paga para a gráfica que produziu o item da categoria 'Revenda (Produção Externa)'."
   },
   {
@@ -103,8 +103,8 @@
     "name": "Manutenção e Peças",
     "type": "EXPENSE",
     "color": "#7F1D1D",
-    "accountCode": "4.1.1.04",
-    "expectedAccountName": "Manutenção e Peças",
+    "accountCode": "4.1.4.01",
+    "expectedAccountName": "Manutenção de Máquinas e Peças",
     "description": "Troca de cabeças de impressão, correias, lentes do laser, agulhas de corte e visitas técnicas para conserto de máquinas."
   },
   {
@@ -112,7 +112,7 @@
     "name": "Desperdício e Erros de Produção",
     "type": "EXPENSE",
     "color": "#444444",
-    "accountCode": "4.1.1.05",
+    "accountCode": "4.1.4.02",
     "expectedAccountName": "Perdas e Desperdícios",
     "description": "Valor do material perdido por erro humano, arquivo mal configurado ou falha da máquina (ex: lona que riscou no meio da impressão)."
   }

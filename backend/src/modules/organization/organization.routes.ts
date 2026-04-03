@@ -37,7 +37,9 @@ const updateSettingsSchema = z.object({
   defaultReceivableCategoryId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   defaultRevenueCategoryId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   defaultBackupPassword: z.string().min(6, 'Senha mestre muito curta').or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
-  recoveryToken: z.string().nullable().optional()
+  recoveryToken: z.string().nullable().optional(),
+  freightExpenseAccountId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
+  taxExpenseAccountId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional()
 });
 
 const createUserSchema = z.object({
@@ -109,27 +111,36 @@ export async function organizationRoutes(fastify: FastifyInstance) {
   fastify.put('/settings', {
     preHandler: [fastify.authenticate, requirePermission(['admin.settings'])]
   }, async (request, reply) => {
-    const body = updateSettingsSchema.parse(request.body);
-    
-    // Criptografa a senha mestre se ela foi enviada no payload, pois é reversível apenas pelo motor do sistema
-    if (body.defaultBackupPassword) {
-       body.defaultBackupPassword = BackupCryptoService.encryptMasterPassword(body.defaultBackupPassword);
-       
-       // Se definiu uma nova senha mestre mas não tem token de recuperação, gera um agora
-       if (!body.recoveryToken) {
-         body.recoveryToken = `REC-${crypto.randomBytes(4).toString('hex').toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
-       }
-    } else if (body.defaultBackupPassword === '') {
-       body.defaultBackupPassword = null; // Permite o dono remover a senha se quiser exportar livremente
+    try {
+      const body = updateSettingsSchema.parse(request.body);
+      
+      // Criptografa a senha mestre se ela foi enviada no payload, pois é reversível apenas pelo motor do sistema
+      if (body.defaultBackupPassword) {
+         body.defaultBackupPassword = BackupCryptoService.encryptMasterPassword(body.defaultBackupPassword);
+         
+         // Se definiu uma nova senha mestre mas não tem token de recuperação, gera um agora
+         if (!body.recoveryToken) {
+           body.recoveryToken = `REC-${crypto.randomBytes(4).toString('hex').toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+         }
+      } else if (body.defaultBackupPassword === '') {
+         body.defaultBackupPassword = null; // Permite o dono remover a senha se quiser exportar livremente
+      }
+
+      const organizationService = new OrganizationService(prisma);
+      const settings = await organizationService.updateSettings(request.user!.organizationId, body);
+
+      return reply.send({
+        success: true,
+        data: settings
+      });
+    } catch (error: any) {
+      console.error('ERRO INTERNO PUT /api/organization/settings:', error);
+      return reply.code(error.name === 'ZodError' ? 400 : 500).send({
+        success: false,
+        message: error.message,
+        details: error.name === 'ZodError' ? error.errors : undefined
+      });
     }
-
-    const organizationService = new OrganizationService(prisma);
-    const settings = await organizationService.updateSettings(request.user!.organizationId, body);
-
-    return reply.send({
-      success: true,
-      data: settings
-    });
   });
 
   // ========== USUÁRIOS ==========

@@ -31,6 +31,8 @@ interface UpdateSettingsInput {
   defaultRevenueCategoryId?: string | null;
   defaultBackupPassword?: string | null;
   recoveryToken?: string | null;
+  freightExpenseAccountId?: string | null;
+  taxExpenseAccountId?: string | null;
 }
 
 export class OrganizationService {
