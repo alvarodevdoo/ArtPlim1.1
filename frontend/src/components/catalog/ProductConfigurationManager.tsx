@@ -54,6 +54,9 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
   const [showOptionForm, setShowOptionForm] = useState(false);
   const [editingOption, setEditingOption] = useState<ConfigurationOption | null>(null);
   const [selectedConfigForOption, setSelectedConfigForOption] = useState<string | null>(null);
+  const [showBulkForm, setShowBulkForm] = useState(false);
+  const [isSubmittingBulk, setIsSubmittingBulk] = useState(false);
+  const [bulkFichaTecnica, setBulkFichaTecnica] = useState<InsumoMaterialSelecionado[]>([]);
   const [optionFormData, setOptionFormData] = useState({
     label: '',
     value: '',
@@ -310,6 +313,64 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
     });
   };
 
+  const handleBulkAdd = (configId: string) => {
+    setSelectedConfigForOption(configId);
+    setBulkFichaTecnica([]);
+    setShowBulkForm(true);
+  };
+
+  const handleSubmitBulkOptions = async () => {
+    if (!selectedConfigForOption || bulkFichaTecnica.length === 0) {
+      toast.error('Selecione ao menos 1 insumo para gerar opções!');
+      return;
+    }
+    
+    setIsSubmittingBulk(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < bulkFichaTecnica.length; i++) {
+      const mat = bulkFichaTecnica[i];
+      try {
+        const valueSlug = mat.nome.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/(^_|_$)/g, '');
+        const payload = {
+          label: mat.nome,
+          value: valueSlug + (i > 0 && bulkFichaTecnica.findIndex(m => m.nome === mat.nome) !== i ? `_${i}` : ''),
+          description: `Gerada via Insumo`,
+          priceModifier: 0,
+          priceModifierType: 'FIXED',
+          displayOrder: i + 1,
+          isAvailable: true
+        };
+        const res = await api.post(`/api/catalog/configurations/${selectedConfigForOption}/options`, payload);
+        const optionId = res.data.data.id;
+        
+        await api.post(`/api/catalog/options/${optionId}/ficha-tecnica`, {
+          items: [{
+            insumoId: mat.insumoId,
+            quantidade: 1 // Default Quantity: 1 un
+          }]
+        });
+        successCount++;
+      } catch (err) {
+        console.error('Erro ao gerar opção em lote', err);
+        failCount++;
+      }
+    }
+
+    setIsSubmittingBulk(false);
+    if (successCount > 0) {
+      toast.success(`${successCount} opções geradas com sucesso!`);
+      setShowBulkForm(false);
+      setSelectedConfigForOption(null);
+      setBulkFichaTecnica([]);
+      loadConfigurations();
+    }
+    if (failCount > 0) {
+      toast.error(`Falha ao gerar ${failCount} opções.`);
+    }
+  };
+
   const getTypeColor = (type: string) => {
     switch (type) {
       case 'SELECT': return 'bg-blue-100 text-blue-600';
@@ -346,24 +407,7 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
         </div>
       </div>
 
-      {/* Info Card */}
-      {pricingMode !== 'DYNAMIC_ENGINEER' && (
-        <Card className="border-yellow-200 bg-yellow-50">
-          <CardContent className="pt-4">
-            <div className="flex items-center space-x-2">
-              <Settings className="w-5 h-5 text-yellow-600" />
-              <div>
-                <p className="font-medium text-yellow-800">
-                  Configurações disponíveis apenas para produtos dinâmicos
-                </p>
-                <p className="text-sm text-yellow-700">
-                  Altere o modo de precificação para "Cálculo dinâmico" para usar configurações.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+
 
       {/* Form Modal */}
       {showForm && (
@@ -650,6 +694,57 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
         </div>
       )}
 
+      {/* Bulk Generator Modal */}
+      {showBulkForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 animate-in fade-in">
+          <Card className="w-full max-w-4xl max-h-[90vh] flex flex-col bg-slate-50 border-0 shadow-2xl">
+            <CardHeader className="bg-white border-b sticky top-0 z-10 px-6 py-4">
+              <CardTitle className="text-xl font-black text-indigo-900">Gerador Rápido de Opções</CardTitle>
+              <CardDescription className="text-slate-500 font-medium text-sm">
+                Selecione múltiplos insumos abaixo. O sistema vai automaticamente criar uma opção de escolha para cada um deles (Ex: Se escolher 10 carimbos, criará 10 opções de cor prontas e vinculadas no estoque).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-y-auto p-6">
+              <div className="bg-white p-6 rounded-xl border shadow-sm">
+                <h4 className="text-sm font-bold text-slate-700 uppercase tracking-widest mb-4">Escolha os Materiais</h4>
+                <SeletorInsumos 
+                  insumos={insumos}
+                  materiaisIniciais={bulkFichaTecnica}
+                  onMaterialsChange={(mats) => setBulkFichaTecnica(mats)}
+                />
+              </div>
+            </CardContent>
+            <div className="bg-white p-4 border-t flex justify-between items-center sticky bottom-0 z-10">
+              <p className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">
+                {bulkFichaTecnica.length} insumos selecionados
+              </p>
+              <div className="flex space-x-3">
+                <Button 
+                  type="button" 
+                  variant="ghost" 
+                  onClick={() => {
+                    setShowBulkForm(false);
+                    setSelectedConfigForOption(null);
+                    setBulkFichaTecnica([]);
+                  }}
+                  disabled={isSubmittingBulk}
+                  className="font-bold text-slate-500"
+                >
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={handleSubmitBulkOptions}
+                  disabled={isSubmittingBulk || bulkFichaTecnica.length === 0}
+                  className="font-black px-8 shadow-md"
+                >
+                  {isSubmittingBulk ? 'Gerando...' : `Gerar ${bulkFichaTecnica.length} Opções`}
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
 
 
       {/* Configurations List */}
@@ -673,8 +768,8 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
                           </span>
                         )}
                       </div>
-                      <CardDescription className="mt-1">
-                        <div className="flex items-center space-x-4 text-xs">
+                      <CardDescription className="mt-1 asChild">
+                        <span className="flex items-center space-x-4 text-xs">
                           {config.affectsPricing && (
                             <span className="text-green-600">• Afeta preço</span>
                           )}
@@ -682,7 +777,7 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
                             <span className="text-blue-600">• Afeta materiais</span>
                           )}
                           <span>Ordem: {config.displayOrder}</span>
-                        </div>
+                        </span>
                       </CardDescription>
                     </div>
                     <div className="flex space-x-1">
@@ -749,16 +844,27 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
                       {/* Options for SELECT type */}
                       {config.type === 'SELECT' && (
                         <div>
-                          <div className="flex justify-between items-center mb-2">
-                            <p className="font-medium text-sm">Opções Disponíveis</p>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleAddOption(config.id)}
-                            >
-                              <Plus className="w-3 h-3 mr-1" />
-                              Adicionar Opção
-                            </Button>
+                          <div className="flex justify-between items-center mb-3">
+                            <p className="font-bold text-sm text-slate-700">Opções Disponíveis</p>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="font-bold text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                                onClick={() => handleBulkAdd(config.id)}
+                              >
+                                <Plus className="w-3 h-3 mr-1" />
+                                Gerar de Insumos em Lote
+                              </Button>
+                              <Button
+                                size="sm"
+                                className="font-bold shadow-sm"
+                                onClick={() => handleAddOption(config.id)}
+                              >
+                                <Plus className="w-3 h-3 mr-1" />
+                                Adicionar Opção Manual
+                              </Button>
+                            </div>
                           </div>
                           {config.options.length > 0 ? (
                             <div className="space-y-2">
@@ -768,9 +874,9 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
                                   <div key={option.id} className="flex items-center justify-between p-2 border rounded">
                                     <div>
                                       <span className="font-medium">{option.label}</span>
-                                      {option.priceModifier !== 0 && (
-                                        <span className={`ml-2 text-sm ${option.priceModifier > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                          {option.priceModifier > 0 ? '+' : ''}R$ {option.priceModifier.toFixed(2)}
+                                      {Number(option.priceModifier || 0) !== 0 && (
+                                        <span className={`ml-2 text-sm ${Number(option.priceModifier) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                          {Number(option.priceModifier) > 0 ? '+' : ''}R$ {Number(option.priceModifier).toFixed(2)}
                                         </span>
                                       )}
                                     </div>

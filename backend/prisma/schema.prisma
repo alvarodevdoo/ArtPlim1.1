@@ -65,6 +65,7 @@ model Organization {
   stockMovements         StockMovement[]
   spedAccountMappings    SpedAccountMapping[]
   materialTypes          MaterialType[]
+  productionOrders       ProductionOrder[]
 
   @@map("organizations")
 }
@@ -82,6 +83,7 @@ model OrganizationSettings {
   enableFinanceReports       Boolean @default(true)
   allowDuplicatePhones       Boolean @default(true)
   requireDocumentKeyForEntry Boolean @default(false)
+  enableCategoryAppropriation Boolean @default(true)
 
   // Configurações de Apropriação Financeira (Plano de Contas)
   defaultReceivableCategoryId String?
@@ -244,6 +246,8 @@ model Material {
   minStockQuantity         Float?
   sellWithoutStock         Boolean               @default(true)
   trackStock               Boolean               @default(true)
+  ncm                      String?
+  ean                      String?
   spedType                 String? // Legado: código do tipo (00, 01...)
   materialTypeId           String? // Dinâmico: ID da classificação criada pelo usuário
   materialType             MaterialType?         @relation(fields: [materialTypeId], references: [id])
@@ -261,6 +265,8 @@ model Material {
   productionWastes         ProductionWaste[]
   averageCost              Decimal               @default(0) @db.Decimal(10, 4)
   currentStock             Decimal               @default(0) @db.Decimal(15, 4)
+  // Motor de Composição: opções de variação vinculadas a este insumo
+  optionSlots              ConfigurationOption[] @relation("OptionMaterial")
 
   @@unique([organizationId, name], name: "organizationId_name")
   @@index([organizationId])
@@ -310,6 +316,9 @@ model Product {
   localFormulaId   String?
   customFormula    String?
   sellWithoutStock Boolean                @default(true)
+  // Motor de Composição: markup alvo para sugestão de preço
+  targetMarkup     Float?                 // Multiplicador sobre custo (ex: 2.5 = 250%)
+  targetMargin     Float?                 // Margem alvo alternativa 0.0–1.0 (ex: 0.40 = 40%)
   budgetItems      BudgetItem[]
   fichasTecnicas   FichaTecnicaInsumo[]
   orderItems       OrderItem[]
@@ -320,6 +329,8 @@ model Product {
   productionWastes ProductionWaste[]
   organization     Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   pricingRule      PricingRule?           @relation(fields: [pricingRuleId], references: [id])
+  categoryId       String?
+  category         Category?              @relation(fields: [categoryId], references: [id])
   revenueAccountId String?
   revenueAccount   ChartOfAccount?        @relation("ProductRevenueAccount", fields: [revenueAccountId], references: [id])
 
@@ -366,11 +377,31 @@ model ConfigurationOption {
   displayOrder         Int                      @default(1)
   createdAt            DateTime                 @default(now())
   updatedAt            DateTime                 @updatedAt
+  // Motor de Composição: vínculo direto com insumo do estoque ("slot de variável")
+  materialId           String?                  // FK para Material — custo lido de averageCost
+  slotQuantity         Decimal?                 @db.Decimal(10, 4) // Qtd padrão deste insumo
   configuration        ProductConfiguration     @relation(fields: [configurationId], references: [id], onDelete: Cascade)
+  material             Material?                @relation("OptionMaterial", fields: [materialId], references: [id])
   fichasTecnicas       FichaTecnicaInsumo[]
   orderItemConfigs     OrderItemConfiguration[]
+  incompatibilitiesA   OptionIncompatibility[]  @relation("IncompatA")
+  incompatibilitiesB   OptionIncompatibility[]  @relation("IncompatB")
 
   @@map("configuration_options")
+}
+
+// Motor de Composição: pares de opções mutuamente exclusivas
+model OptionIncompatibility {
+  id        String              @id @default(uuid())
+  optionAId String
+  optionBId String
+  reason    String?             // Explicação exibida ao usuário
+  createdAt DateTime            @default(now())
+  optionA   ConfigurationOption @relation("IncompatA", fields: [optionAId], references: [id], onDelete: Cascade)
+  optionB   ConfigurationOption @relation("IncompatB", fields: [optionBId], references: [id], onDelete: Cascade)
+
+  @@unique([optionAId, optionBId])
+  @@map("option_incompatibilities")
 }
 
 model ConfigurationTemplate {
@@ -552,20 +583,27 @@ model OrderItem {
   machineTime     Float?
   setupTime       Float?
   complexity      String?
-  costPrice       Decimal                  @db.Decimal(10, 2)
-  calculatedPrice Decimal                  @db.Decimal(10, 2)
-  unitPrice       Decimal                  @db.Decimal(10, 2)
-  totalPrice      Decimal                  @db.Decimal(10, 2)
-  notes           String?
-  processStatusId String?
-  status          OrderStatus              @default(DRAFT)
-  pricingRuleId   String?
-  configurations  OrderItemConfiguration[]
-  order           Order                    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  pricingRule     PricingRule?             @relation(fields: [pricingRuleId], references: [id])
-  processStatus   ProcessStatus?           @relation(fields: [processStatusId], references: [id])
-  product         Product                  @relation(fields: [productId], references: [id])
-  deliveryItems   DeliveryItem[]
+  costPrice            Decimal                  @db.Decimal(10, 2)
+  calculatedPrice      Decimal                  @db.Decimal(10, 2)
+  unitPrice            Decimal                  @db.Decimal(10, 2)
+  totalPrice           Decimal                  @db.Decimal(10, 2)
+  notes                String?
+  processStatusId      String?
+  status               OrderStatus              @default(DRAFT)
+  pricingRuleId        String?
+  // Motor de Composição: campos de snapshot (imutáveis após APPROVED)
+  unitCostAtSale       Decimal?                 @db.Decimal(10, 4) // Custo médio ponderado no momento da venda
+  unitPriceAtSale      Decimal?                 @db.Decimal(10, 2) // Preço negociado confirmado
+  profitAtSale         Decimal?                 @db.Decimal(10, 4) // Lucro líquido: unitPriceAtSale – unitCostAtSale
+  compositionSnapshot  Json?                    // BOM completa congelada: [{materialId, quantity, costPerUnit, subtotal}]
+  confirmedAt          DateTime?                // Timestamp da confirmação (APPROVED)
+  configurations       OrderItemConfiguration[]
+  order                Order                    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  pricingRule          PricingRule?             @relation(fields: [pricingRuleId], references: [id])
+  processStatus        ProcessStatus?           @relation(fields: [processStatusId], references: [id])
+  product              Product                  @relation(fields: [productId], references: [id])
+  deliveryItems        DeliveryItem[]
+  productionOrder      ProductionOrder?
 
   @@map("order_items")
 }
@@ -808,9 +846,10 @@ model Category {
   name           String
   type           CategoryType
   color          String?
-  parentId       String?
-  active         Boolean       @default(true)
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parentId               String?
+  active                 Boolean       @default(true)
+  defaultProductionSteps Json?
+  organization           Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   parent         Category?     @relation("CategoryHierarchy", fields: [parentId], references: [id])
   children       Category[]    @relation("CategoryHierarchy")
   transactions   Transaction[]
@@ -818,6 +857,7 @@ model Category {
   chartOfAccountId String?
   chartOfAccount   ChartOfAccount? @relation(fields: [chartOfAccountId], references: [id])
   Material         Material[]
+  Product          Product[]
 
   // Novos relacionamentos para Material
   inventoryAccountId String?
@@ -1262,6 +1302,27 @@ enum MovementType {
   ADJUSTMENT
   WASTE
 }
+
+model ProductionOrder {
+  id              String           @id @default(uuid())
+  organizationId  String
+  orderItemId     String           @unique
+  status          ProductionStatus @default(PENDING)
+  priority        Int              @default(1)
+  pickingList     Json?            // [{ materialId, name, quantity, unit }]
+  steps           Json?            // [{ name, sequence, status }]
+  notes           String?
+  startDate       DateTime?
+  endDate         DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  orderItem       OrderItem        @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("production_orders")
+}
+
 
 enum AlertType {
   LOW_STOCK

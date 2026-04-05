@@ -6,6 +6,9 @@ import { OrderStatus } from '@prisma/client';
 import { PricingEngine } from '../../shared/application/pricing/PricingEngine';
 import { StatusEngine } from './domain/services/StatusEngine';
 import { TransactionService } from '../finance/services/TransactionService';
+import { PricingCompositionService } from '../catalog/services/PricingCompositionService';
+import { IncompatibilityService } from '../catalog/services/IncompatibilityService';
+import { ConfirmOrderService } from './application/ConfirmOrderService';
 
 const listQuerySchema = z.object({
   limit: z.string().transform(val => parseInt(val) || 50).optional(),
@@ -624,5 +627,84 @@ export async function salesRoutes(fastify: FastifyInstance) {
     } catch (error: any) {
       return reply.code(400).send({ success: false, message: error.message });
     }
+  });
+
+  // ========== MOTOR DE COMPOSIÇÃO ==========
+
+  /**
+   * POST /simulate-composition
+   * Calcula o custo real de um produto com as opções selecionadas (sem efeito colateral).
+   * Usado pelo frontend para exibir custo/lucro em tempo real durante a configuração.
+   */
+  fastify.post('/simulate-composition', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const body = z.object({
+      productId: z.string().min(1),
+      selectedOptionIds: z.array(z.string()).default([]),
+      quantity: z.number().positive().default(1)
+    }).parse(request.body);
+
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new PricingCompositionService(prisma);
+
+    const result = await service.calculate({
+      productId: body.productId,
+      selectedOptionIds: body.selectedOptionIds,
+      quantity: body.quantity,
+      organizationId: request.user!.organizationId
+    });
+
+    return reply.send({ success: true, data: result });
+  });
+
+  /**
+   * POST /orders/:id/confirm
+   * Transação atômica de confirmação do pedido (status → APPROVED):
+   *   - Valida incompatibilidades de opções
+   *   - Valida estoque suficiente
+   *   - Captura snapshot de custo (unitCostAtSale, profitAtSale)
+   *   - Gera StockMovement (baixa de currentStock)
+   *   - Lança Receita + CMV no Plano de Contas
+   */
+  fastify.post('/orders/:id/confirm', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { processStatusId } = request.body as { processStatusId?: string };
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new ConfirmOrderService(prisma);
+
+    try {
+      const result = await service.execute({
+        orderId: id,
+        organizationId: request.user!.organizationId,
+        userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub,
+        processStatusId
+      });
+
+      return reply.send({ success: true, data: result });
+    } catch (error: any) {
+      return reply.code(400).send({ success: false, message: error.message });
+    }
+  });
+
+  /**
+   * GET /orders/:id/incompatibilities
+   * Retorna os IDs de opções incompatíveis com as opções já selecionadas.
+   * Chamado em tempo real pelo frontend ao selecionar cada variação.
+   */
+  fastify.get('/orders/incompatibilities', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const query = z.object({
+      selectedOptionIds: z.string().transform(v => v.split(',').filter(Boolean))
+    }).parse(request.query);
+
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new IncompatibilityService(prisma);
+
+    const result = await service.getIncompatibleOptionIds(query.selectedOptionIds);
+    return reply.send({ success: true, data: result });
   });
 }

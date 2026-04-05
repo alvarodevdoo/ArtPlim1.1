@@ -19,6 +19,8 @@ interface CreateMaterialInput {
   minStockQuantity?: number | null;
   sellWithoutStock?: boolean;
   trackStock?: boolean;
+  ncm?: string | null;
+  ean?: string | null;
   spedType?: string | null;
   suppliers?: { 
     supplierId: string; 
@@ -32,7 +34,7 @@ interface CreateMaterialInput {
 export class MaterialService {
   constructor(private prisma: any) {}
 
-  async create(data: CreateMaterialInput) {
+  async create(userId: string, organizationId: string, data: CreateMaterialInput) {
     // 1. Busca a categoria para verificar vínculos padrões
     const category = await this.prisma.category.findUnique({
       where: { id: data.categoryId }
@@ -65,6 +67,8 @@ export class MaterialService {
         minStockQuantity: data.minStockQuantity,
         sellWithoutStock: data.sellWithoutStock,
         trackStock: data.trackStock,
+        ncm: data.ncm,
+        ean: data.ean,
         spedType: data.spedType,
         suppliers: data.suppliers?.length ? {
           create: data.suppliers.map(s => ({
@@ -78,6 +82,18 @@ export class MaterialService {
       },
       include: {
         category: true
+      }
+    });
+
+    // 4. Registro em Auditoria
+    await this.prisma.auditLog.create({
+      data: {
+        organizationId,
+        userId,
+        action: 'CREATE_MATERIAL',
+        tableName: 'materials',
+        recordId: material.id,
+        newValues: material as any
       }
     });
 
@@ -162,7 +178,7 @@ export class MaterialService {
     return material;
   }
 
-  async update(id: string, data: Partial<CreateMaterialInput>) {
+  async update(userId: string, organizationId: string, id: string, data: Partial<CreateMaterialInput>) {
     const { suppliers, ..._ } = data;
 
     return this.prisma.$transaction(async (tx: any) => {
@@ -215,6 +231,8 @@ export class MaterialService {
       if (data.minStockQuantity !== undefined)        updateFields.minStockQuantity = data.minStockQuantity;
       if (data.sellWithoutStock !== undefined)        updateFields.sellWithoutStock = data.sellWithoutStock;
       if (data.trackStock !== undefined)              updateFields.trackStock = data.trackStock;
+      if (data.ncm !== undefined)                     updateFields.ncm = data.ncm;
+      if (data.ean !== undefined)                     updateFields.ean = data.ean;
       if (data.spedType !== undefined)                updateFields.spedType = data.spedType;
 
       if (suppliers !== undefined) {
@@ -232,14 +250,31 @@ export class MaterialService {
       // ====== [LOG 4] CAMPOS QUE SERAO SALVOS NO PRISMA ======
       console.log('[MAT-SERVICE] updateFields:', JSON.stringify(updateFields, null, 2));
 
-      return tx.material.update({
+      const oldMaterial = await tx.material.findUnique({ where: { id } });
+
+      const updated = await tx.material.update({
         where: { id },
         data: updateFields
       });
+
+      // Registro em Auditoria
+      await tx.auditLog.create({
+        data: {
+          organizationId,
+          userId,
+          action: 'UPDATE_MATERIAL',
+          tableName: 'materials',
+          recordId: id,
+          oldValues: oldMaterial as any,
+          newValues: updated as any
+        }
+      });
+
+      return updated;
     });
   }
 
-  async delete(id: string) {
+  async delete(userId: string, organizationId: string, id: string) {
     // Verificar se o material está sendo usado em produtos
     const usage = await this.prisma.productComponent.findFirst({
       where: { materialId: id }
@@ -249,12 +284,27 @@ export class MaterialService {
       throw new Error('Material não pode ser removido pois está sendo usado em produtos');
     }
 
+    const oldMaterial = await this.prisma.material.findUnique({ where: { id } });
+
     // Soft delete
-    await this.prisma.material.update({
+    const deleted = await this.prisma.material.update({
       where: { id },
       data: {
         active: false,
         updatedAt: new Date()
+      }
+    });
+
+    // Registro em Auditoria
+    await this.prisma.auditLog.create({
+      data: {
+        organizationId,
+        userId,
+        action: 'DELETE_MATERIAL',
+        tableName: 'materials',
+        recordId: id,
+        oldValues: oldMaterial as any,
+        newValues: deleted as any
       }
     });
 

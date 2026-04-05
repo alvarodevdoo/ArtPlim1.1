@@ -19,6 +19,7 @@ interface OrganizationSettings {
   enableFinance: boolean;
   enableFinanceReports: boolean;
   enableAutomation: boolean;
+  enableCategoryAppropriation: boolean;
   defaultMarkup: number;
   taxRate: number;
   validadeOrcamento: number;
@@ -65,6 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         enableFinance: true,
         enableFinanceReports: true,
         enableAutomation: true,
+        enableCategoryAppropriation: true,
         defaultMarkup: 2.0,
         taxRate: 0.0,
         validadeOrcamento: 7
@@ -95,17 +97,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } catch (settingsError) {
             console.warn('Erro ao carregar configurações na inicialização, usando padrões:', settingsError);
             // Usar configurações padrão se falhar
-            setSettings({
-              id: '',
-              enableWMS: false,
-              enableProduction: false,
-              enableFinance: true,
-              enableFinanceReports: true,
-              enableAutomation: true,
-              defaultMarkup: 2.0,
-              taxRate: 0.0,
-              validadeOrcamento: 7
-            });
+          setSettings({
+            id: '',
+            enableWMS: false,
+            enableProduction: false,
+            enableFinance: true,
+            enableFinanceReports: true,
+            enableAutomation: true,
+            enableCategoryAppropriation: true,
+            defaultMarkup: 2.0,
+            taxRate: 0.0,
+            validadeOrcamento: 7
+          });
           }
         } catch (error) {
           console.error('Erro ao inicializar autenticação:', error);
@@ -147,6 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           enableFinance: true,
           enableFinanceReports: true,
           enableAutomation: true,
+          enableCategoryAppropriation: true,
           defaultMarkup: 2.0,
           taxRate: 0.0,
           validadeOrcamento: 7

@@ -22,6 +22,7 @@ export interface ProductiveIntelligenceData {
 interface Props {
   value: ProductiveIntelligenceData;
   onChange: (data: ProductiveIntelligenceData) => void;
+  format?: string;
 }
 
 // Unidades sugeridas por regra de consumo
@@ -70,10 +71,27 @@ const toMeters = (displayValue: string, dimUnit: DimUnit): number => {
 // ============================================================
 // Componente Principal
 // ============================================================
-export const ProductiveIntelligence: React.FC<Props> = ({ value, onChange }) => {
+export const ProductiveIntelligence: React.FC<Props> = ({ value, onChange, format }) => {
   const [dimUnit, setDimUnit] = useState<DimUnit>('cm');
   const [localWidth, setLocalWidth] = useState(() => toDisplayValue(value.width, 'cm'));
   const [localHeight, setLocalHeight] = useState(() => toDisplayValue(value.height, 'cm'));
+
+  const availableControlUnits = (Object.keys(CONTROL_UNIT_LABELS) as ControlUnit[]).filter(u => {
+    if (format === 'UNIT') return u === 'UN';
+    return true;
+  });
+
+  const availableRules = (Object.keys(RULE_LABELS) as ConsumptionRule[]).filter(r => {
+    if (format === 'UNIT') return r === 'FIXED_UNIT';
+    return true;
+  });
+
+  // Sincronizar caso o formato mude pra restringir a valores incompatíveis
+  useEffect(() => {
+    if (format === 'UNIT' && value.controlUnit !== 'UN') {
+      onChange({ ...value, controlUnit: 'UN', defaultConsumptionRule: 'FIXED_UNIT' });
+    }
+  }, [format, value.controlUnit, onChange, value]);
 
   // Sincronizar display quando o material aberto muda (edição)
   useEffect(() => {
@@ -141,7 +159,7 @@ export const ProductiveIntelligence: React.FC<Props> = ({ value, onChange }) => 
     onChange({ ...value, height: newMeters, conversionFactor: newFactor });
   };
 
-  const needsDimensions = NEEDS_DIMENSIONS.includes(value.defaultConsumptionRule);
+  const needsDimensions = NEEDS_DIMENSIONS.includes(value.defaultConsumptionRule) && format !== 'UNIT';
 
   return (
     <div className={styles.container}>
@@ -155,18 +173,20 @@ export const ProductiveIntelligence: React.FC<Props> = ({ value, onChange }) => 
         </div>
         
         {/* Toggle de Unidade (m, cm, mm) movido para o topo para limpar o bloco de dimensões */}
-        <div className={styles.unitToggle}>
-          {(['m', 'cm', 'mm'] as DimUnit[]).map(u => (
-            <button
-              key={u}
-              type="button"
-              onClick={() => handleDimUnitChange(u)}
-              className={`${styles.unitBtn} ${dimUnit === u ? styles.active : ''}`}
-            >
-              {u}
-            </button>
-          ))}
-        </div>
+        {needsDimensions && (
+          <div className={styles.unitToggle}>
+            {(['m', 'cm', 'mm'] as DimUnit[]).map(u => (
+              <button
+                key={u}
+                type="button"
+                onClick={() => handleDimUnitChange(u)}
+                className={`${styles.unitBtn} ${dimUnit === u ? styles.active : ''}`}
+              >
+                {u}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className={styles.content}>
@@ -178,7 +198,7 @@ export const ProductiveIntelligence: React.FC<Props> = ({ value, onChange }) => 
               value={value.controlUnit}
               onChange={e => handleControlUnitChange(e.target.value as ControlUnit)}
             >
-              {(Object.keys(CONTROL_UNIT_LABELS) as ControlUnit[]).map(u => (
+              {availableControlUnits.map(u => (
                 <option key={u} value={u}>{CONTROL_UNIT_LABELS[u]}</option>
               ))}
             </select>
@@ -190,9 +210,10 @@ export const ProductiveIntelligence: React.FC<Props> = ({ value, onChange }) => 
               value={value.defaultConsumptionRule}
               onChange={e => handleRuleChange(e.target.value as ConsumptionRule)}
             >
-              {(Object.keys(RULE_LABELS) as ConsumptionRule[]).map(r => (
+              {availableRules.map(r => (
                 <option key={r} value={r}>{RULE_LABELS[r]}</option>
               ))}
+
             </select>
           </div>
         </div>

@@ -3,6 +3,7 @@ export interface NFeItem {
   codigo: string;
   descricao: string;
   ncm: string;
+  ean?: string;
   unidade: string;
   quantidade: number;
   valorUnitario: number;
@@ -18,6 +19,11 @@ export interface NFeItem {
   mappedMaterialId?: string;
   createNew?: boolean;
   skip?: boolean;
+  // Campos para criação de novo material
+  categoryId?: string;
+  materialTypeId?: string;
+  inventoryAccountId?: string;
+  expenseAccountId?: string;
 }
 
 export interface NFeData {

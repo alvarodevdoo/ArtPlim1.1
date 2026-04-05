@@ -186,12 +186,25 @@ export function usePedidos() {
 
   const handleStatusChange = useCallback(async (pedidoId: string, newStatus: string, details?: any) => {
     try {
-      const isProcessStatus = processStatuses.some(s => s.id === newStatus);
+      const targetProcessStatus = processStatuses.find(s => s.id === newStatus);
+      const isProcessStatus = !!targetProcessStatus;
+      const mappedBehavior = targetProcessStatus?.mappedBehavior || (newStatus as any);
+      
       const payload: any = { ...details };
-      if (isProcessStatus) payload.processStatusId = newStatus;
-      else payload.status = newStatus;
+      let response;
 
-      const response = await api.patch(`/api/sales/orders/${pedidoId}/status`, payload);
+      // Se o status destino é APROVADO, usamos o Motor de Composição (ConfirmOrderService)
+      if (mappedBehavior === 'APPROVED') {
+        const confirmPayload: any = {};
+        if (isProcessStatus) confirmPayload.processStatusId = newStatus;
+        response = await api.post(`/api/sales/orders/${pedidoId}/confirm`, confirmPayload);
+      } else {
+        // Fluxo padrão para demais transições
+        if (isProcessStatus) payload.processStatusId = newStatus;
+        else payload.status = newStatus;
+        response = await api.patch(`/api/sales/orders/${pedidoId}/status`, payload);
+      }
+
       const updatedPedido = response?.data?.data;
 
       if (updatedPedido) {
@@ -209,24 +222,46 @@ export function usePedidos() {
           });
         }
       }
-      toast.success('Status atualizado com sucesso!');
+      toast.success(mappedBehavior === 'APPROVED' ? 'Pedido confirmado e estoque atualizado!' : 'Status atualizado com sucesso!');
       loadPedidos(debouncedSearch);
     } catch (error: any) {
-      toast.error(error.response?.data?.error?.message || 'Erro ao atualizar status');
+      toast.error(error.response?.data?.message || error.response?.data?.error?.message || 'Erro ao atualizar status');
     }
   }, [processStatuses, settings?.enableAutomation, loadPedidos, debouncedSearch]);
 
   const handleBulkStatusChange = useCallback(async (newStatus: string) => {
     if (selectedPedidos.length === 0) return toast.error('Selecione pelo menos um pedido');
+    
+    const targetProcessStatus = processStatuses.find(s => s.id === newStatus);
+    const mappedBehavior = targetProcessStatus?.mappedBehavior || (newStatus as any);
+    
     try {
-      await Promise.all(selectedPedidos.map(id => api.patch(`/api/sales/orders/${id}/status`, { status: newStatus })));
+      if (mappedBehavior === 'APPROVED') {
+        // Aprovação em lote via Motor de Composição (execução sequencial para evitar erros de estoque parciais)
+        toast.info(`Processando confirmação de ${selectedPedidos.length} pedido(s)...`);
+        for (const id of selectedPedidos) {
+          const payload: any = {};
+          if (targetProcessStatus) payload.processStatusId = newStatus;
+          await api.post(`/api/sales/orders/${id}/confirm`, payload);
+        }
+      } else {
+        // Atualização em lote padrão
+        await Promise.all(selectedPedidos.map(id => {
+          const payload: any = {};
+          if (targetProcessStatus) payload.processStatusId = newStatus;
+          else payload.status = newStatus;
+          return api.patch(`/api/sales/orders/${id}/status`, payload);
+        }));
+      }
+
       toast.success(`${selectedPedidos.length} pedido(s) atualizado(s) com sucesso!`);
       setSelectedPedidos([]);
       loadPedidos(debouncedSearch);
-    } catch {
-      toast.error('Erro ao atualizar pedidos em lote');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Erro ao atualizar pedidos em lote. Verifique se há estoque suficiente.');
+      loadPedidos(debouncedSearch); // Atualiza para mostrar o que deu certo
     }
-  }, [selectedPedidos, loadPedidos, debouncedSearch]);
+  }, [selectedPedidos, processStatuses, loadPedidos, debouncedSearch]);
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event;

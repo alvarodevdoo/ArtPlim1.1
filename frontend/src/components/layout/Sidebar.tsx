@@ -18,7 +18,8 @@ import {
   DollarSign,
   TrendingUp,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  ListChecks
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -94,7 +95,21 @@ const allMenuItems: MenuItem[] = [
     title: 'Produção',
     href: '/producao',
     icon: Factory,
-    permission: 'production.view'
+    permission: 'production.view',
+    subItems: [
+      {
+        title: 'Painel Central',
+        href: '/producao',
+        icon: LayoutDashboard,
+        permission: 'production.view'
+      },
+      {
+        title: 'Terminal do Operador',
+        href: '/producao/terminal',
+        icon: ListChecks,
+        permission: 'production.view'
+      }
+    ]
   },
   {
     title: 'Financeiro',
@@ -126,7 +141,21 @@ const allMenuItems: MenuItem[] = [
     title: 'Relatórios',
     href: '/relatorios',
     icon: BarChart3,
-    permission: 'finance.reports'
+    permission: 'finance.reports',
+    subItems: [
+      {
+        title: 'Visão Geral',
+        href: '/relatorios',
+        icon: FileText,
+        permission: 'finance.reports'
+      },
+      {
+        title: 'Lucratividade Real',
+        href: '/lucratividade',
+        icon: TrendingUp,
+        permission: 'finance.reports'
+      }
+    ]
   },
   {
     title: 'Configurações',

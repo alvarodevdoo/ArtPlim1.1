@@ -55,8 +55,9 @@ const createMaterialSchema = z.object({
   inventoryAccountId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   expenseAccountId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   minStockQuantity: z.preprocess((val) => (val === '' || val === null || val === undefined) ? null : isNaN(Number(val)) ? null : Number(val), z.number().min(0).nullable().optional()),
-  sellWithoutStock: z.boolean().optional().default(true),
   trackStock: z.boolean().optional().default(true),
+  ncm: z.string().optional().nullable(),
+  ean: z.string().optional().nullable(),
   spedType: z.string().optional().nullable(),
   suppliers: z.array(z.object({
     supplierId: z.string().uuid(),
@@ -242,7 +243,11 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const prisma = getTenantClient(request.user!.organizationId);
     const materialService = new MaterialService(prisma);
 
-    const material = await materialService.create(body);
+    const material = await materialService.create(
+      (request.user as any).id,
+      request.user!.organizationId,
+      body
+    );
 
     return reply.code(201).send({
       success: true,
@@ -284,7 +289,12 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const prisma = getTenantClient(request.user!.organizationId);
     const materialService = new MaterialService(prisma);
 
-    const material = await materialService.update(id, body);
+    const material = await materialService.update(
+      (request.user as any).id, 
+      request.user!.organizationId, 
+      id, 
+      body
+    );
 
     // ====== [LOG 3] RESULTADO DO BANCO ======
     console.log('[MAT-UPDATE] RESULTADO DB:', JSON.stringify({ id: (material as any).id, trackStock: (material as any).trackStock, spedType: (material as any).spedType, costPerUnit: (material as any).costPerUnit }, null, 2));

@@ -281,17 +281,34 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                             <div className="text-right ml-4">
                               <p className="font-medium">{formatCurrency(item.unitPrice || 0)}{item.product?.pricingMode === 'SIMPLE_AREA' ? '/m\u00b2' : '/un'}</p>
                               <p className="text-lg font-bold">{formatCurrency(item.totalPrice || 0)}</p>
+                              
+                              {/* ── Info do Motor de Composição (Snapshot) ── */}
+                              {hasFinancialAccess() && item.unitCostAtSale !== undefined && item.unitCostAtSale !== null && (
+                                <div className="mt-2 p-2 bg-slate-50 border border-slate-200 rounded text-[10px] text-right font-mono">
+                                  <div className="text-slate-500 uppercase font-bold tracking-tighter">Lucro de Venda</div>
+                                  <div className={`text-sm font-black ${item.profitAtSale > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                    {formatCurrency(item.profitAtSale)}/un
+                                  </div>
+                                  {item.unitCostAtSale > 0 && (
+                                    <div className="text-slate-400">
+                                      Markup: {((item.unitPriceAtSale / item.unitCostAtSale)).toFixed(2)}x
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
                               {hasFinancialAccess() && onMaterialRequest && (
                                 <Button 
                                   size="sm" 
                                   variant="outline" 
-                                  className="mt-2" 
+                                  className="mt-2 w-full" 
                                   onClick={() => onMaterialRequest(item)}
                                 >
                                   <Calculator className="w-3 h-3 mr-1" /> Material
                                 </Button>
                               )}
                             </div>
+
                           </div>
                         </div>
                       );

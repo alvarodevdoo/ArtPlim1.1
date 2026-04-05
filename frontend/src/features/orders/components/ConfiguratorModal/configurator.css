@@ -1,0 +1,374 @@
+/**
+ * configurator.css
+ * Estilos do Motor de Composição em Tempo Real.
+ * Segue o design existente do ArtPlimERP (variáveis CSS do projeto).
+ */
+
+/* ── Layout do Modal ─────────────────────────────────────────────────────── */
+
+.configurator-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 0.5rem;
+}
+
+.configurator-header {
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 0.75rem;
+}
+
+.configurator-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.configurator-empty {
+  color: #94a3b8;
+  font-size: 0.875rem;
+  text-align: center;
+  padding: 1rem;
+}
+
+/* ── Seletores de Variação ───────────────────────────────────────────────── */
+
+.variation-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.variation-selector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.variation-selector-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.variation-required {
+  color: #ef4444;
+  margin-left: 2px;
+}
+
+.variation-selected-label {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-style: italic;
+}
+
+.variation-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.variation-option-wrapper {
+  position: relative;
+}
+
+.variation-option-btn {
+  padding: 0.375rem 0.875rem;
+  border-radius: 0.5rem;
+  border: 2px solid #e2e8f0;
+  background: #ffffff;
+  color: #334155;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.variation-option-btn:hover:not(:disabled) {
+  border-color: #6366f1;
+  color: #4f46e5;
+  background: #eef2ff;
+}
+
+/* Estado: selecionado */
+.variation-option-selected {
+  border-color: #4f46e5 !important;
+  background: #eef2ff !important;
+  color: #3730a3 !important;
+  font-weight: 700;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+/* Estado: incompatível — desabilitado visualmente com risco */
+.variation-option-incompatible {
+  opacity: 0.45;
+  cursor: not-allowed !important;
+  position: relative;
+  text-decoration: line-through;
+  text-decoration-color: #ef4444;
+  border-color: #fecaca !important;
+  color: #9ca3af !important;
+}
+
+/* Estado: indisponível */
+.variation-option-unavailable {
+  opacity: 0.35;
+  cursor: not-allowed !important;
+  border-style: dashed;
+}
+
+.variation-price-delta {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #059669;
+  background: #d1fae5;
+  padding: 0 4px;
+  border-radius: 4px;
+}
+
+/* ── Badge de Incompatibilidade ──────────────────────────────────────────── */
+
+.incompatibility-badge-wrapper {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+}
+
+.incompatibility-badge-trigger {
+  background: none;
+  border: none;
+  cursor: help;
+  font-size: 0.7rem;
+  padding: 0;
+  line-height: 1;
+}
+
+.incompatibility-tooltip {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 50;
+  background: #1e293b;
+  color: #f1f5f9;
+  font-size: 0.75rem;
+  padding: 0.375rem 0.625rem;
+  border-radius: 0.375rem;
+  white-space: nowrap;
+  max-width: 220px;
+  white-space: normal;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  margin-top: 4px;
+}
+
+/* ── Painel Financeiro (PriceSummaryPanel) ───────────────────────────────── */
+
+.composition-summary-panel {
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  transition: background 0.2s ease;
+}
+
+.composition-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.composition-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.composition-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+}
+
+.composition-value {
+  font-size: 1.125rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.composition-value.cost { color: #dc2626; }
+.composition-value.suggested { color: #2563eb; }
+
+.composition-sublabel {
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+/* Campo de preço negociado */
+.composition-negotiation {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.composition-negotiation-input {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: #ffffff;
+  transition: border-color 0.15s;
+}
+
+.composition-negotiation-input:focus-within {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+.composition-currency-prefix {
+  padding: 0 0.5rem;
+  font-weight: 700;
+  color: #475569;
+  font-size: 0.875rem;
+  background: #f8fafc;
+  border-right: 1px solid #e2e8f0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+
+.composition-price-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  padding: 0.5rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.composition-qty-label {
+  padding-right: 0.75rem;
+  color: #94a3b8;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+/* Linha de resultado da margem */
+.composition-margin-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  border-top: 1px solid currentColor;
+  padding-top: 0.75rem;
+  opacity: 0.9;
+}
+
+.composition-status-badge {
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  white-space: nowrap;
+}
+
+/* Alerta de estoque insuficiente */
+.composition-stock-alert {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.8rem;
+  color: #991b1b;
+}
+
+.composition-stock-alert ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1rem;
+}
+
+/* ── Configurador: Quantidade e Ações ────────────────────────────────────── */
+
+.configurator-quantity {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.configurator-qty-input {
+  width: 5rem;
+  padding: 0.375rem 0.5rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+}
+
+.configurator-qty-input:focus {
+  border-color: #6366f1;
+}
+
+.configurator-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+.configurator-btn-cancel {
+  padding: 0.5rem 1.25rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  color: #64748b;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.configurator-btn-cancel:hover {
+  border-color: #94a3b8;
+  color: #334155;
+}
+
+.configurator-btn-confirm {
+  padding: 0.5rem 1.5rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  color: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+}
+
+.configurator-btn-confirm:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.45);
+}
+
+.configurator-btn-confirm:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── Configurador: Seletores ─────────────────────────────────────────────── */
+
+.configurator-selectors {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}

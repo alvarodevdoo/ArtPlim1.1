@@ -19,15 +19,21 @@ interface NFeImportPayload {
     valorUnitario: number;
     valorTotal: number;
     custoEfetivoUnitario?: number;
+    unidade?: string;
+    ncm?: string;
+    ean?: string;
     custosAcessorios?: {
-      frete: number;
-      ipi: number;
-      st: number;
-      difal: number;
+      frete?: number;
+      ipi?: number;
+      st?: number;
+      difal?: number;
     };
-    mappedMaterialId: string; // O UUID do material interno no ArtPlim
+    mappedMaterialId?: string; // O UUID do material interno no ArtPlim
     createNew?: boolean; // Caso o usuário tenha marcado para criar um novo insumo ao invés de buscar existente
-    newMaterialCategory?: string;
+    categoryId?: string;
+    materialTypeId?: string;
+    inventoryAccountId?: string;
+    expenseAccountId?: string;
     skip?: boolean;
   }>;
   costDistributionMode?: 'STRICT' | 'REDISTRIBUTE';
@@ -58,8 +64,8 @@ export class NFeImportService {
             addressNumber: payload.emitente.endereco?.numero?.toString(),
             city: payload.emitente.endereco?.cidade,
             state: payload.emitente.endereco?.uf,
-            zipCode: payload.emitente.endereco?.cep,
-            phone: payload.emitente.endereco?.telefone,
+            zipCode: payload.emitente.endereco?.cep?.toString(),
+            phone: payload.emitente.endereco?.telefone?.toString(),
           }
         });
       }
@@ -102,16 +108,45 @@ export class NFeImportService {
         let materialId = item.mappedMaterialId;
 
         if (item.createNew) {
+          const importedUnit = (item.unidade || 'un').toLowerCase();
+          let controlUnit = 'UN';
+          let consumptionRule = 'FIXED_UNIT';
+          let format = 'UNIT';
+
+          if (importedUnit === 'm2' || importedUnit === 'm²') {
+            controlUnit = 'M2';
+            consumptionRule = 'PRODUCT_AREA';
+            format = 'ROLL';
+          } else if (importedUnit === 'm' || importedUnit === 'ml') {
+            controlUnit = 'ML';
+            consumptionRule = 'PERIMETER';
+            format = 'ROLL';
+          } else if (importedUnit === 'fl' || importedUnit === 'folha') {
+            format = 'SHEET';
+          }
+
+          // Herança Contábil: Se não vier conta, busca o padrão da categoria
+          const selectedCategory = await tx.category.findUnique({ 
+            where: { id: item.categoryId || (await tx.category.findFirst({ where: { organizationId, name: { contains: 'Insumos', mode: 'insensitive' } } }))?.id || (await tx.category.findFirst({ where: { organizationId } }))?.id || '' } 
+          });
+
           // Cadastrar o Insumo Automaticamente
           const newMaterial = await tx.material.create({
             data: {
               organizationId,
               name: item.descricao,
-              format: 'UNIT',
+              format: format as any,
               costPerUnit: new Prisma.Decimal(item.valorUnitario),
-              unit: 'un', // Assumimos unidade por padrão pra nota
-              categoryId: item.newMaterialCategory || 'ID_DA_CATEGORIA_OUTROS', // Categoria
+              unit: item.unidade || 'un', 
+              controlUnit: controlUnit as any,
+              defaultConsumptionRule: consumptionRule as any,
+              categoryId: selectedCategory?.id || '',
+              materialTypeId: item.materialTypeId,
+              inventoryAccountId: item.inventoryAccountId || selectedCategory?.inventoryAccountId,
+              expenseAccountId: item.expenseAccountId || selectedCategory?.expenseAccountId,
               trackStock: true,
+              ncm: item.ncm,
+              ean: item.ean,
             }
           });
           materialId = newMaterial.id;

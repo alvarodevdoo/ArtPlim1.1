@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import CurrencyInput from '@/components/ui/CurrencyInput';
-import { Save, Plus, Lock } from 'lucide-react';
+import { Save, Plus, Lock, Settings2 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 import api from '@/lib/api';
@@ -10,6 +10,8 @@ import { useInsumos } from '@/features/insumos/useInsumos';
 import { SeletorInsumos } from '@/features/insumos/SeletorInsumos';
 import { InsumoMaterialSelecionado } from '@/features/insumos/types';
 import { calculatePricingResult } from '@/lib/pricing/formulaUtils';
+import { ConfiguratorModal } from '@/features/orders/components/ConfiguratorModal/ConfiguratorModal';
+import '@/features/orders/components/ConfiguratorModal/configurator.css';
 
 // 🔥 CACHE GLOBAL (Backup de Memória Rápida)
 const formBackupCache = new Map<string, {
@@ -53,6 +55,12 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
 
     const [configuracoes, setConfiguracoes] = useState<any[]>([]);
     const [opcoesSelecionadas, setOpcoesSelecionadas] = useState<Record<string, string>>({});
+    const [showConfigurator, setShowConfigurator] = useState(false);
+    // Snapshot de custo do Motor de Composição (preenchido ao confirmar no ConfiguratorModal)
+    const [compositionSnapshot, setCompositionSnapshot] = useState<{
+        unitCostEstimate: number;
+        profitEstimate: number;
+    } | null>(null);
 
     const [resolvedPricingRule, setResolvedPricingRule] = useState<any>(null);
     const loadedSignatureRef = useRef<string | null>(null);
@@ -78,7 +86,28 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
         return null;
     }, [(produto as any)?.pricingRule, resolvedPricingRule, editingData?.attributes, editingData?.productId]);
 
+    // Gatilho para carregar as configurações do produto de forma independente
+    useEffect(() => {
+        if (!produto?.id) return;
+        
+        let isMounted = true;
+        
+        api.get(`/api/catalog/products/${produto.id}/configurations`)
+            .then(res => {
+                if (isMounted && res.data?.success && Array.isArray(res.data.data)) {
+                    console.log(`[Config] Carregadas ${res.data.data.length} configs para o produto ${produto.id}`);
+                    setConfiguracoes(res.data.data);
+                }
+            })
+            .catch(err => {
+                console.error("Erro ao buscar configurações no formulário:", err);
+            });
+            
+        return () => { isMounted = false; };
+    }, [produto?.id]);
+
     const inputVars = useMemo(() => parsedFormulaData?.variables?.filter((v: any) => v.visible !== false && (v.type === 'INPUT' || !v.type)) || [], [parsedFormulaData]);
+
 
     // Gatilho seguro para detectar atualizações na API após o F5
     const attributesStr = useMemo(() => {
@@ -245,14 +274,6 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 }
             }
 
-            // 🚀 PRIORIDADE 3: Outras configurações (Configurações Pré-setadas)
-            if (produto?.id && isMounted) {
-                try {
-                    const response = await api.get(`/api/catalog/products/${produto.id}/configurations`);
-                    if (response.data.success) setConfiguracoes(response.data.data || []);
-                } catch (error) { console.error("Erro ao carregar configurações:", error); }
-            }
-
             if (isMounted) {
                 // SÓ trava o recarregamento se tivermos certeza que recebemos os dados reais da API.
                 // Se o componente montou vazio antes da API terminar, o isHydrated será false e deixará
@@ -333,6 +354,8 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
         }
     };
 
+    // handleOptionChange: mantido para compatibilidade com modo legado de selects sem configurador
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const handleOptionChange = useCallback(async (configId: string, optionId: string) => {
         const novaSelecao = { ...opcoesSelecionadas, [configId]: optionId };
         setOpcoesSelecionadas(novaSelecao);
@@ -388,62 +411,112 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 dynamicVariables,
                 insumos: materiaisSelecionados,
                 selectedOptions: opcoesSelecionadas,
-                CUSTO_MATERIAIS: materiaisSelecionados.reduce((acc, m) => acc + (m.quantidadeUtilizada * m.precoBase), 0)
+                compositionSnapshot,
+                CUSTO_MATERIAIS: compositionSnapshot?.unitCostEstimate
+                    ? compositionSnapshot.unitCostEstimate * quantity
+                    : materiaisSelecionados.reduce((acc, m) => acc + (m.quantidadeUtilizada * m.precoBase), 0)
             }
         };
 
         onSubmit(itemData);
-    }, [produto, editingData, quantity, unitPrice, notes, dynamicVariables, materiaisSelecionados, opcoesSelecionadas, onSubmit, resolvedPricingRule]);
+    }, [produto, editingData, quantity, unitPrice, notes, dynamicVariables, materiaisSelecionados, opcoesSelecionadas, onSubmit, resolvedPricingRule, compositionSnapshot]);
 
     return (
         <div className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-slate-50/50 rounded-xl border border-slate-200">
-                {configuracoes.map(config => (
-                    <div key={config.id} className="space-y-1.5">
-                        <label className="text-sm font-semibold text-slate-700">{config.name} {config.required && '*'}</label>
-                        <select
-                            value={opcoesSelecionadas[config.id] || ''}
-                            onChange={(e) => handleOptionChange(config.id, e.target.value)}
-                            className="w-full h-10 px-3 py-2 border border-slate-200 rounded-md bg-white text-sm focus:ring-2 focus:ring-primary/20"
-                        >
-                            <option value="">Selecione...</option>
-                            {config.options?.map((opt: any) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
-                        </select>
+
+            {/* ── Botão de Configuração de Variações (Motor de Composição) ── */}
+            {configuracoes.length > 0 && (
+                <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center justify-between gap-4">
+                    <div>
+                        <p className="text-sm font-semibold text-indigo-800">
+                            <Settings2 className="w-4 h-4 inline mr-1" />
+                            Variações disponíveis
+                        </p>
+                        {Object.keys(opcoesSelecionadas).filter(k => opcoesSelecionadas[k]).length > 0 ? (
+                            <p className="text-xs text-indigo-600 mt-0.5">
+                                {Object.values(opcoesSelecionadas).filter(Boolean).length} variação(ões) selecionada(s)
+                                {compositionSnapshot && (
+                                    <span className="ml-2 text-emerald-700 font-semibold">
+                                        | Custo estimado: {formatCurrency(compositionSnapshot.unitCostEstimate)}
+                                    </span>
+                                )}
+                            </p>
+                        ) : (
+                            <p className="text-xs text-indigo-500 mt-0.5">Clique para selecionar o material deste pedido</p>
+                        )}
                     </div>
-                ))}
-
-                {inputVars.map((v: any) => {
-                    const isLocked = produto.formulaData?.[`${v.id}_locked`] === true;
-                    const hasUnits = v.allowedUnits && v.allowedUnits.length > 0;
-
-                    return (
-                        <div key={v.id} className="space-y-1.5">
-                            <label className="text-sm font-semibold text-slate-700 flex items-center gap-1">
-                                {v.name}
-                                {isLocked && <Lock className="w-3 h-3 text-slate-400" />}
-                            </label>
-                            <div className="flex gap-1">
-                                {v.defaultUnit === 'moeda' || v.role === 'MONETARY' || v.role === 'SALE_PRICE' ? (
-                                    <CurrencyInput value={dynamicVariables[v.id]?.value || 0} onValueChange={(val) => handleDynamicVarChange(v.id, 'value', val || 0)} disabled={isLocked} className="flex-1" />
-                                ) : (
-                                    <Input type="text" value={dynamicVariables[v.id]?.value ?? ''} onChange={(e) => handleDynamicVarChange(v.id, 'value', e.target.value)} className="h-10 border-slate-200 bg-white flex-1 font-mono text-center" disabled={isLocked} />
-                                )}
-                                {hasUnits && (
-                                    <select value={dynamicVariables[v.id]?.unit || v.defaultUnit || v.unit || ''} onChange={(e) => handleDynamicVarChange(v.id, 'unit', e.target.value)} disabled={isLocked} className="w-20 h-10 px-1 border border-slate-200 rounded-md bg-white text-xs">
-                                        {(v.allowedUnits || []).map((u: string) => <option key={u} value={u}>{u}</option>)}
-                                    </select>
-                                )}
-                            </div>
-                        </div>
-                    );
-                })}
-
-                <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-slate-700">Quantidade</label>
-                    <Input type="number" value={quantity || ''} onChange={(e) => setQuantity(Number(e.target.value))} placeholder="1" min="1" className="h-10 border-slate-200 bg-white" />
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowConfigurator(true)}
+                        className="shrink-0 border-indigo-300 text-indigo-700 hover:bg-indigo-100"
+                    >
+                        {Object.keys(opcoesSelecionadas).filter(k => opcoesSelecionadas[k]).length > 0
+                            ? '✏ Editar seleção'
+                            : '⚙ Configurar'}
+                    </Button>
                 </div>
-            </div>
+            )}
 
+            {/* ── ConfiguratorModal inline ────────────────────────────────── */}
+            {showConfigurator && (
+                <div className="border border-indigo-200 rounded-xl overflow-hidden shadow-lg bg-white p-4">
+                    <ConfiguratorModal
+                        produto={produto as any}
+                        quantity={quantity}
+                        onQuantityChange={setQuantity}
+                        initialOptions={opcoesSelecionadas}
+                        onSubmit={result => {
+                            setOpcoesSelecionadas(result.selectedOptions);
+                            setUnitPrice(result.negotiatedPrice);
+                            setCompositionSnapshot({
+                                unitCostEstimate: result.unitCostEstimate,
+                                profitEstimate: result.profitEstimate
+                            });
+                            setShowConfigurator(false);
+                            toast.success('Configuração salva!');
+                        }}
+                        onCancel={() => setShowConfigurator(false)}
+                    />
+                </div>
+            )}
+
+            {/* ── Grid de Variáveis da Fórmula ─────────────────────────────── */}
+            {!showConfigurator && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-slate-50/50 rounded-xl border border-slate-200">
+                    {inputVars.map((v: any) => {
+                        const isLocked = produto.formulaData?.[`${v.id}_locked`] === true;
+                        const hasUnits = v.allowedUnits && v.allowedUnits.length > 0;
+                        return (
+                            <div key={v.id} className="space-y-1.5">
+                                <label className="text-sm font-semibold text-slate-700 flex items-center gap-1">
+                                    {v.name}
+                                    {isLocked && <Lock className="w-3 h-3 text-slate-400" />}
+                                </label>
+                                <div className="flex gap-1">
+                                    {v.defaultUnit === 'moeda' || v.role === 'MONETARY' || v.role === 'SALE_PRICE' ? (
+                                        <CurrencyInput value={dynamicVariables[v.id]?.value || 0} onValueChange={(val) => handleDynamicVarChange(v.id, 'value', val || 0)} disabled={isLocked} className="flex-1" />
+                                    ) : (
+                                        <Input type="text" value={dynamicVariables[v.id]?.value ?? ''} onChange={(e) => handleDynamicVarChange(v.id, 'value', e.target.value)} className="h-10 border-slate-200 bg-white flex-1 font-mono text-center" disabled={isLocked} />
+                                    )}
+                                    {hasUnits && (
+                                        <select value={dynamicVariables[v.id]?.unit || v.defaultUnit || v.unit || ''} onChange={(e) => handleDynamicVarChange(v.id, 'unit', e.target.value)} disabled={isLocked} className="w-20 h-10 px-1 border border-slate-200 rounded-md bg-white text-xs">
+                                            {(v.allowedUnits || []).map((u: string) => <option key={u} value={u}>{u}</option>)}
+                                        </select>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                    <div className="space-y-1.5">
+                        <label className="text-sm font-semibold text-slate-700">Quantidade</label>
+                        <Input type="number" value={quantity || ''} onChange={(e) => setQuantity(Number(e.target.value))} placeholder="1" min="1" className="h-10 border-slate-200 bg-white" />
+                    </div>
+                </div>
+            )}
+
+            {/* ── Painel de Preço ──────────────────────────────────────────── */}
             <div className="flex flex-col sm:flex-row items-end sm:items-center justify-between gap-4 p-4 bg-emerald-50 rounded-xl border border-emerald-100 shadow-sm">
                 <div className="flex flex-col">
                     <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Preço Unitário</span>
@@ -470,6 +543,7 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 <label className="text-sm font-medium">Observações</label>
                 <textarea value={notes} onChange={handleNotesChange} placeholder="Observações do item..." className="w-full h-20 p-3 border border-input rounded-md resize-none mt-1" />
             </div>
+
 
             <Button onClick={handleSubmit} disabled={quantity <= 0 || unitPrice <= 0 || simulatingPrice} className="w-full">
                 {isEditing ? <><Save className="w-4 h-4 mr-2" /> Salvar</> : <><Plus className="w-4 h-4 mr-2" /> Adicionar</>}

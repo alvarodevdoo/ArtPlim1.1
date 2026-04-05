@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import api from '@/lib/api';
 import { useInsumos } from '@/features/insumos/useInsumos';
 import { InsumoMaterialSelecionado, UNIDADE_BASE_LABELS } from '@/features/insumos/types';
+import { Combobox } from '@/components/ui/Combobox';
 
 interface ProductFichaTecnicaManagerProps {
   productId: string;
@@ -67,14 +68,17 @@ export const ProductFichaTecnicaManager: React.FC<ProductFichaTecnicaManagerProp
     // e depois enviamos tudo para o servidor (padrão do endpoint POST /ficha-tecnica)
     
     const insumo = insumos.find(i => i.id === selectedInsumoId);
-    if (!insumo && !editingItem) return;
+    if (!insumo && !editingItem) {
+      toast.error('Por favor, selecione um insumo antes de confirmar.');
+      return;
+    }
 
     const newItem: InsumoMaterialSelecionado = {
       insumoId: selectedInsumoId || editingItem!.insumoId,
-      nome: insumo?.nome || editingItem!.nome,
-      precoBase: Number(insumo?.custoUnitario || editingItem!.precoBase),
+      nome: (insumo as any)?.name || insumo?.nome || editingItem!.nome,
+      precoBase: Number((insumo as any)?.costPerUnit ?? insumo?.custoUnitario ?? editingItem!.precoBase),
       quantidadeUtilizada: parseFloat(quantidade.replace(',', '.')),
-      unidadeBase: insumo?.unidadeBase || editingItem!.unidadeBase,
+      unidadeBase: (insumo as any)?.unit || insumo?.unidadeBase || editingItem!.unidadeBase,
       linkedVariable: linkedVariable || undefined,
       linkedQuantityVariable: linkedQuantityVariable || undefined
     };
@@ -197,20 +201,21 @@ export const ProductFichaTecnicaManager: React.FC<ProductFichaTecnicaManagerProp
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-muted-foreground uppercase">Escolha o Insumo</label>
-                  <select 
-                    className="w-full p-2 border rounded-md bg-white text-sm"
+                  <Combobox
                     value={selectedInsumoId}
-                    onChange={(e) => setSelectedInsumoId(e.target.value)}
-                    required
+                    onChange={(val) => setSelectedInsumoId(val)}
+                    placeholder="Selecione ou digite para buscar..."
+                    searchPlaceholder="Buscar por nome..."
                     disabled={!!editingItem}
-                  >
-                    <option value="">Selecione...</option>
-                    {insumos.map(i => (
-                      <option key={i.id} value={i.id}>
-                        {i.nome} ({UNIDADE_BASE_LABELS[i.unidadeBase]}) - {Number(i.custoUnitario).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                      </option>
-                    ))}
-                  </select>
+                    allowClear
+                    clearLabel="Limpar seleção"
+                    options={insumos.map((i: any) => ({
+                      id: i.id,
+                      label: i.name || i.nome,
+                      sublabel: UNIDADE_BASE_LABELS[(i.unit || i.unidadeBase) as keyof typeof UNIDADE_BASE_LABELS] || i.unit || i.unidadeBase,
+                      rightLabel: Number(i.costPerUnit ?? i.custoUnitario).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                    }))}
+                  />
                 </div>
 
                 <div className="space-y-2">
@@ -225,7 +230,7 @@ export const ProductFichaTecnicaManager: React.FC<ProductFichaTecnicaManagerProp
                       required
                     />
                     <span className="text-xs font-medium text-muted-foreground">
-                      {selectedInsumoId ? insumos.find(i => i.id === selectedInsumoId)?.unidadeBase : (editingItem?.unidadeBase || '')}
+                      {selectedInsumoId ? ((insumos.find(i => i.id === selectedInsumoId) as any)?.unit || insumos.find(i => i.id === selectedInsumoId)?.unidadeBase) : ((editingItem as any)?.unit || editingItem?.unidadeBase || '')}
                     </span>
                   </div>
                 </div>

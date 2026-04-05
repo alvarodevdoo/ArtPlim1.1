@@ -15,6 +15,7 @@ interface SystemSettingsData {
   validadeOrcamento: number;
   allowDuplicatePhones: boolean;
   requireDocumentKeyForEntry: boolean;
+  enableCategoryAppropriation: boolean;
   inventoryValuationMethod: string;
   freightExpenseAccountId?: string;
   taxExpenseAccountId?: string;
@@ -82,6 +83,25 @@ export const SystemSettings: React.FC<SystemSettingsProps> = ({
                   type="checkbox"
                   checked={settings.enableAutomation}
                   onChange={(e) => setSettings(prev => ({ ...prev, enableAutomation: e.target.checked }))}
+                  className="w-5 h-5 rounded-md border-input text-primary focus:ring-primary shadow-inner"
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-4 border rounded-xl hover:bg-slate-50 transition-all cursor-pointer group shadow-sm bg-card/50 col-span-full">
+                <div className="pr-4">
+                  <span className="text-sm font-bold block group-hover:text-primary transition-colors flex items-center gap-2">
+                    Apropriação Contábil por Categoria
+                    <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-primary/10 text-primary">Recomendado</span>
+                  </span>
+                  <p className="text-[10px] text-muted-foreground leading-tight max-w-md">
+                    Ao selecionar a categoria de um insumo, o sistema sugere automaticamente as contas contábeis (estoque e despesa) previamente configuradas.<br/>
+                    <span className="text-amber-500 font-semibold">Desabilitar removerá a automação de contas na importação de NF-e e no cadastro de insumos.</span>
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.enableCategoryAppropriation ?? true}
+                  onChange={(e) => setSettings(prev => ({ ...prev, enableCategoryAppropriation: e.target.checked }))}
                   className="w-5 h-5 rounded-md border-input text-primary focus:ring-primary shadow-inner"
                 />
               </label>

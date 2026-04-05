@@ -552,7 +552,7 @@ const Produtos: React.FC = () => {
                   size="sm" 
                   onClick={() => setActiveEditorTab('configurations')}
                   className={`rounded-md px-6 font-bold transition-all ${activeEditorTab === 'configurations' ? 'shadow-md' : 'text-slate-600 hover:text-primary'}`}
-                  disabled={!editingId || formData.pricingMode !== 'DYNAMIC_ENGINEER'}
+                  disabled={!editingId}
                 >
                    <Settings className="w-4 h-4 mr-2" /> Opções / Variações
                 </Button>
@@ -600,28 +600,11 @@ const Produtos: React.FC = () => {
                           </div>
 
                           <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Conta de Receita (DRE)</label>
-                            <select
-                              value={formData.revenueAccountId}
-                              onChange={(e) => setFormData(prev => ({ ...prev, revenueAccountId: e.target.value }))}
-                              className="w-full h-11 px-3 border rounded-md text-sm font-medium bg-white focus:ring-2 focus:ring-primary focus:outline-none"
-                            >
-                              <option value="">Configuração Padrão</option>
-                              {chartOfAccounts.map(acc => (
-                                <option key={acc.id} value={acc.id}>
-                                  {acc.code} - {acc.name}
-                                </option>
-                              ))}
-                            </select>
-                            <p className="text-[10px] text-muted-foreground">Define em qual conta de faturamento este item será registrado.</p>
-                          </div>
-
-                          <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Categoria Financeira (Backup)</label>
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Categoria Financeira</label>
                             <select
                               value={formData.categoryId}
                               onChange={(e) => setFormData(prev => ({ ...prev, categoryId: e.target.value }))}
-                              className="w-full h-11 px-3 border rounded-md text-sm font-medium bg-white opacity-60"
+                              className="w-full h-11 px-3 border rounded-md text-sm font-medium bg-white"
                             >
                               <option value="">Nenhuma categoria</option>
                               {categories
@@ -632,6 +615,7 @@ const Produtos: React.FC = () => {
                                 </option>
                               ))}
                             </select>
+                            <p className="text-[10px] text-muted-foreground">Define o grupo de produtos e as regras base do faturamento contábil.</p>
                           </div>
                         </div>
                         <div className="space-y-6">
@@ -834,7 +818,17 @@ const Produtos: React.FC = () => {
                         productId={editingId}
                         productName={formData.name}
                         pricingMode={formData.pricingMode}
-                        availableVariables={Object.keys(calculatedPrices.activeValues || {}).filter(k => typeof calculatedPrices.activeValues[k] === 'number')}
+                        availableVariables={
+                          formulaObj 
+                            ? [
+                                // Variáveis reais definidas na fórmula pelo usuário
+                                ...formulaObj.variables.filter((v: any) => v.type === 'INPUT').map((v: any) => v.id),
+                                // Variáveis Mágicas (Helpers pré-calculados que a Ficha Técnica reconhece)
+                                'AREA_M2',
+                                'LINEAR_M'
+                              ]
+                            : []
+                        }
                         onUpdate={() => refreshFichaTecnica(editingId)}
                       />
                     </div>

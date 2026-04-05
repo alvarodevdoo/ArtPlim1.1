@@ -26,6 +26,8 @@ import { fichaTecnicaRoutes } from './modules/catalog/ficha-tecnica.routes';
 import { backupRoutes } from './modules/backup/infrastructure/http/routes';
 import { roleRoutes } from './modules/roles/infrastructure/http/role.routes';
 import { nfeRoutes } from './modules/nfe/nfe.routes';
+import biRoutes from './modules/bi/bi.routes';
+import productionOrderRoutes from './modules/production/production-order.routes';
 
 async function registerPlugins(fastify: FastifyInstance) {
   const allowedOrigins = [
@@ -92,11 +94,14 @@ async function registerRoutes(fastify: FastifyInstance, options: { websocketServ
         });
     }
 
+    await api.register(productionOrderRoutes, { prefix: '/production' });
+
     await api.register(financeRoutes, { prefix: '/finance' });
     await api.register(chartOfAccountsRoutes, { prefix: '/finance' });
 
     await api.register(adminRoutes, { prefix: '/admin' });
     await api.register(analyticsRoutes, { prefix: '/analytics' });
+    await api.register(biRoutes, { prefix: '/bi' });
     await api.register(paymentMethodRoutes, { prefix: '/payment-methods' });
     await api.register(insumosRoutes, { prefix: '/insumos' });
     await api.register(budgetRoutes, { prefix: '/sales/budgets' });

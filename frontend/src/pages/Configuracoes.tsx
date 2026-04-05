@@ -43,6 +43,7 @@ interface OrganizationSettings {
   validadeOrcamento: number;
   allowDuplicatePhones: boolean;
   requireDocumentKeyForEntry: boolean;
+  enableCategoryAppropriation: boolean;
   defaultReceivableCategoryId?: string;
   defaultRevenueCategoryId?: string;
   defaultBackupPassword?: string;
@@ -56,7 +57,7 @@ const Configuracoes: React.FC = () => {
   const [activeTab, setActiveTab] = useState('empresa');
   const [loading, setLoading] = useState(false);
 
-  const [organizationData, setOrganizationData] = useState({
+  const [organizationData, setOrganizationData] = useState<any>({
     name: '',
     cnpj: '',
     plan: 'basic'
@@ -74,6 +75,7 @@ const Configuracoes: React.FC = () => {
     validadeOrcamento: 7,
     allowDuplicatePhones: true,
     requireDocumentKeyForEntry: false,
+    enableCategoryAppropriation: true,
     inventoryValuationMethod: 'AVERAGE'
   });
 
@@ -224,7 +226,19 @@ const Configuracoes: React.FC = () => {
                 loading={loading}
               />
               <PaymentMethodSettings />
-              <SpedMappingManager />
+              {settings.enableCategoryAppropriation ? (
+                <SpedMappingManager />
+              ) : (
+                <div className="rounded-2xl border-2 border-dashed border-slate-200 p-10 text-center bg-slate-50/50">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                    <DollarSign className="w-6 h-6 text-slate-400" />
+                  </div>
+                  <h3 className="text-sm font-black text-slate-500 uppercase tracking-widest mb-1">Módulo Desativado</h3>
+                  <p className="text-xs text-slate-400 max-w-xs mx-auto">
+                    A Apropriação Contábil por Categoria está desabilitada. Para ativar, acesse <strong>Sistema → Módulos Ativos</strong>.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

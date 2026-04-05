@@ -23,6 +23,8 @@ import Estoque from '@/pages/Estoque';
 import Producao from '@/pages/Producao';
 import Financeiro from '@/pages/Financeiro';
 import EntradaNota from '@/pages/EntradaNota';
+import Lucratividade from '@/pages/Lucratividade';
+import TerminalProducao from '@/pages/TerminalProducao';
 
 // Criar QueryClient
 const queryClient = new QueryClient({
@@ -147,6 +149,20 @@ function App() {
                   <Layout>
                     <Producao />
                   </Layout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/lucratividade" element={
+                <ProtectedRoute permission="finance.reports">
+                  <Layout>
+                    <Lucratividade />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/producao/terminal" element={
+                <ProtectedRoute permission="production.view">
+                  <TerminalProducao />
                 </ProtectedRoute>
               } />
 

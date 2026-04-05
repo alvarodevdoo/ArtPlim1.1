@@ -34,6 +34,7 @@ const updateSettingsSchema = z.object({
   validadeOrcamento: z.number().int().min(1).max(365).optional(),
   allowDuplicatePhones: z.boolean().optional(),
   requireDocumentKeyForEntry: z.boolean().optional(),
+  enableCategoryAppropriation: z.boolean().optional(),
   defaultReceivableCategoryId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   defaultRevenueCategoryId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   defaultBackupPassword: z.string().min(6, 'Senha mestre muito curta').or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),

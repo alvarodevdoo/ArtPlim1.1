@@ -25,16 +25,16 @@ function getAuthHeaders(): HeadersInit {
 }
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}/api/insumos${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: { ...getAuthHeaders(), ...(options?.headers || {}) },
   });
 
   const json = await res.json();
-  if (!res.ok || !json.success) {
-    throw new Error(json.error?.message || 'Erro na requisição');
+  if (!res.ok) {
+    throw new Error(json.message || json.error?.message || 'Erro na requisição');
   }
-  return json.data as T;
+  return (json.data ?? json) as T;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -51,12 +51,21 @@ export function useInsumos() {
     setError(null);
     try {
       const params = new URLSearchParams();
-      if (filtros?.categoria) params.set('categoria', filtros.categoria);
-      if (filtros?.ativo !== undefined) params.set('ativo', String(filtros.ativo));
-
+      if (filtros?.ativo !== undefined) params.set('active', String(filtros.ativo));
       const queryStr = params.toString();
-      const data = await apiFetch<Insumo[]>(queryStr ? `?${queryStr}` : '');
-      setInsumos(data);
+      const data = await apiFetch<any[]>(`/api/catalog/materials${queryStr ? `?${queryStr}` : ''}`);
+      const mappedInsumos: Insumo[] = (Array.isArray(data) ? data : []).map(mat => ({
+        id: mat.id,
+        organizationId: mat.organizationId,
+        nome: mat.name || mat.nome,
+        categoria: mat.category?.name || mat.categoria || 'Geral',
+        unidadeBase: mat.unit || mat.unidadeBase,
+        custoUnitario: Number(mat.costPerUnit || mat.custoUnitario || 0),
+        ativo: mat.active !== undefined ? mat.active : mat.ativo,
+        createdAt: mat.createdAt,
+        updatedAt: mat.updatedAt
+      }));
+      setInsumos(mappedInsumos);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar insumos');
     } finally {
@@ -67,8 +76,8 @@ export function useInsumos() {
   // ── Buscar categorias ───────────────────────────────────────────────────────
   const fetchCategorias = useCallback(async () => {
     try {
-      const data = await apiFetch<string[]>('/categorias');
-      setCategorias(data);
+      const data = await apiFetch<any[]>('/api/finance/categories?type=EXPENSE');
+      setCategorias((Array.isArray(data) ? data : []).map((c: any) => c.name || c));
     } catch {
       // Silencia erro—categorias são secundárias
     }
@@ -82,7 +91,7 @@ export function useInsumos() {
 
   // ── Criar ────────────────────────────────────────────────────────────────────
   const criar = useCallback(async (data: InsumoFormData): Promise<Insumo> => {
-    const novo = await apiFetch<Insumo>('', {
+    const novo = await apiFetch<Insumo>('/api/catalog/materials', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -92,7 +101,7 @@ export function useInsumos() {
 
   // ── Atualizar ─────────────────────────────────────────────────────────────
   const atualizar = useCallback(async (id: string, data: Partial<InsumoFormData>): Promise<Insumo> => {
-    const atualizado = await apiFetch<Insumo>(`/${id}`, {
+    const atualizado = await apiFetch<Insumo>(`/api/catalog/materials/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -102,14 +111,14 @@ export function useInsumos() {
 
   // ── Toggle Status ─────────────────────────────────────────────────────────
   const toggleStatus = useCallback(async (id: string): Promise<Insumo> => {
-    const atualizado = await apiFetch<Insumo>(`/${id}/status`, { method: 'PATCH' });
+    const atualizado = await apiFetch<Insumo>(`/api/catalog/materials/${id}/status`, { method: 'PATCH' });
     setInsumos((prev) => prev.map((i) => (i.id === id ? atualizado : i)));
     return atualizado;
   }, []);
 
   // ── Remover ───────────────────────────────────────────────────────────────
   const remover = useCallback(async (id: string): Promise<void> => {
-    await apiFetch<void>(`/${id}`, { method: 'DELETE' });
+    await apiFetch<void>(`/api/catalog/materials/${id}`, { method: 'DELETE' });
     setInsumos((prev) => prev.filter((i) => i.id !== id));
   }, []);
 

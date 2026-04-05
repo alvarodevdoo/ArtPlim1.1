@@ -54,6 +54,7 @@ export class NFeParserService {
         codigo: prod.cProd,
         descricao: prod.xProd,
         ncm: prod.NCM,
+        ean: prod.cEAN,
         cfop: prod.CFOP,
         unidade: prod.uCom,
         quantidade: qtd,

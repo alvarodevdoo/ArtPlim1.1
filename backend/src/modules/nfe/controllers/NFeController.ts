@@ -30,32 +30,55 @@ export class NFeController {
       chaveAcesso: z.string(),
       dataEmissao: z.string(),
       valorTotalNota: z.number(),
+      numero: z.coerce.string().optional(),
+      serie: z.coerce.string().optional(),
       emitente: z.object({
-        cnpj: z.string(),
+        cnpj: z.coerce.string(),
         razaoSocial: z.string(),
         nomeFantasia: z.string(),
         endereco: z.any().optional(),
-      }),
+      }).passthrough(),
       items: z.array(z.object({
         codigo: z.string(),
         descricao: z.string(),
         quantidade: z.number(),
         valorUnitario: z.number(),
         valorTotal: z.number(),
-        custoEfetivoUnitario: z.number().optional(), // opcional para manter retrocompatibilidade
+        unidade: z.string().optional(),
+        ncm: z.coerce.string().optional(),
+        ean: z.coerce.string().optional(),
+        custoEfetivoUnitario: z.number().optional(), 
         custosAcessorios: z.object({
-          frete: z.number(),
-          ipi: z.number(),
-          st: z.number(),
-          difal: z.number()
-        }).optional(),
-        mappedMaterialId: z.string(),
+          frete: z.number().optional(),
+          ipi: z.number().optional(),
+          st: z.number().optional(),
+          difal: z.number().optional()
+        }).passthrough().optional(),
+        mappedMaterialId: z.string().optional(),
         createNew: z.boolean().optional(),
-        newMaterialCategory: z.string().optional(),
-      }))
-    });
+        skip: z.boolean().optional(),
+        categoryId: z.string().optional(),
+        materialTypeId: z.string().optional(),
+        inventoryAccountId: z.string().optional(),
+        expenseAccountId: z.string().optional(),
+      }).passthrough()),
+      costDistributionMode: z.enum(['STRICT', 'REDISTRIBUTE']).optional()
+    }).passthrough();
 
-    const body = importSchema.parse(request.body);
+    let body;
+    try {
+      body = importSchema.parse(request.body);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return reply.code(400).send({ 
+          success: false, 
+          message: 'Erro de validação nos dados da nota', 
+          errors: err.errors 
+        });
+      }
+      throw err;
+    }
+
     const prisma = getTenantClient(request.user!.organizationId);
     const importService = new NFeImportService(prisma);
 
@@ -63,12 +86,17 @@ export class NFeController {
       const receipt = await importService.importNFe(
         request.user!.organizationId,
         request.user!.userId,
-        body
+        body as any
       );
       return reply.code(201).send({ success: true, data: receipt });
     } catch (error: any) {
       request.log.error(error);
-      return reply.code(400).send({ success: false, message: `Erro na importação: ${error.message}` });
+      return reply.code(400).send({ 
+        success: false, 
+        message: `Erro na importação: ${error.message}`,
+        error: error.name,
+        details: error.meta // Prisma errors usually have meta
+      });
     }
   }
 }

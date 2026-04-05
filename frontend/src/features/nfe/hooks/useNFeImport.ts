@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import { toast } from 'sonner';
-import { NFeData } from '../types';
+import { NFeData, NFeItem } from '../types';
 
 export function useNFeImport() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [isDragging, setIsDragging] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [nfeData, setNfeData] = useState<NFeData | null>(null);
+  const [selectedIndexes, setSelectedIndexes] = useState<number[]>([]);
   const [availableMaterials, setAvailableMaterials] = useState<{ id: string; name: string; category: string }[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
 
   useEffect(() => {
     // Carrega materiais do ERP para possibilitar o vínculo (auto-complete)
@@ -16,8 +18,13 @@ export function useNFeImport() {
       setAvailableMaterials(res.data.data.map((m: any) => ({
         id: m.id,
         name: m.name,
-        category: m.category || 'Outros'
+        category: m.category?.name || 'Outros'
       })));
+    }).catch(() => {});
+
+    // Carrega categorias do financeiro (EXPENSE)
+    api.get('/api/finance/categories?type=EXPENSE').then(res => {
+      setCategories(res.data.data || []);
     }).catch(() => {});
   }, []);
 
@@ -135,13 +142,42 @@ export function useNFeImport() {
     }
   };
 
+  const handleToggleSelect = (index: number) => {
+    setSelectedIndexes(prev => 
+      prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]
+    );
+  };
+
+  const handleSelectAll = (action: 'ALL' | 'NONE') => {
+    if (!nfeData) return;
+    if (action === 'ALL') {
+      setSelectedIndexes(nfeData.items.map((_, i) => i));
+    } else {
+      setSelectedIndexes([]);
+    }
+  };
+
+  const bulkUpdate = (data: Partial<NFeItem>) => {
+    if (selectedIndexes.length === 0) return;
+    setNfeData(prev => {
+      if (!prev) return prev;
+      const nm = { ...prev };
+      selectedIndexes.forEach(idx => {
+        nm.items[idx] = { ...nm.items[idx], ...data };
+      });
+      return nm;
+    });
+  };
+
   return {
     step,
     setStep,
     isDragging,
     isLoading,
     nfeData,
+    selectedIndexes,
     availableMaterials,
+    categories,
     handleDragOver,
     handleDragLeave,
     handleDrop,
@@ -149,6 +185,9 @@ export function useNFeImport() {
     handleCreateNewToggle,
     handleBindExisting,
     handleToggleSkip,
+    handleToggleSelect,
+    handleSelectAll,
+    bulkUpdate,
     handleSetDistributionMode,
     importNFe
   };

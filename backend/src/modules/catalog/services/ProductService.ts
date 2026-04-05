@@ -30,6 +30,9 @@ export class ProductService {
   constructor(private prisma: any) { }
 
   async create(data: CreateProductInput) {
+    // Herança Contábil: Se não vier conta, busca o padrão da categoria
+    const targetAccountId = data.revenueAccountId || (data.categoryId ? (await this.prisma.category.findUnique({ where: { id: data.categoryId } }))?.chartOfAccountId : null);
+
     const product = await this.prisma.product.create({
       data: {
         organization: { connect: { id: data.organizationId } },
@@ -48,8 +51,9 @@ export class ProductService {
         stockQuantity: data.trackStock ? (data.stockQuantity ?? null) : null,
         stockMinQuantity: data.trackStock ? (data.stockMinQuantity ?? null) : null,
         stockUnit: data.trackStock ? (data.stockUnit ?? null) : null,
-        categoryId: data.categoryId || null,
-        revenueAccountId: data.revenueAccountId || null
+        // Usar relação para evitar problemas com campos escalares no cliente Prisma
+        ...(data.categoryId ? { category: { connect: { id: data.categoryId } } } : {}),
+        ...(targetAccountId ? { revenueAccount: { connect: { id: targetAccountId } } } : {})
       } as any
     });
 
@@ -127,16 +131,40 @@ export class ProductService {
       throw new NotFoundError('Produto');
     }
 
-    // Destructuring para remover organizationId do update do Prisma
-    const { organizationId: _orgId, ...updateData } = data;
+    // Remover campos escalares que o Prisma não reconhece diretamente ou que devem ser tratados como relação
+    const { 
+      organizationId: _orgId, 
+      categoryId, 
+      revenueAccountId, 
+      pricingRuleId, 
+      ...cleanData 
+    } = data;
+
+    // Resolver conta de receita (Herança se necessário)
+    let revenueAccountConnect = undefined;
+    if (categoryId !== undefined || revenueAccountId !== undefined) {
+      const finalCategoryId = categoryId !== undefined ? categoryId : existing.categoryId;
+      const finalAccountId = revenueAccountId || (finalCategoryId ? (await this.prisma.category.findUnique({ where: { id: finalCategoryId } }))?.chartOfAccountId : null);
+      revenueAccountConnect = finalAccountId 
+        ? { connect: { id: finalAccountId } } 
+        : { disconnect: true };
+    }
 
     const product = await this.prisma.product.update({
       where: { id },
       data: {
-        ...updateData,
-        pricingRuleId: undefined, // Remover campo escalar para usar relação
-        ...(data.pricingRuleId !== undefined ? (
-          data.pricingRuleId ? { pricingRule: { connect: { id: data.pricingRuleId } } } : { pricingRule: { disconnect: true } }
+        ...cleanData,
+        // Atualizar Categoria
+        ...(categoryId !== undefined ? (
+          categoryId ? { category: { connect: { id: categoryId } } } : { category: { disconnect: true } }
+        ) : {}),
+        
+        // Atualizar Conta de Receita (já resolvida acima)
+        ...(revenueAccountConnect ? { revenueAccount: revenueAccountConnect } : {}),
+
+        // Re-mapear campos de relação padrão
+        ...(pricingRuleId !== undefined ? (
+          pricingRuleId ? { pricingRule: { connect: { id: pricingRuleId } } } : { pricingRule: { disconnect: true } }
         ) : {}),
         updatedAt: new Date()
       },
