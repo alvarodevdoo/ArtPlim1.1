@@ -1,11 +1,9 @@
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model Organization {
@@ -732,7 +730,7 @@ model ProductionQueue {
   organizationId String
   orderId        String
   priority       Int                   @default(1)
-  status         ProductionStatus      @default(PENDING)
+  status         ProductionStatus      @default(WAITING)
   scheduledStart DateTime?
   actualStart    DateTime?
   estimatedEnd   DateTime?
@@ -757,7 +755,7 @@ model ProductionOperation {
   sequence          Int
   estimatedMinutes  Int
   actualMinutes     Int?
-  status            OperationStatus @default(PENDING)
+  status            StepStatus      @default(PENDING)
   startedAt         DateTime?
   completedAt       DateTime?
   productionQueue   ProductionQueue @relation(fields: [productionQueueId], references: [id], onDelete: Cascade)
@@ -1304,23 +1302,37 @@ enum MovementType {
 }
 
 model ProductionOrder {
-  id              String           @id @default(uuid())
-  organizationId  String
-  orderItemId     String           @unique
-  status          ProductionStatus @default(PENDING)
-  priority        Int              @default(1)
-  pickingList     Json?            // [{ materialId, name, quantity, unit }]
-  steps           Json?            // [{ name, sequence, status }]
-  notes           String?
-  startDate       DateTime?
-  endDate         DateTime?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-
-  orderItem       OrderItem        @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
-  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id                String            @id @default(uuid())
+  organizationId    String
+  orderItemId       String            @unique
+  orderItem         OrderItem         @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  status            ProductionStatus  @default(WAITING)
+  priority          Priority          @default(NORMAL)
+  pickingList       Json?             // Cópia do compositionSnapshot para o operador
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  steps             ProductionStep[]
+  notes             String?
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
   @@map("production_orders")
+}
+
+model ProductionStep {
+  id                String            @id @default(uuid())
+  productionOrderId String
+  productionOrder   ProductionOrder   @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  name              String            // Ex: "Impressão", "Corte"
+  order             Int               // Sequência da etapa
+  status            StepStatus        @default(PENDING)
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  operatorId        String?
+  
+  @@map("production_steps")
 }
 
 
@@ -1331,18 +1343,23 @@ enum AlertType {
 }
 
 enum ProductionStatus {
-  PENDING
+  WAITING
   IN_PROGRESS
-  PAUSED
-  COMPLETED
+  FINISHED
   CANCELLED
 }
 
-enum OperationStatus {
+enum StepStatus {
   PENDING
-  IN_PROGRESS
-  COMPLETED
-  SKIPPED
+  DOING
+  DONE
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
 }
 
 enum MachineType {

@@ -1,22 +1,24 @@
+import { ProductionStatus, StepStatus, Priority } from '@prisma/client';
+
 /**
  * OPGeneratorService
  * 
  * Responsabilidade: Transformar o snapshot de composição de um item de pedido
- * em uma Ordem de Produção (OP) estruturada com Picking List e Roteiro.
+ * em uma Ordem de Produção (OP) estruturada com tabelas relacionais de Etapas.
+ * 
+ * Segue o Motor de Execução conforme solicitação de alta performance.
  */
-
-import { ProductionStatus } from '@prisma/client';
-
 export class OPGeneratorService {
   constructor(private readonly prisma: any) {}
 
   /**
    * Gera uma Ordem de Produção para um OrderItem aprovado.
-   * Chamado pelo ConfirmOrderService após a confirmação do pedido.
+   * Suporta a hierarquia de precedência: Produto > Categoria > Genérico.
    */
-  async generateForOrderItem(orderItemId: string, organizationId: string): Promise<any> {
+  async generateForOrderItem(orderItemId: string, organizationId: string, tx?: any): Promise<any> {
+    const db = tx || this.prisma;
     // 1. Buscar o item com o snapshot e o produto (incluindo operações e categoria)
-    const item = await this.prisma.orderItem.findUnique({
+    const item = await db.orderItem.findUnique({
       where: { id: orderItemId },
       include: {
         product: {
@@ -33,62 +35,50 @@ export class OPGeneratorService {
       return null;
     }
 
-    // 2. Traduzir o snapshot em Picking List (Lista de Separação)
-    const snapshot = item.compositionSnapshot as any[];
-    const pickingList = snapshot.map(line => ({
-      materialId: line.materialId,
-      name: line.materialName,
-      quantity: line.quantity,
-      unit: line.unit || 'un',
-      source: line.source,
-      optionLabel: line.optionLabel
-    }));
-
-    // 3. Definir Roteiro de Produção (Steps) com Fallback Inteligente
-    let steps = [];
+    // 2. Definir Roteiro de Produção (Steps) com Fallback Inteligente
+    let rawSteps: any[] = [];
 
     // Prioridade 1: Operações exclusivas do Produto
     if (item.product.operations && item.product.operations.length > 0) {
-      steps = item.product.operations.map((op: any, idx: number) => ({
-        name: op.name,
-        sequence: idx + 1,
-        status: 'PENDING',
-        estimatedTime: op.setupTime || 0
+      rawSteps = item.product.operations.map((op: any) => ({
+        name: op.name
       }));
     } 
     // Prioridade 2: Roteiro padrão da Categoria
     else if (item.product.category?.defaultProductionSteps) {
-      const categorySteps = item.product.category.defaultProductionSteps as any[];
-      steps = categorySteps.map((step: any, idx: number) => ({
-        name: step.name,
-        sequence: step.sequence || idx + 1,
-        status: 'PENDING'
-      }));
+      rawSteps = item.product.category.defaultProductionSteps as any[];
     }
     // Prioridade 3: Fallback Genérico
     else {
-      steps = [
-        { name: 'Preparação e Separação', sequence: 1, status: 'PENDING' },
-        { name: 'Produção / Impressão', sequence: 2, status: 'PENDING' },
-        { name: 'Acabamento e Revisão', sequence: 3, status: 'PENDING' },
-        { name: 'Embalagem', sequence: 4, status: 'PENDING' }
+      rawSteps = [
+        { name: 'Preparação e Separação' },
+        { name: 'Produção / Impressão' },
+        { name: 'Acabamento e Revisão' },
+        { name: 'Embalagem' }
       ];
     }
 
-    // 4. Criar a ProductionOrder no banco
-    const productionOrder = await this.prisma.productionOrder.create({
+    // 3. Criar a ProductionOrder e ProductionSteps no banco (Relacional)
+    const productionOrder = await db.productionOrder.create({
       data: {
         organizationId,
         orderItemId: item.id,
-        status: 'PENDING',
-        priority: 1,
-        pickingList,
-        steps,
-        notes: `Gerada automaticamente. Item: ${item.product.name}. Roteiro: ${
-          item.product.operations?.length > 0 ? 'Customizado por Produto' : 
-          item.product.category?.defaultProductionSteps ? 'Padrão da Categoria' : 'Genérico'
-        }`
-      }
+        status: 'WAITING' as ProductionStatus,
+        priority: 'NORMAL' as Priority,
+        pickingList: item.compositionSnapshot,
+        notes: `Motor de Execução: ${
+          item.product.operations?.length > 0 ? 'Produto' : 
+          item.product.category?.defaultProductionSteps ? 'Categoria' : 'Genérico'
+        }`,
+        steps: {
+          create: rawSteps.map((step, index) => ({
+            name: step.name,
+            order: index + 1,
+            status: 'PENDING' as StepStatus
+          }))
+        }
+      },
+      include: { steps: true }
     });
 
     return productionOrder;
@@ -97,14 +87,15 @@ export class OPGeneratorService {
   /**
    * Gera OPs para TODOS os itens de um pedido.
    */
-  async generateForOrder(orderId: string, organizationId: string): Promise<number> {
-    const items = await this.prisma.orderItem.findMany({
+  async generateForOrder(orderId: string, organizationId: string, tx?: any): Promise<number> {
+    const db = tx || this.prisma;
+    const items = await db.orderItem.findMany({
       where: { orderId, organizationId }
     });
 
     let count = 0;
     for (const item of items) {
-      const op = await this.generateForOrderItem(item.id, organizationId);
+      const op = await this.generateForOrderItem(item.id, organizationId, tx);
       if (op) count++;
     }
 

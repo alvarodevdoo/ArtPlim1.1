@@ -133,27 +133,50 @@ export async function financeRoutes(fastify: FastifyInstance) {
   // ========== CATEGORIAS ==========
 
   fastify.get('/categories', { preHandler: [fastify.authenticate] }, async (request, reply) => {
-    const { type } = request.query as { type?: CategoryType };
-    const prisma = getTenantClient(request.user!.organizationId);
-    const categoryService = new CategoryService(prisma);
-    const categories = await categoryService.list(request.user!.organizationId, type);
-    return reply.send({ success: true, data: categories });
+    try {
+      const { type } = request.query as { type?: CategoryType };
+      const organizationId = request.user!.organizationId;
+      const prisma = getTenantClient(organizationId);
+      const categoryService = new CategoryService(prisma);
+      const categories = await categoryService.list(organizationId, type);
+      return reply.send({ success: true, data: categories });
+    } catch (error: any) {
+      console.error('[FINANCE_CATEGORIES] Erro ao listar categorias:', error);
+      return reply.code(500).send({ 
+        success: false, 
+        message: 'Erro ao carregar categorias. Verifique se o banco de dados está sincronizado.',
+        error: error.message 
+      });
+    }
   });
 
   fastify.post('/categories', { preHandler: [fastify.authenticate] }, async (request, reply) => {
-    const data = createCategorySchema.parse(request.body);
-    const prisma = getTenantClient(request.user!.organizationId);
-    const categoryService = new CategoryService(prisma);
-    const category = await categoryService.create({
-      ...data,
-      organizationId: request.user!.organizationId,
-      color: data.color || undefined,
-      parentId: data.parentId || undefined,
-      chartOfAccountId: data.chartOfAccountId || undefined,
-      inventoryAccountId: data.inventoryAccountId || undefined,
-      expenseAccountId: data.expenseAccountId || undefined
-    });
-    return reply.code(201).send({ success: true, data: category });
+    try {
+      const data = createCategorySchema.parse(request.body);
+      const organizationId = request.user!.organizationId;
+      const prisma = getTenantClient(organizationId);
+      const categoryService = new CategoryService(prisma);
+
+      // Limpeza de IDs vazios para evitar falhas de FK do Prisma
+      const category = await categoryService.create({
+        ...data,
+        organizationId,
+        color: data.color || undefined,
+        parentId: (data.parentId && data.parentId !== '') ? data.parentId : undefined,
+        chartOfAccountId: (data.chartOfAccountId && data.chartOfAccountId !== '') ? data.chartOfAccountId : undefined,
+        inventoryAccountId: (data.inventoryAccountId && data.inventoryAccountId !== '') ? data.inventoryAccountId : undefined,
+        expenseAccountId: (data.expenseAccountId && data.expenseAccountId !== '') ? data.expenseAccountId : undefined
+      });
+
+      return reply.code(201).send({ success: true, data: category });
+    } catch (error: any) {
+      console.error('[FINANCE_CATEGORIES] Erro ao criar categoria:', error);
+      return reply.code(error.statusCode || 500).send({ 
+        success: false, 
+        message: error.message || 'Erro interno ao criar categoria',
+        detail: error.code === 'P2003' ? 'Vínculo contábil inválido ou inexistente' : undefined
+      });
+    }
   });
 
   fastify.put('/categories/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {

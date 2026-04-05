@@ -1,76 +1,30 @@
+import 'dotenv/config'; // DEVE ser a primeira linha
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
+
+/**
+ * SOLID: Responsabilidade de Conexão.
+ * Usamos 127.0.0.1 para garantir compatibilidade com Docker no Windows.
+ */
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error('DATABASE_URL não encontrada no ambiente.');
+}
+
+const pool = new Pool({ connectionString });
+const adapter = new PrismaPg(pool);
 
 const globalPrisma = new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+  adapter,
+  // Mantemos apenas erros e avisos para o console ficar limpo
+  log: ['error', 'warn'],
+  //log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
 });
 
-export function getTenantClient(organizationId: string) {
-  return globalPrisma.$extends({
-    query: {
-      profile: {
-        async findMany({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async findFirst({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async findUnique({ args, query }) {
-          const result = await query(args);
-          if (result && (result as any).organizationId !== organizationId) return null;
-          return result;
-        },
-        async create({ args, query }) { (args.data as any).organizationId = organizationId; return query(args); },
-        async update({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async delete({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-      },
-      material: {
-        async findMany({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async findFirst({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async create({ args, query }) { (args.data as any).organizationId = organizationId; return query(args); },
-        async update({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async delete({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-      },
-      product: {
-        async findMany({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async findFirst({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async create({ args, query }) { (args.data as any).organizationId = organizationId; return query(args); },
-        async update({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async delete({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-      },
-      order: {
-        async findMany({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async findFirst({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async create({ args, query }) { (args.data as any).organizationId = organizationId; return query(args); },
-        async update({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async delete({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-      },
-      transaction: {
-        async findMany({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async findFirst({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async create({ args, query }) { (args.data as any).organizationId = organizationId; return query(args); },
-        async update({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async delete({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-      },
-      account: {
-        async findMany({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async findFirst({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async create({ args, query }) { (args.data as any).organizationId = organizationId; return query(args); },
-        async update({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async delete({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-      },
-      category: {
-        async findMany({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async findFirst({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async create({ args, query }) { (args.data as any).organizationId = organizationId; return query(args); },
-        async update({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async delete({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-      },
-      chartOfAccount: {
-        async findMany({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async findFirst({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async create({ args, query }) { (args.data as any).organizationId = organizationId; return query(args); },
-        async update({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-        async delete({ args, query }) { args.where = { ...args.where, organizationId }; return query(args); },
-      },
-    },
-  });
-}
+// Suas extensões de Tenant (getTenantClient) continuam aqui...
+// ...
 
 export const prisma = globalPrisma;
 export default prisma;

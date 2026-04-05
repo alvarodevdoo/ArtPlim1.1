@@ -1,13 +1,13 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { getTenantClient, prisma } from '../../shared/infrastructure/database/tenant';
-import { ProductionStatus } from '@prisma/client';
+import { ProductionStatus, StepStatus, Priority } from '@prisma/client';
 
 const productionOrderRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) => {
 
   /**
    * GET /api/production/orders
-   * Lista todas as ordens de produção (OPs) pendentes ou em andamento.
+   * Lista todas as ordens de produção (OPs) e suas etapas relacionais.
    */
   fastify.get('/orders', {
     preHandler: [fastify.authenticate]
@@ -28,6 +28,7 @@ const productionOrderRoutes: FastifyPluginAsync = async (fastify: FastifyInstanc
     const ops = await prisma.productionOrder.findMany({
       where,
       include: {
+        steps: { orderBy: { order: 'asc' } },
         orderItem: {
           include: {
             order: { select: { orderNumber: true, customer: { select: { name: true } } } },
@@ -35,7 +36,10 @@ const productionOrderRoutes: FastifyPluginAsync = async (fastify: FastifyInstanc
           }
         }
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: [
+        { priority: 'desc' },
+        { createdAt: 'desc' }
+      ]
     });
 
     return reply.send({ success: true, data: ops });
@@ -43,32 +47,45 @@ const productionOrderRoutes: FastifyPluginAsync = async (fastify: FastifyInstanc
 
   /**
    * PATCH /api/production/orders/:id/status
-   * Atualiza o status de uma Ordem de Produção (ex: PENDING -> IN_PROGRESS -> COMPLETED).
+   * Atualiza o status da OP ou de uma etapa específica (Roteiro Relacional).
    */
   fastify.patch('/orders/:id/status', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const { status, notes } = z.object({
-      status: z.nativeEnum(ProductionStatus),
+    const { status, stepId, stepStatus, notes } = z.object({
+      status: z.nativeEnum(ProductionStatus).optional(),
+      stepId: z.string().optional(),
+      stepStatus: z.nativeEnum(StepStatus).optional(),
       notes: z.string().optional()
     }).parse(request.body);
 
     const prisma = getTenantClient(request.user!.organizationId);
 
-    const data: any = { status, updatedAt: new Date() };
-    if (notes) data.notes = notes;
-    if (status === 'IN_PROGRESS') data.startDate = new Date();
-    if (status === 'COMPLETED') data.endDate = new Date();
+    // 1. Atualizar etapa específica se fornecida
+    if (stepId && stepStatus) {
+      await prisma.productionStep.update({
+        where: { id: stepId },
+        data: { 
+          status: stepStatus,
+          startedAt: stepStatus === 'DOING' ? new Date() : undefined,
+          finishedAt: stepStatus === 'DONE' ? new Date() : undefined
+        }
+      });
+    }
+
+    // 2. Atualizar status global da OP
+    const updateData: any = {};
+    if (status) updateData.status = status;
+    if (notes) updateData.notes = notes;
+    if (status === 'IN_PROGRESS') updateData.startedAt = new Date();
+    if (status === 'FINISHED') updateData.finishedAt = new Date();
 
     const op = await prisma.productionOrder.update({
       where: { id, organizationId: request.user!.organizationId },
-      data,
-      include: { orderItem: { include: { order: true } } }
+      data: updateData,
+      include: { steps: { orderBy: { order: 'asc' } } }
     });
-
-    // Se a OP foi concluída, podemos atualizar o status do item no pedido se desejado
-    // Por enquanto, apenas atualizamos a OP.
 
     return reply.send({ success: true, data: op });
   });

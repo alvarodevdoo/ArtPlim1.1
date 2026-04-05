@@ -1,9 +1,9 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from './shared/infrastructure/database/prisma';
 import { WebSocketServer } from './shared/infrastructure/websocket/WebSocketServer';
 import { buildApp } from './app';
 
 const PORT = process.env.PORT || 3001;
-const prisma = new PrismaClient();
+// A instância do prisma é importada acima
 
 async function start() {
     try {
