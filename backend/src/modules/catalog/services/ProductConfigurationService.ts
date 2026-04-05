@@ -37,6 +37,7 @@ interface CreateOptionRequest {
   description?: string;
   priceModifier?: number;
   priceModifierType?: 'FIXED' | 'PERCENTAGE';
+  materialId?: string | null;
   additionalComponents?: AdditionalComponent[];
   removedComponents?: string[];
   componentModifiers?: ComponentModifier[];
@@ -50,6 +51,7 @@ interface UpdateOptionRequest {
   description?: string;
   priceModifier?: number;
   priceModifierType?: 'FIXED' | 'PERCENTAGE';
+  materialId?: string | null;
   additionalComponents?: AdditionalComponent[];
   removedComponents?: string[];
   componentModifiers?: ComponentModifier[];
@@ -316,6 +318,7 @@ export class ProductConfigurationService {
         label: request.label,
         value: request.value,
         priceModifier: request.priceModifier ?? 0,
+        materialId: request.materialId ?? null,
         additionalComponents: request.additionalComponents ? JSON.stringify(request.additionalComponents) : null,
         removedComponents: request.removedComponents ? JSON.stringify(request.removedComponents) : null,
         componentModifiers: request.componentModifiers ? JSON.stringify(request.componentModifiers) : null,
@@ -345,6 +348,7 @@ export class ProductConfigurationService {
         label: request.label,
         value: request.value,
         priceModifier: request.priceModifier,
+        ...(request.materialId !== undefined ? { materialId: request.materialId } : {}),
         additionalComponents: request.additionalComponents ? JSON.stringify(request.additionalComponents) : undefined,
         removedComponents: request.removedComponents ? JSON.stringify(request.removedComponents) : undefined,
         componentModifiers: request.componentModifiers ? JSON.stringify(request.componentModifiers) : undefined,

@@ -1,0 +1,41 @@
+@import 'variables';
+
+.product-modal {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  
+  .badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    
+    &-success { background-color: rgba($status-success, 0.1); color: $status-success; }
+    &-warning { background-color: rgba($status-warning, 0.1); color: $status-warning; }
+    &-danger  { background-color: rgba($status-danger, 0.1); color: $status-danger; }
+  }
+
+  .bom-item {
+     border: 2px solid $border-color-default;
+     border-radius: $border-radius-lg;
+     transition: all 0.3s ease;
+     
+     &.fixed { border-left: 6px solid $status-info; }
+     &.slot { border-left: 6px solid $status-warning; background-color: $bg-slot; }
+     
+     &:hover { border-color: darken($border-color-default, 10%); }
+  }
+
+  .option-disabled {
+    opacity: 0.5;
+    pointer-events: none;
+    background-color: #f1f5f9;
+  }
+
+  .pricing-matrix {
+    th { text-transform: uppercase; font-size: 0.7rem; color: #64748b; letter-spacing: 0.05em; }
+    td { font-weight: 500; }
+  }
+}
