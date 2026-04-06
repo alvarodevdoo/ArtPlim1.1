@@ -11,9 +11,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
-import { useInsumos } from '@/features/insumos/useInsumos';
-import { SeletorInsumos } from '@/features/insumos/SeletorInsumos';
-import { InsumoMaterialSelecionado } from '@/features/insumos/types';
+import { useInsumos } from '@/features/supplies/useInsumos';
+import { SeletorInsumos } from '@/features/supplies/SeletorInsumos';
+import { InsumoMaterialSelecionado } from '@/features/supplies/types';
 import { calculatePricingResult } from '@/lib/pricing/formulaUtils';
 import { useComposition } from '@/features/orders/hooks/useComposition';
 import { useIncompatibilities } from '@/features/orders/hooks/useIncompatibilities';
@@ -35,7 +35,6 @@ interface Produto {
     pricingRuleId?: string;
     pricingRule?: { id: string; name: string; formula: any; };
     formulaData?: any;
-    targetMarkup?: number;
 }
 
 interface ProductItemFormProps {
@@ -89,7 +88,8 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                         const defaults: Record<string, string> = {};
                         res.data.data.configurations.forEach((c: any) => {
                             if (c.required && c.options.length > 0) {
-                                defaults[c.id] = c.options[0].value;
+                                // Usar o ID da opção para que o motor de composição consiga localizar o preço fixo
+                                defaults[c.id] = c.options[0].id;
                             }
                         });
                         setOpcoesSelecionadas(defaults);
@@ -102,16 +102,26 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
             api.get(`/api/catalog/products/${produto.id}/ficha-tecnica`)
                 .then(res => {
                     if (res.data?.success && res.data.data) {
-                        const fichaBase = res.data.data.map((item: any) => {
-                            const m = item.material || {};
-                            return {
-                                insumoId: item.materialId,
-                                nome: m.name || 'Insumo sem nome',
-                                precoBase: Number(m.costPrice || m.averageCost || 0),
-                                quantidadeUtilizada: item.quantidade || 0,
-                                unidadeBase: m.unit || 'un'
-                            };
-                        });
+                        const fichaBase = res.data.data
+                            .filter((item: any) => {
+                                const m = item.material || {};
+                                const category = m.category?.name || m.categoria || '';
+                                // Só incluir na lista visual se for da categoria Acabamentos
+                                return category.toUpperCase().includes('ACABAMENTO');
+                            })
+                            .map((item: any) => {
+                                const m = item.material || {};
+                                return {
+                                    insumoId: item.materialId,
+                                    nome: m.name || m.nome || 'Insumo sem nome',
+                                    precoBase: Number(m.costPrice || m.averageCost || 0),
+                                    quantidadeUtilizada: item.quantidade || 0,
+                                    width: item.width || 0,
+                                    height: item.height || 0,
+                                    itemsPerUnit: item.itemsPerUnit || 1,
+                                    unidadeBase: m.unit || m.unidadeBase || 'un'
+                                };
+                            });
                         setMateriaisSelecionados(fichaBase);
                     }
                 })
@@ -137,6 +147,7 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
 
     // Mantém o resultado da fórmula em estado para compor
     const [formulaResultValue, setFormulaResultValue] = useState<number>(0);
+    const lastSuggestedRef = React.useRef<number>(0);
 
     useEffect(() => {
         if (!pricingRule?.formulaString) return;
@@ -165,30 +176,50 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
         return () => clearTimeout(timer);
     }, [pricingRule, dynamicVariables, quantity, configuracoes.length]);
 
-    // O Motor de Composição sugere o preço, mas ele não deve esmagar a fórmula caso ela gere um valor maior.
     useEffect(() => {
         if (!isEditing) {
             let suggested = 0;
             
-            if (composition && configuracoes.length > 0) {
-                const compositionSuggested = composition.suggestedPrice / Math.max(1, quantity);
-                // Pegamos o maior entre a sugestão da composição (que tem markup sobre insumos)
-                // e o valor calculado pela fórmula do produto (ou preço base).
-                suggested = Math.max(compositionSuggested, formulaResultValue, Number(produto.salePrice || 0));
+            console.log('--- Price Calculation Debug ---');
+            console.log('Composition:', composition);
+            console.log('Formula Result:', formulaResultValue);
+            console.log('Base Sale Price:', produto.salePrice);
+            console.log('Configs Length:', configuracoes.length);
+
+            if (composition) {
+                const compositionSuggested = (Number(composition.suggestedPrice) || 0) / Math.max(1, quantity);
+                console.log('Composition Suggested (per unit):', compositionSuggested);
+                
+                // Se temos configurações, a composição é o mestre do preço
+                if (configuracoes.length > 0) {
+                    suggested = Math.max(compositionSuggested, formulaResultValue, Number(produto.salePrice || 0));
+                } else {
+                    suggested = Math.max(formulaResultValue, Number(produto.salePrice || 0));
+                }
             } else if (formulaResultValue > 0) {
                 suggested = formulaResultValue;
             } else {
                 suggested = Number(produto.salePrice || 0);
             }
 
+            console.log('Final Suggested Price:', suggested);
+            console.log('Current Unit Price:', unitPrice);
+            console.log('Last Suggested (Ref):', lastSuggestedRef.current);
+
             if (suggested > 0) {
-                // Atualiza o unitPrice de imediato, e caso mude a opção pra uma + cara
-                // Para manter a manualidade, idealmente só preenchemos automático no início ou se a variação forçar muito
-                // Como não queremos travar o usuário de digitar, colocamos um limiar ou só se o unitPrice atual for menor
-                if (unitPrice === 0 || suggested > unitPrice) {
+                const basePrice = Number(produto.salePrice || 0);
+                const isFirstTime = unitPrice === 0;
+                const isDefaultPrice = Math.abs(unitPrice - basePrice) < 0.01;
+                const userHasNotEdited = Math.abs(unitPrice - lastSuggestedRef.current) < 0.01;
+
+                // Atualizamos se:
+                // 1. For a primeira vez (está 0)
+                // 2. O preço atual ainda é o preço base do produto
+                // 3. O preço atual é igual ao último preço sugerido (ou seja, o usuário não mexeu manualmente)
+                if (isFirstTime || isDefaultPrice || userHasNotEdited) {
+                    console.log('Updating Unit Price to:', suggested);
                     setUnitPrice(Number(Number(suggested).toFixed(2)));
-                } else if (configuracoes.length > 0 && unitPrice === 0) {
-                   setUnitPrice(Number(Number(suggested).toFixed(2)));
+                    lastSuggestedRef.current = Number(Number(suggested).toFixed(2));
                 }
             }
         }
@@ -214,7 +245,7 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 selectedOptions: opcoesSelecionadas,
                 compositionSnapshot: composition ? {
                     unitCostEstimate: composition.totalCost / quantity,
-                    profitEstimate: (unitPrice * quantity) - composition.totalCost
+                    totalCost: composition.totalCost
                 } : null
             }
         });
@@ -242,7 +273,7 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                                 </SelectTrigger>
                                 <SelectContent>
                                     {config.options.map((opt: any) => (
-                                        <SelectItem key={opt.id} value={opt.value} disabled={blockedIds.includes(opt.id) || !opt.isAvailable}>
+                                        <SelectItem key={opt.id} value={opt.id} disabled={blockedIds.includes(opt.id) || !opt.isAvailable}>
                                             <div className="flex justify-between items-center w-full min-w-[180px] text-xs">
                                                 <span>{opt.label}</span>
                                                 {Number(opt.priceModifier) !== 0 && (
@@ -337,7 +368,6 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                         loading={compLoading}
                         negotiatedPrice={unitPrice}
                         quantity={quantity}
-                        targetMarkup={produto.targetMarkup || 2.0}
                     />
                 </div>
             </div>

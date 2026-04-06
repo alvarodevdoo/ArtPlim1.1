@@ -4,8 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Plus, Trash2, Edit, Package, Info, Calculator, Link as LinkIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
-import { useInsumos } from '@/features/insumos/useInsumos';
-import { InsumoMaterialSelecionado, UNIDADE_BASE_LABELS } from '@/features/insumos/types';
+import { useInsumos } from '@/features/supplies/useInsumos';
+import { InsumoMaterialSelecionado, UNIDADE_BASE_LABELS } from '@/features/supplies/types';
 import { Combobox } from '@/components/ui/Combobox';
 
 interface ProductFichaTecnicaManagerProps {

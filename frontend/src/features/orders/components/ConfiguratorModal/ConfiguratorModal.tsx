@@ -19,8 +19,6 @@ import { toast } from 'sonner';
 interface Produto {
   id: string;
   name: string;
-  targetMarkup?: number;
-  markup?: number;
 }
 
 interface ConfiguratorModalProps {
@@ -155,7 +153,6 @@ export const ConfiguratorModal: React.FC<ConfiguratorModalProps> = ({
         negotiatedPrice={negotiatedPrice}
         onNegotiatedPriceChange={setNegotiatedPrice}
         quantity={quantity}
-        targetMarkup={produto.targetMarkup || produto.markup}
       />
 
       {/* Ações */}

@@ -144,37 +144,6 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({ draft, setDraft, pricing
                 )}
               </div>
            </div>
-           <div className="bg-emerald-50 rounded-2xl p-6 border border-emerald-100 space-y-4">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="w-5 h-5 text-emerald-600" />
-                <h4 className="font-black text-emerald-900 uppercase text-xs tracking-widest">Alvo de Lucratividade</h4>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                 <div className="space-y-2">
-                    <Label className="text-[10px] font-bold text-emerald-700">Markup Sugerido (x)</Label>
-                    <Input 
-                      type="number"
-                      step="0.1"
-                      value={draft.targetMarkup || ''}
-                      onChange={(e) => handleChange('targetMarkup', parseFloat(e.target.value) || 2.0)}
-                      className="bg-white border-emerald-200 font-black text-emerald-800"
-                    />
-                 </div>
-                 <div className="space-y-2">
-                    <Label className="text-[10px] font-bold text-emerald-700">Margem Alvo (%)</Label>
-                    <Input 
-                      type="number"
-                      step="1"
-                      value={(draft.targetMargin || 0) * 100}
-                      onChange={(e) => handleChange('targetMargin', (parseFloat(e.target.value) || 0) / 100)}
-                      className="bg-white border-emerald-200 font-black text-emerald-800"
-                    />
-                 </div>
-              </div>
-              <p className="text-[10px] text-emerald-600 leading-relaxed italic">
-                 Define o lucro alvo base para este produto. O sistema utilizará esses valores para sinalizar na aba de precificação se a venda está saudável.
-              </p>
-           </div>
 
            <div className="space-y-4 p-6 bg-slate-50 rounded-2xl border border-dashed">
               <h4 className="font-black text-slate-600 uppercase text-xs tracking-widest flex items-center gap-2">

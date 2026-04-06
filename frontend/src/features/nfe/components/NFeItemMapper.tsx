@@ -6,7 +6,7 @@ import { Combobox } from '@/components/ui/Combobox';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { NFeData, NFeItem } from '../types';
 import { NFeBulkActions } from './NFeBulkActions';
-import { MaterialDrawer, type Material } from '@/features/insumos/components/MaterialDrawer';
+import { MaterialDrawer, type Material } from '@/features/supplies/components/MaterialDrawer';
 import { cn } from '@/lib/utils';
 
 interface NFeItemMapperProps {

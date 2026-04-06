@@ -5,9 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Plus, Trash2, Edit, Settings, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
-import { SeletorInsumos } from '@/features/insumos/SeletorInsumos';
-import { useInsumos } from '@/features/insumos/useInsumos';
-import { InsumoMaterialSelecionado } from '@/features/insumos/types';
+import { SeletorInsumos } from '@/features/supplies/SeletorInsumos';
+import { useInsumos } from '@/features/supplies/useInsumos';
+import { InsumoMaterialSelecionado } from '@/features/supplies/types';
 
 interface ConfigurationOption {
   id: string;

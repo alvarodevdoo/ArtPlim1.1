@@ -5,9 +5,12 @@ interface EntryInput {
   materialId: string;
   quantity: number;
   unitCost: number;
+  userId: string;
   totalCost?: number;
   notes?: string;
   documentKey?: string;
+  documentUrl?: string;
+  justification?: string;
   supplierId?: string;
 }
 
@@ -54,12 +57,17 @@ export class StockMovementService {
         data: {
           organizationId,
           materialId: data.materialId,
+          userId: data.userId,
           type: 'ENTRY',
           quantity: new Prisma.Decimal(newQuantity),
           unitCost: new Prisma.Decimal(newUnitCost),
           totalCost: new Prisma.Decimal(data.totalCost ?? (newQuantity * newUnitCost)),
+          oldQuantity: new Prisma.Decimal(currentStock),
+          oldUnitCost: new Prisma.Decimal(averageCost),
           notes: data.notes,
+          justification: data.justification,
           documentKey: data.documentKey,
+          documentUrl: data.documentUrl,
           supplierId: data.supplierId,
         }
       });
@@ -129,10 +137,13 @@ export class StockMovementService {
         data: {
           organizationId,
           materialId: material.id,
+          userId,
           type: 'INTERNAL_CONSUMPTION',
           quantity: new Prisma.Decimal(consumeQuantity),
           unitCost: new Prisma.Decimal(averageCost),
           totalCost: new Prisma.Decimal(totalCostOfConsumption),
+          oldQuantity: new Prisma.Decimal(currentStock),
+          oldUnitCost: new Prisma.Decimal(averageCost),
           machineId: data.machineId,
           machineCounter: data.machineCounter,
           notes: data.notes
@@ -166,7 +177,7 @@ export class StockMovementService {
     });
   }
 
-  async registerAdjustment(organizationId: string, data: { materialId: string; quantity: number; averageCost: number; notes?: string }) {
+  async registerAdjustment(organizationId: string, userId: string, data: { materialId: string; quantity: number; averageCost: number; notes?: string; justification?: string; documentUrl?: string }) {
     return this.prisma.$transaction(async (tx) => {
       const material = await tx.material.findUnique({
         where: { id: data.materialId }
@@ -175,15 +186,25 @@ export class StockMovementService {
       if (!material) throw new AppError('Material não encontrado', 404);
       if (material.organizationId !== organizationId) throw new AppError('Acesso não autorizado', 403);
 
+      // Gerar número único para o ajuste
+      const timestamp = Date.now();
+      const movementNumber = `ADJ-${timestamp}-${Math.floor(Math.random() * 1000)}`;
+
       const movement = await tx.stockMovement.create({
         data: {
           organizationId,
           materialId: data.materialId,
+          userId,
           type: 'ADJUSTMENT',
           quantity: new Prisma.Decimal(data.quantity),
           unitCost: new Prisma.Decimal(data.averageCost),
           totalCost: new Prisma.Decimal(data.quantity * data.averageCost),
+          oldQuantity: new Prisma.Decimal(material.currentStock ?? 0),
+          oldUnitCost: new Prisma.Decimal(material.averageCost ?? 0),
           notes: data.notes,
+          justification: data.justification,
+          movementNumber,
+          documentUrl: data.documentUrl,
         }
       });
 
@@ -196,6 +217,68 @@ export class StockMovementService {
       });
 
       return movement;
+    });
+  }
+
+  async cancelMovement(organizationId: string, userId: string, movementId: string, justification: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const movement = await tx.stockMovement.findUnique({
+        where: { id: movementId },
+        include: { material: true }
+      });
+
+      if (!movement) throw new AppError('Movimentação não encontrada', 404);
+      if (movement.organizationId !== organizationId) throw new AppError('Acesso não autorizado', 403);
+      if (movement.isCancelled) throw new AppError('Movimentação já cancelada', 400);
+
+      const material = movement.material;
+      let newStock = Number(material.currentStock ?? 0);
+      let newAverageCost = Number(material.averageCost ?? 0);
+
+      // Reverter para o estado anterior usando oldQuantity e oldUnitCost
+      if (movement.oldQuantity !== null && movement.oldUnitCost !== null) {
+        newStock = Number(movement.oldQuantity);
+        newAverageCost = Number(movement.oldUnitCost);
+      } else {
+        // Fallback para lógica manual se não houver dados anteriores (legado)
+        const currentStock = newStock;
+        const averageCost = newAverageCost;
+        const movementQty = Number(movement.quantity);
+        const movementUnitCost = Number(movement.unitCost);
+
+        if (movement.type === 'ENTRY') {
+          newStock = currentStock - movementQty;
+          if (newStock > 0) {
+            const totalValueBeforeCancel = currentStock * averageCost;
+            const totalValueMovement = movementQty * movementUnitCost;
+            newAverageCost = (totalValueBeforeCancel - totalValueMovement) / newStock;
+          } else {
+            newAverageCost = 0;
+          }
+        } else if (movement.type === 'INTERNAL_CONSUMPTION') {
+          newStock = currentStock + movementQty;
+        } else if (movement.type === 'ADJUSTMENT') {
+          throw new AppError('Não é possível estornar este ajuste antigo sem dados de histórico.', 400);
+        }
+      }
+
+      await tx.material.update({
+        where: { id: material.id },
+        data: {
+          currentStock: new Prisma.Decimal(newStock),
+          averageCost: new Prisma.Decimal(newAverageCost),
+        }
+      });
+
+      return tx.stockMovement.update({
+        where: { id: movementId },
+        data: {
+          isCancelled: true,
+          cancelledAt: new Date(),
+          cancelledById: userId,
+          notes: movement.notes + `\n[CANCELADO em ${new Date().toLocaleString()}] Justificativa: ${justification}`
+        }
+      });
     });
   }
 
@@ -225,10 +308,13 @@ export class StockMovementService {
           data: {
             organizationId,
             materialId: item.materialId,
+            userId,
             type: 'ENTRY',
             quantity: new Prisma.Decimal(item.quantity),
             unitCost: new Prisma.Decimal(item.unitCost),
             totalCost: new Prisma.Decimal(item.totalCost ?? (item.quantity * item.unitCost)),
+            oldQuantity: new Prisma.Decimal(currentStock),
+            oldUnitCost: new Prisma.Decimal(averageCost),
             notes: item.notes || data.notes,
             documentKey: item.documentKey || data.documentKey,
             supplierId: data.supplierId,
@@ -257,12 +343,25 @@ export class StockMovementService {
       },
       include: {
         material: {
-          select: { id: true, name: true, unit: true, category: true }
+          select: { 
+            id: true, 
+            name: true, 
+            unit: true, 
+            category: {
+              select: { id: true, name: true }
+            }
+          }
         },
         machine: {
           select: { id: true, name: true, type: true }
         },
         supplier: {
+          select: { id: true, name: true }
+        },
+        user: {
+          select: { id: true, name: true }
+        },
+        cancelledBy: {
           select: { id: true, name: true }
         }
       },

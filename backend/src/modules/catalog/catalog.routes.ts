@@ -52,7 +52,11 @@ const createMaterialSchema = z.object({
   conversionFactor: z.number().optional().default(1),
   width: z.number().min(0).optional().nullable(),
   height: z.number().min(0).optional().nullable(),
-  defaultConsumptionRule: z.enum(['PRODUCT_AREA', 'PERIMETER', 'SPACING', 'FIXED_UNIT']).optional(),
+  purchaseWidth: z.number().min(0).optional().nullable(),
+  purchaseHeight: z.number().min(0).optional().nullable(),
+  purchaseUnit: z.string().optional().nullable(),
+  multiplicador_padrao_entrada: z.number().int().min(1).optional().nullable(),
+  defaultConsumptionRule: z.enum(['PRODUCT_AREA', 'PERIMETER', 'SPACING', 'FIXED_UNIT', 'AREA_RATIO']).optional(),
   defaultConsumptionFactor: z.number().optional(),
   inventoryAccountId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   expenseAccountId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
@@ -118,6 +122,7 @@ const createOptionSchema = z.object({
   displayOrder: z.number().int().min(1).optional(),
   isAvailable: z.boolean().optional(),
   priceOverride: z.preprocess((val) => (val === '' || val === null || val === undefined) ? null : isNaN(Number(val)) ? null : Number(val), z.number().nullable().optional()),
+  fixedValue: z.preprocess((val) => (val === '' || val === null || val === undefined) ? null : isNaN(Number(val)) ? null : Number(val), z.number().nullable().optional()),
   materialId: z.preprocess((val) => val === '' ? null : val, z.string().uuid().optional().nullable()),
 });
 

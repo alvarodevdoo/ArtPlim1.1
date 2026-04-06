@@ -69,7 +69,6 @@ export class PricingCompositionService {
 
     if (!product) throw new Error(`Produto ${productId} não encontrado`);
 
-    const targetMarkup = product.targetMarkup || product.markup || 2.0;
     const breakdown: CompositionLineItem[] = [];
     const insufficientStock: InsufficientStockItem[] = [];
     
@@ -134,10 +133,16 @@ export class PricingCompositionService {
       });
 
       for (const opt of options) {
-        // Acumular modificadores e acompanhar o maior preço fixo (override)
+        // Acumular modificadores e acompanhar o maior preço fixo (override ou fixedValue)
         totalModifiers += Number(opt.priceModifier || 0) * quantity;
+        
+        // fixedValue é o novo campo para Preço Fixo de Venda da opção
+        // priceOverride é o campo legado que tinha o mesmo propósito
+        const optFixedValue = Number(opt.fixedValue || 0) * quantity;
         const optOverride = Number(opt.priceOverride || 0) * quantity;
-        if (optOverride > maxOverride) maxOverride = optOverride;
+        const currentMax = Math.max(optFixedValue, optOverride);
+        
+        if (currentMax > maxOverride) maxOverride = currentMax;
 
         // 3a. Slot direto (materialId na própria option)
         if (opt.materialId && opt.material) {
@@ -195,21 +200,27 @@ export class PricingCompositionService {
     const totalCost = baseMaterialCost + variableMaterialCost;
     
     // Lógica Final de Preço Sugerido:
-    // Considera o maior entre (Custo x Markup) e (Maior Preço Fixo definido), somando os Modificadores Extras.
-    const costBasedPrice = totalCost * targetMarkup;
-    const suggestedPrice = Math.max(costBasedPrice, (maxOverride || 0)) + (totalModifiers || 0);
+    // REMOVIDO: Custo x Markup. Agora o preço sugerido é APENAS o preço fixo das opções + modificadores.
+    // Se não houver preço fixo definido nas opções, o sistema sugere o PREÇO BASE do produto (product.salePrice).
+    // Se nem o produto tiver preço base, usamos o custo total.
+    let suggestedPrice = 0;
+    
+    if (maxOverride > 0) {
+        suggestedPrice = maxOverride + totalModifiers;
+    } else {
+        suggestedPrice = (Number(product.salePrice || 0) * quantity) + totalModifiers;
+    }
 
-    const currentMargin = suggestedPrice > 0
-      ? (suggestedPrice - totalCost) / suggestedPrice
-      : 0;
+    // Fallback absoluto: se o preço sugerido ainda for 0, usamos o custo total para não ficar vazio
+    if (suggestedPrice === 0) suggestedPrice = totalCost;
 
     return {
       baseMaterialCost,
       variableMaterialCost,
       totalCost,
       suggestedPrice,
-      suggestedMarkup: targetMarkup,
-      currentMargin,
+      suggestedMarkup: 1.0,
+      currentMargin: 0,
       breakdown,
       insufficientStock
     };

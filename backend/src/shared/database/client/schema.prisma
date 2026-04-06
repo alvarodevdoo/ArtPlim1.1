@@ -1,7 +1,7 @@
 generator client {
   provider   = "prisma-client-js"
   // Move o cliente para dentro da sua estrutura de código
-  output     = "../src/shared/database/client"
+  output     = "."
   engineType = "library"
 }
 
@@ -126,6 +126,8 @@ model User {
   reviewedChanges    PendingChanges[]     @relation("ReviewedBy")
   profile            Profile?
   transactions       Transaction[]
+  stockMovements     StockMovement[]      @relation("UserMovements")
+  cancelledMovements StockMovement[]      @relation("CancelledMovements")
   organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, email])
@@ -225,50 +227,54 @@ model Profile {
 }
 
 model Material {
-  id                       String                @id @default(uuid())
-  organizationId           String
-  name                     String
-  description              String?
-  format                   MaterialFormat
-  costPerUnit              Decimal               @db.Decimal(10, 4)
-  unit                     String
-  controlUnit              ControlUnit?
-  conversionFactor         Float                 @default(1.0)
-  width                    Float?
-  height                   Float?
-  active                   Boolean               @default(true)
-  createdAt                DateTime              @default(now())
-  updatedAt                DateTime              @updatedAt
-  categoryId               String // Nova chave estrangeira
-  category                 Category              @relation(fields: [categoryId], references: [id])
-  defaultConsumptionFactor Decimal               @default(1.0) @db.Decimal(10, 4)
-  defaultConsumptionRule   ConsumptionRule       @default(FIXED_UNIT)
-  expenseAccountId         String?
-  inventoryAccountId       String?
-  minStockQuantity         Float?
-  sellWithoutStock         Boolean               @default(true)
-  trackStock               Boolean               @default(true)
-  ncm                      String?
-  ean                      String?
-  spedType                 String? // Legado: código do tipo (00, 01...)
-  materialTypeId           String? // Dinâmico: ID da classificação criada pelo usuário
-  materialType             MaterialType?         @relation(fields: [materialTypeId], references: [id])
-  fichasTecnicas           FichaTecnicaInsumo[]
-  fornecedores             InsumoFornecedor[]
-  inventoryAlerts          InventoryAlert[]
-  inventoryItems           InventoryItem[]
-  receiptItems             MaterialReceiptItem[]
-  suppliers                MaterialSupplier[]
-  stockMovements           StockMovement[]
-  expenseAccount           ChartOfAccount?       @relation("MaterialExpenseAccount", fields: [expenseAccountId], references: [id])
-  inventoryAccount         ChartOfAccount?       @relation("MaterialInventoryAccount", fields: [inventoryAccountId], references: [id])
-  organization             Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  components               ProductComponent[]
-  productionWastes         ProductionWaste[]
-  averageCost              Decimal               @default(0) @db.Decimal(10, 4)
-  currentStock             Decimal               @default(0) @db.Decimal(15, 4)
+  id                           String                @id @default(uuid())
+  organizationId               String
+  name                         String
+  description                  String?
+  format                       MaterialFormat
+  costPerUnit                  Decimal               @db.Decimal(10, 4)
+  unit                         String
+  controlUnit                  ControlUnit?
+  conversionFactor             Float                 @default(1.0)
+  width                        Float?
+  height                       Float?
+  purchaseWidth                Float? // Largura de compra em metros
+  purchaseHeight               Float? // Altura de compra em metros
+  purchaseUnit                 String? // Unidade de compra (Ex: UN, PAC, CX)
+  multiplicador_padrao_entrada Int?                  @default(1) // Fator de Embalagem Sugerido
+  active                       Boolean               @default(true)
+  createdAt                    DateTime              @default(now())
+  updatedAt                    DateTime              @updatedAt
+  categoryId                   String // Nova chave estrangeira
+  category                     Category              @relation(fields: [categoryId], references: [id])
+  defaultConsumptionFactor     Decimal               @default(1.0) @db.Decimal(10, 4)
+  defaultConsumptionRule       ConsumptionRule       @default(FIXED_UNIT)
+  expenseAccountId             String?
+  inventoryAccountId           String?
+  minStockQuantity             Float?
+  sellWithoutStock             Boolean               @default(true)
+  trackStock                   Boolean               @default(true)
+  ncm                          String?
+  ean                          String?
+  spedType                     String? // Legado: código do tipo (00, 01...)
+  materialTypeId               String? // Dinâmico: ID da classificação criada pelo usuário
+  materialType                 MaterialType?         @relation(fields: [materialTypeId], references: [id])
+  fichasTecnicas               FichaTecnicaInsumo[]
+  fornecedores                 InsumoFornecedor[]
+  inventoryAlerts              InventoryAlert[]
+  inventoryItems               InventoryItem[]
+  receiptItems                 MaterialReceiptItem[]
+  suppliers                    MaterialSupplier[]
+  stockMovements               StockMovement[]
+  expenseAccount               ChartOfAccount?       @relation("MaterialExpenseAccount", fields: [expenseAccountId], references: [id])
+  inventoryAccount             ChartOfAccount?       @relation("MaterialInventoryAccount", fields: [inventoryAccountId], references: [id])
+  organization                 Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  components                   ProductComponent[]
+  productionWastes             ProductionWaste[]
+  averageCost                  Decimal               @default(0) @db.Decimal(10, 4)
+  currentStock                 Decimal               @default(0) @db.Decimal(15, 4)
   // Motor de Composição: opções de variação vinculadas a este insumo
-  optionSlots              ConfigurationOption[] @relation("OptionMaterial")
+  optionSlots                  ConfigurationOption[] @relation("OptionMaterial")
 
   @@unique([organizationId, name], name: "organizationId_name")
   @@index([organizationId])
@@ -373,6 +379,7 @@ model ConfigurationOption {
   priceModifier        Decimal                  @default(0) @db.Decimal(10, 2)
   priceModifierType    String                   @default("FIXED")
   priceOverride        Decimal?                 @db.Decimal(10, 2) // Sobrescreve o preço global se definido
+  fixedValue           Decimal?                 @db.Decimal(10, 2) // Novo campo para Valor Fixo de Venda
   additionalComponents Json?
   removedComponents    Json?
   componentModifiers   Json?
@@ -1078,6 +1085,9 @@ model FichaTecnicaInsumo {
   configurationOptionId  String?
   configurationGroupId   String?
   quantidade             Float
+  width                  Float?
+  height                 Float?
+  itemsPerUnit           Float                @default(1.0)
   custoCalculado         Decimal              @db.Decimal(10, 4)
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
@@ -1508,20 +1518,32 @@ model StockMovement {
   id             String            @id @default(uuid())
   organizationId String
   materialId     String
+  userId         String? // Usuário que realizou o ajuste
   type           StockMovementType
   quantity       Decimal           @db.Decimal(15, 4)
   unitCost       Decimal           @db.Decimal(10, 4)
   totalCost      Decimal           @db.Decimal(10, 4)
+  oldQuantity    Decimal?          @db.Decimal(15, 4) // Saldo antes do ajuste
+  oldUnitCost    Decimal?          @db.Decimal(10, 4) // Custo antes do ajuste
   machineId      String?
   machineCounter Int?
   notes          String?
+  justification  String? // Justificativa do ajuste
+  movementNumber String?           @unique // Número único da transação
+  documentUrl    String? // Link para documento anexo
   supplierId     String?
   documentKey    String?
+  isCancelled    Boolean           @default(false)
+  cancelledAt    DateTime?
+  cancelledById  String?
   createdAt      DateTime          @default(now())
-  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  material       Material          @relation(fields: [materialId], references: [id])
-  machine        Machine?          @relation(fields: [machineId], references: [id])
-  supplier       Profile?          @relation("SupplierMovements", fields: [supplierId], references: [id])
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  material     Material     @relation(fields: [materialId], references: [id])
+  machine      Machine?     @relation(fields: [machineId], references: [id])
+  supplier     Profile?     @relation("SupplierMovements", fields: [supplierId], references: [id])
+  user         User?        @relation("UserMovements", fields: [userId], references: [id])
+  cancelledBy  User?        @relation("CancelledMovements", fields: [cancelledById], references: [id])
 
   @@index([organizationId])
   @@index([materialId])

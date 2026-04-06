@@ -44,6 +44,7 @@ interface CreateOptionRequest {
   displayOrder?: number;
   isAvailable?: boolean;
   priceOverride?: number | null;
+  fixedValue?: number | null;
 }
 
 interface UpdateOptionRequest {
@@ -59,6 +60,7 @@ interface UpdateOptionRequest {
   displayOrder?: number;
   isAvailable?: boolean;
   priceOverride?: number | null;
+  fixedValue?: number | null;
 }
 
 interface AdditionalComponent {
@@ -322,6 +324,7 @@ export class ProductConfigurationService {
         priceModifier: request.priceModifier ?? 0,
         priceModifierType: request.priceModifierType || 'FIXED',
         priceOverride: request.priceOverride ?? null,
+        fixedValue: request.fixedValue ?? null,
         materialId: request.materialId ?? null,
         additionalComponents: request.additionalComponents ? JSON.stringify(request.additionalComponents) : null,
         removedComponents: request.removedComponents ? JSON.stringify(request.removedComponents) : null,
@@ -354,6 +357,7 @@ export class ProductConfigurationService {
         priceModifier: request.priceModifier,
         priceModifierType: request.priceModifierType,
         priceOverride: request.priceOverride,
+        fixedValue: request.fixedValue,
         ...(request.materialId !== undefined ? { materialId: request.materialId } : {}),
         additionalComponents: request.additionalComponents ? JSON.stringify(request.additionalComponents) : undefined,
         removedComponents: request.removedComponents ? JSON.stringify(request.removedComponents) : undefined,

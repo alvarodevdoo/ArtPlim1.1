@@ -10,8 +10,8 @@ import api from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { getProductDisplayInfo } from '@/lib/pricing/displayUtils';
-import { InsumoMaterialSelecionado } from '@/features/insumos/types';
-import { useInsumos } from '@/features/insumos/useInsumos';
+import { InsumoMaterialSelecionado } from '@/features/supplies/types';
+import { useInsumos } from '@/features/supplies/useInsumos';
 import { ProductModalContainer } from '@/features/catalog/components/ProductModal/ProductModalContainer';
 
 interface Produto {

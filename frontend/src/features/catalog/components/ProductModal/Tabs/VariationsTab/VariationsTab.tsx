@@ -6,7 +6,7 @@ import {
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 import { Combobox } from '@/components/ui/Combobox';
-import { useInsumos } from '@/features/insumos/useInsumos';
+import { useInsumos } from '@/features/supplies/useInsumos';
 import { DraftVariationGroup, DraftOption } from '../../types';
 
 // Temp-ID generator (no external dep needed)
@@ -123,7 +123,7 @@ export const VariationsTab: React.FC<VariationsTabProps> = ({
       value: newOptionLabel.trim().toLowerCase().replace(/\s+/g, '_'),
       priceModifier: parseFloat(newOptionPrice) || 0,
       priceModifierType: 'FIXED',
-      priceOverride: newOptionOverridePrice ? parseFloat(newOptionOverridePrice) : null,
+      fixedValue: newOptionOverridePrice ? parseFloat(newOptionOverridePrice) : null,
       materialId: newOptionMaterialId,
       isAvailable: true,
       displayOrder: 1,
@@ -460,9 +460,9 @@ const OptionCard = ({
           </p>
           <InlineInput
             type="number"
-            initialValue={option.priceOverride ?? ''}
+            initialValue={option.fixedValue ?? ''}
             isEditing={isGlobalEditing}
-            onSave={(val) => onChange({ priceOverride: val === '' ? null : parseFloat(val) })}
+            onSave={(val) => onChange({ fixedValue: val === '' ? null : parseFloat(val) })}
             placeholder="Auto"
             className={cn(
               "text-center font-black",

@@ -1,7 +1,7 @@
 import React from 'react';
 import { FinancialSummary } from './types';
 import { cn } from '@/lib/utils';
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { TrendingUp } from 'lucide-react';
 
 interface FinancialSidebarProps {
   summary: FinancialSummary;
@@ -47,34 +47,12 @@ export const FinancialSidebar: React.FC<FinancialSidebarProps> = ({
   isLoading,
   onSalePriceChange,
 }) => {
-  const healthColor = {
-    healthy: 'text-emerald-400',
-    warning: 'text-amber-400',
-    danger: 'text-red-400',
-  }[summary.healthStatus];
-
-  const HealthIcon =
-    summary.healthStatus === 'healthy' ? TrendingUp :
-    summary.healthStatus === 'warning' ? Minus      : TrendingDown;
-
-  const healthBg = {
-    healthy: 'bg-emerald-500/10 border-emerald-500/20',
-    warning: 'bg-amber-500/10  border-amber-500/20',
-    danger:  'bg-red-500/10    border-red-500/20',
-  }[summary.healthStatus];
-
-  const iconBg = {
-    healthy: 'bg-emerald-500/10',
-    warning: 'bg-amber-500/10',
-    danger:  'bg-red-500/10',
-  }[summary.healthStatus];
-
   return (
     <div className="bg-slate-900 text-white rounded-2xl p-4 space-y-4 shadow-2xl border border-slate-700/50">
       {/* Title */}
       <div className="flex items-center gap-2">
-        <div className={cn('p-1.5 rounded-lg', iconBg)}>
-          <HealthIcon className={cn('w-4 h-4', healthColor)} />
+        <div className="p-1.5 rounded-lg bg-indigo-500/10">
+          <TrendingUp className="w-4 h-4 text-indigo-400" />
         </div>
         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Resumo Financeiro</p>
       </div>
@@ -131,12 +109,11 @@ export const FinancialSidebar: React.FC<FinancialSidebarProps> = ({
       </div>
 
       {/* Profit */}
-      <div className={cn('rounded-xl p-3 space-y-1 border', healthBg)}>
-        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Lucro Líquido</p>
-        <p className={cn('text-xl font-black', healthColor)}>{fmt(summary.grossProfit)}</p>
-        <p className={cn('text-[10px] font-bold', healthColor)}>
-          {summary.marginPercent.toFixed(1)}% margem
-          {summary.healthStatus === 'healthy' ? ' ✓' : summary.healthStatus === 'warning' ? ' ⚠' : ' ✗'}
+      <div className="rounded-xl p-3 space-y-1 border bg-slate-800/50 border-slate-700/50">
+        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Lucro Líquido Estimado</p>
+        <p className="text-xl font-black text-emerald-400">{fmt(summary.grossProfit)}</p>
+        <p className="text-[10px] font-bold text-slate-400">
+          {summary.marginPercent.toFixed(1)}% de margem
         </p>
       </div>
 

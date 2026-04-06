@@ -12,6 +12,10 @@ interface CreateMaterialInput {
   conversionFactor?: number;
   width?: number | null;
   height?: number | null;
+  purchaseWidth?: number | null;
+  purchaseHeight?: number | null;
+  purchaseUnit?: string | null;
+  multiplicador_padrao_entrada?: number | null;
   defaultConsumptionRule?: any;
   defaultConsumptionFactor?: number;
   inventoryAccountId?: string | null;
@@ -61,6 +65,10 @@ export class MaterialService {
         conversionFactor: data.conversionFactor || 1.0,
         width: data.width,
         height: data.height,
+        purchaseWidth: data.purchaseWidth,
+        purchaseHeight: data.purchaseHeight,
+        purchaseUnit: data.purchaseUnit,
+        multiplicador_padrao_entrada: data.multiplicador_padrao_entrada || 1,
         defaultConsumptionRule: data.defaultConsumptionRule,
         defaultConsumptionFactor: data.defaultConsumptionFactor,
         inventoryAccountId: finalInventoryAccountId,
@@ -194,17 +202,27 @@ export class MaterialService {
       const updateFields: any = { updatedAt: new Date() };
 
       if (data.name !== undefined)                    updateFields.name = data.name;
-      if (data.categoryId !== undefined)              updateFields.categoryId = data.categoryId;
       if (data.description !== undefined)             updateFields.description = data.description;
       if (data.format !== undefined)                  updateFields.format = data.format;
       if (data.costPerUnit !== undefined)             updateFields.costPerUnit = data.costPerUnit;
       if (data.unit !== undefined)                    updateFields.unit = data.unit;
       if (data.controlUnit !== undefined)             updateFields.controlUnit = data.controlUnit;
       if (data.conversionFactor !== undefined)        updateFields.conversionFactor = data.conversionFactor;
+      
+      // Mapeamento de dimensões para o banco (width/height)
       if (data.width !== undefined)                   updateFields.width = data.width;
       if (data.height !== undefined)                  updateFields.height = data.height;
+      
+      if (data.purchaseWidth !== undefined)           updateFields.purchaseWidth = data.purchaseWidth;
+      if (data.purchaseHeight !== undefined)          updateFields.purchaseHeight = data.purchaseHeight;
+      if (data.purchaseUnit !== undefined)            updateFields.purchaseUnit = data.purchaseUnit;
+      if (data.multiplicador_padrao_entrada !== undefined) updateFields.multiplicador_padrao_entrada = data.multiplicador_padrao_entrada;
       if (data.defaultConsumptionRule !== undefined)  updateFields.defaultConsumptionRule = data.defaultConsumptionRule;
       if (data.defaultConsumptionFactor !== undefined) updateFields.defaultConsumptionFactor = data.defaultConsumptionFactor;
+      
+      if (data.categoryId !== undefined) {
+        updateFields.category = { connect: { id: data.categoryId } };
+      }
       
       let finalInventoryAccountId = data.inventoryAccountId;
       let finalExpenseAccountId = data.expenseAccountId;

@@ -84,21 +84,14 @@ export interface ConfiguratorState {
 
 // ── Alerta de margem ─────────────────────────────────────────────────────────
 
-export type MarginStatus = 'HEALTHY' | 'WARNING' | 'DANGER' | 'NEGATIVE';
+export type MarginStatus = 'HEALTHY' | 'NEGATIVE';
 
 export function getMarginStatus(
   negotiatedPrice: number,
-  totalCost: number,
-  targetMarkup?: number
+  totalCost: number
 ): MarginStatus {
   if (totalCost <= 0) return 'HEALTHY';
   const profit = negotiatedPrice - totalCost;
   if (profit < 0) return 'NEGATIVE';
-
-  const actualMarkup = negotiatedPrice / totalCost;
-  const target = targetMarkup || 2.0;
-
-  if (actualMarkup >= target) return 'HEALTHY';
-  if (actualMarkup >= target * 0.8) return 'WARNING';
-  return 'DANGER';
+  return 'HEALTHY';
 }

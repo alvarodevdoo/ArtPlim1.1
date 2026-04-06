@@ -84,115 +84,99 @@ export async function wmsRoutes(fastify: FastifyInstance) {
 
   // ========== STOCK MOVEMENTS (CUSTO MÉDIO) ==========
 
-  const entrySchema = z.object({
-    materialId: z.string().uuid(),
-    quantity: z.number().positive(),
-    unitCost: z.number().positive(),
-    totalCost: z.number().positive().optional(),
-    notes: z.string().optional(),
-    documentKey: z.string().optional(),
-    supplierId: z.string().uuid().optional(),
-  });
-
-  const consumptionSchema = z.object({
-    materialId: z.string().uuid(),
-    quantity: z.number().positive(),
-    machineId: z.string().uuid(),
-    machineCounter: z.number().int().positive().optional(),
-    notes: z.string().optional(),
-  });
-
-  const listMovementsQuerySchema = z.object({
-    materialId: z.string().uuid().optional(),
-    type: z.enum(['ENTRY', 'INTERNAL_CONSUMPTION', 'ADJUSTMENT']).optional(),
-    limit: z.string().transform(val => parseInt(val) || 50).optional(),
-  });
-
-  // Listar movimentações de custo médio
-  fastify.get('/stock-movements', {
+  fastify.get('/movements/stock', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const query = listMovementsQuerySchema.parse(request.query);
+    const { materialId, limit, type } = request.query as any;
     const prisma = getTenantClient(request.user!.organizationId);
     const service = new StockMovementService(prisma);
+    
+    // Garantir que limit seja um número válido
+    const parsedLimit = parseInt(limit);
+    const finalLimit = isNaN(parsedLimit) ? 50 : parsedLimit;
+
     const data = await service.listMovements(request.user!.organizationId, {
-      materialId: query.materialId,
-      type: query.type,
-      limit: query.limit,
+      materialId,
+      limit: finalLimit,
+      type: type || undefined
     });
     return reply.send({ success: true, data });
   });
 
-  // Registrar Entrada de Material (Nota Fiscal / Compra)
-  fastify.post('/stock-movements/entry', {
-    preHandler: [fastify.authenticate]
-  }, async (request, reply) => {
-    const body = entrySchema.parse(request.body);
-    const prisma = getTenantClient(request.user!.organizationId);
-    const service = new StockMovementService(prisma);
-    const movement = await service.registerEntry(request.user!.organizationId, body);
-    return reply.code(201).send({ success: true, data: movement });
+  const adjustmentSchema = z.object({
+    materialId: z.string().uuid(),
+    type: z.enum(['ENTRY', 'CONSUMPTION', 'ADJUSTMENT']),
+    quantity: z.coerce.number().positive(),
+    unitCost: z.coerce.number().positive(),
+    notes: z.string().optional(),
+    justification: z.string().min(3),
   });
 
-  // Registrar Baixa por Consumo Interno (Tinta/Toner em Máquina)
-  fastify.post('/stock-movements/consumption', {
+  fastify.post('/movements/adjustment', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const body = consumptionSchema.parse(request.body);
+    // Fastify-multipart handles files differently
+    // For simplicity with SOLID and current context, we'll parse fields and handle file if exists
+    let body: any = {};
+    let fileUrl = '';
+
+    if (request.isMultipart()) {
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          // Em um cenário real, salvaríamos no S3/Local e pegaríamos a URL
+          // Por enquanto, vamos apenas simular a URL
+          fileUrl = `uploads/${Date.now()}-${part.filename}`;
+          // Consumir o stream para não travar
+          await part.toBuffer();
+        } else {
+          body[part.fieldname] = part.value;
+        }
+      }
+    } else {
+      body = request.body;
+    }
+
+    const data = adjustmentSchema.parse(body);
     const prisma = getTenantClient(request.user!.organizationId);
     const service = new StockMovementService(prisma);
-    const movement = await service.registerInternalConsumption(
-      request.user!.organizationId,
-      request.user!.userId,
-      body
-    );
-    return reply.code(201).send({ success: true, data: movement });
+
+    let result;
+    if (data.type === 'ENTRY') {
+      result = await service.registerEntry(request.user!.organizationId, {
+        ...data,
+        userId: request.user!.id,
+        justification: data.justification,
+        documentUrl: fileUrl
+      } as any);
+    } else if (data.type === 'CONSUMPTION') {
+      result = await service.registerInternalConsumption(request.user!.organizationId, request.user!.id, {
+        ...data,
+        machineId: '00000000-0000-0000-0000-000000000000', // Default para manual
+      } as any);
+    } else {
+      result = await service.registerAdjustment(request.user!.organizationId, request.user!.id, {
+        ...data,
+        averageCost: data.unitCost,
+        documentUrl: fileUrl
+      });
+    }
+
+    return reply.code(201).send({ success: true, data: result });
   });
 
-  // Registrar Ajuste Manual de Estoque (Inventário)
-  fastify.post('/stock-movements/adjustment', {
+  fastify.post('/movements/:id/cancel', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const adjSchema = z.object({
-      materialId: z.string().uuid(),
-      quantity: z.number(),
-      averageCost: z.number().nonnegative(),
-      notes: z.string().optional(),
-    });
-    const body = adjSchema.parse(request.body);
+    const { id } = request.params as { id: string };
+    const { justification } = request.body as { justification: string };
+    
+    if (!justification) throw new Error('Justificativa é obrigatória para o cancelamento.');
+
     const prisma = getTenantClient(request.user!.organizationId);
     const service = new StockMovementService(prisma);
-    const movement = await service.registerAdjustment(request.user!.organizationId, body);
-    return reply.code(201).send({ success: true, data: movement });
-  });
-
-  // Registrar Recebimento de NF (Múltiplos Itens)
-  fastify.post('/stock-movements/receipt', {
-    preHandler: [fastify.authenticate]
-  }, async (request, reply) => {
-    const receiptSchema = z.object({
-      supplierId: z.string().uuid(),
-      notes: z.string().optional(),
-      documentKey: z.string().optional(),
-      items: z.array(z.object({
-        materialId: z.string().uuid(),
-        quantity: z.number().positive(),
-        unitCost: z.number().positive(),
-        totalCost: z.number().positive(),
-        notes: z.string().optional(),
-      }))
-    });
-
-    const body = receiptSchema.parse(request.body);
-    const prisma = getTenantClient(request.user!.organizationId);
-    const service = new StockMovementService(prisma);
-
-    const movements = await service.registerReceipt(
-      request.user!.organizationId,
-      request.user!.userId,
-      body
-    );
-
-    return reply.code(201).send({ success: true, data: movements });
+    const result = await service.cancelMovement(request.user!.organizationId, request.user!.id, id, justification);
+    
+    return reply.send({ success: true, data: result });
   });
 }

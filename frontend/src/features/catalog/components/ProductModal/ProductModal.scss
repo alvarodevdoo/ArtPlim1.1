@@ -1,4 +1,5 @@
-@import 'variables';
+@use "sass:color";
+@use "variables" as *;
 
 .product-modal {
   display: flex;
@@ -25,7 +26,7 @@
      &.fixed { border-left: 6px solid $status-info; }
      &.slot { border-left: 6px solid $status-warning; background-color: $bg-slot; }
      
-     &:hover { border-color: darken($border-color-default, 10%); }
+     &:hover { border-color: color.adjust($border-color-default, $lightness: -10%); }
   }
 
   .option-disabled {

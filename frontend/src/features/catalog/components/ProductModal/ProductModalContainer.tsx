@@ -15,7 +15,7 @@ import { VariationsTab } from './Tabs/VariationsTab/VariationsTab';
 import { PricingTab } from './Tabs/PricingTab/PricingTab';
 import { ProductionTab } from './Tabs/ProductionTab';
 import { FinancialSidebar } from './FinancialSidebar';
-import { useInsumos } from '@/features/insumos/useInsumos';
+import { useInsumos } from '@/features/supplies/useInsumos';
 import {
   ProductDraft,
   DraftBOMItem,
@@ -37,8 +37,6 @@ const emptyDraft = (): ProductDraft => ({
   pricingMode: 'SIMPLE_AREA',
   salePrice: 0,
   costPrice: 0,
-  targetMarkup: 2.5,
-  targetMargin: 0.2,
   active: true,
   trackStock: false,
   stockQuantity: 0,
@@ -139,7 +137,7 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
               value: o.value,
               priceModifier: Number(o.priceModifier || 0),
               priceModifierType: o.priceModifierType || 'FIXED',
-              priceOverride: o.priceOverride != null ? Number(o.priceOverride) : null,
+              fixedValue: o.fixedValue != null ? Number(o.fixedValue) : (o.priceOverride != null ? Number(o.priceOverride) : null),
               materialId: o.materialId || null,
               materialName: o.materialName || null,
               isAvailable: o.isAvailable ?? true,
@@ -147,6 +145,7 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
             })),
           })
         );
+        console.log('[ProductModal] Variation groups loaded:', JSON.stringify(configs, null, 2));
         setVarGroups(configs);
 
         // 3. BOM items
@@ -168,15 +167,19 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
             materialName: mat?.name || 'Material',
             unit: mat?.unit || 'un',
             quantity: qty,
+            width: Number(item.width || 0),
+            height: Number(item.height || 0),
             itemsPerUnit: ipu,
             costPerUnit,
             effectiveCost: eff,
             subtotal: eff * qty,
+            salePrice: Number(item.custoCalculado || 0) * 2.5, // Exemplo de markup inicial, se necessário
             isFixed: !item.configurationOptionId && !item.configurationGroupId,
             configurationOptionId: item.configurationOptionId || null,
             configurationGroupId: item.configurationGroupId || null,
           };
         });
+        console.log('[ProductModal] BOM items loaded:', bom.filter(i => !i.isFixed));
         setBomItems(bom);
 
         // Init simulation defaults
@@ -248,28 +251,23 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
 
     const totalCost = fixedCost + variationCost;
 
-    // Sale price: check if selected option has a priceOverride, else use draft.salePrice
+    // Sale price: check if selected option has a fixedValue, else use draft.salePrice
     let salePrice = draft.salePrice;
     Object.entries(selectedOptionIds).forEach(([groupId, optId]) => {
       const group = varGroups.find((g) => g.id === groupId);
       const opt = group?.options.find((o) => o.id === optId);
-      if (opt?.priceOverride != null) salePrice = opt.priceOverride;
+      if (opt?.fixedValue != null) salePrice = opt.fixedValue;
     });
 
     const grossProfit = salePrice - totalCost;
     const marginPercent = salePrice > 0 ? (grossProfit / salePrice) * 100 : 0;
 
-    const targetMargin = (draft.targetMargin || 0.2) * 100;
-    const healthStatus: FinancialSummary['healthStatus'] =
-      marginPercent >= targetMargin ? 'healthy' :
-      marginPercent >= 0           ? 'warning'  : 'danger';
-
     return { 
        fixedCost, variationCost, totalCost, salePrice, grossProfit, 
-       marginPercent, healthStatus, isSalePriceOverridden: salePrice !== draft.salePrice,
+       marginPercent, isSalePriceOverridden: salePrice !== draft.salePrice,
        baseSalePrice: draft.salePrice 
     };
-  }, [bomItems, varGroups, selectedOptionIds, draft.salePrice, draft.targetMargin]);
+  }, [bomItems, varGroups, selectedOptionIds, draft.salePrice]);
 
   // Selected option label for sidebar
   const selectedOptionLabel = useMemo(() => {
@@ -337,7 +335,8 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
             value: opt.value,
             priceModifier: opt.priceModifier,
             priceModifierType: opt.priceModifierType,
-            priceOverride: opt.priceOverride,
+            priceOverride: opt.fixedValue, // Envia para o campo antigo por compatibilidade
+            fixedValue: opt.fixedValue,    // Envia para o novo campo
             materialId: opt.materialId,
             displayOrder: opt.displayOrder,
           };
@@ -354,10 +353,14 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
       const bomPayload = bomItems.map((i) => ({
         insumoId: i.materialId,
         quantidade: i.quantity,
+        width: typeof i.width === 'number' ? i.width : null,
+        height: typeof i.height === 'number' ? i.height : null,
         itemsPerUnit: i.itemsPerUnit,
+        custoCalculado: i.subtotal, 
         configurationOptionId: i.configurationOptionId ?? null,
         configurationGroupId: i.configurationGroupId ?? null,
       }));
+      console.log('[ProductModal] Saving BOM payload:', JSON.stringify(bomPayload, null, 2));
       await api.post(`/api/catalog/products/${savedId}/ficha-tecnica`, { items: bomPayload });
 
       toast.success('Produto salvo com sucesso!');
@@ -460,9 +463,9 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
               {activeTab === 'bom' && (
                 <BOMTab
                   productName={draft.name}
+                  salePrice={draft.salePrice}
                   items={bomItems}
                   variationGroups={varGroups}
-                  targetMarkup={draft.targetMarkup}
                   onChange={setBomItems}
                 />
               )}

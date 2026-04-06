@@ -11,6 +11,9 @@ import { AppError } from '../../../shared/infrastructure/errors/AppError';
 export interface FichaTecnicaItem {
   insumoId?: string | null;
   quantidade: number;
+  width?: number;
+  height?: number;
+  itemsPerUnit?: number;
   linkedVariable?: string;
   linkedQuantityVariable?: string;
   configurationGroupId?: string | null;
@@ -36,6 +39,8 @@ export class FichaTecnicaService {
 
     // Executa em transação para garantir atomicidade
     return this.prisma.$transaction(async (tx: any) => {
+      console.log(`[FichaTecnica] Salvando ${items.length} itens para ${productId ? 'produto ' + productId : 'opção ' + configurationOptionId}`);
+      console.log('[FichaTecnica] Primeiro item:', JSON.stringify(items[0], null, 2));
       // 1. Remover itens anteriores
       const where: any = { organizationId };
       if (productId) where.productId = productId;
@@ -55,25 +60,25 @@ export class FichaTecnicaService {
       const insumoMap = new Map(insumos.map((i: any) => [i.id, Number(i.costPerUnit)]));
 
       // 3. Inserir novos itens
-      const inserts = items.map(item => {
+      for (const item of items) {
         const custoUnitario = item.insumoId ? (insumoMap.get(item.insumoId) || 0) : 0;
         const quantidade = Number(item.quantidade || 0);
-        return {
-          organizationId,
-          insumoId: item.insumoId || null,
-          productId,
-          configurationOptionId,
-          configurationGroupId: item.configurationGroupId || null,
-          quantidade,
-          custoCalculado: (custoUnitario as number) * quantidade,
-          linkedVariable: item.linkedVariable || null,
-          linkedQuantityVariable: item.linkedQuantityVariable || null
-        };
-      });
-
-      if (inserts.length > 0) {
-        await tx.fichaTecnicaInsumo.createMany({
-          data: inserts
+        
+        await tx.fichaTecnicaInsumo.create({
+          data: {
+            organizationId,
+            insumoId: item.insumoId || null,
+            productId,
+            configurationOptionId,
+            configurationGroupId: item.configurationGroupId || null,
+            quantidade,
+            width: item.width != null ? Number(item.width) : null,
+            height: item.height != null ? Number(item.height) : null,
+            itemsPerUnit: item.itemsPerUnit != null ? Number(item.itemsPerUnit) : 1.0,
+            custoCalculado: (custoUnitario as number) * quantidade,
+            linkedVariable: item.linkedVariable || null,
+            linkedQuantityVariable: item.linkedQuantityVariable || null
+          }
         });
       }
 

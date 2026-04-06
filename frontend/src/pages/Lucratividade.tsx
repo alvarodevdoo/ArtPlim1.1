@@ -28,7 +28,6 @@ interface ProfitItem {
   unitPriceAtSale: number;
   realProfitPerUnit: number;
   realMarkup: number;
-  targetMarkup: number;
   divergence: number;
   isHealthy: boolean;
   confirmedAt: string;
@@ -87,7 +86,7 @@ export const Lucratividade: React.FC = () => {
           <h1 className="text-4xl font-black italic tracking-tighter text-white flex items-center gap-3">
             <TrendingUp className="h-10 w-10 text-indigo-500" /> CÉREBRO ANALÍTICO
           </h1>
-          <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px] mt-1">Inteligência de Lucratividade Real vs Alvo</p>
+          <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px] mt-1">Monitoramento de Rentabilidade e Margens Reais</p>
         </div>
         <Button onClick={loadData} variant="outline" className="flex gap-2 bg-slate-900 border-slate-800 hover:bg-slate-800 rounded-xl text-xs font-bold">
           <RefreshCw className="h-4 w-4" /> Recalcular Tudo
@@ -95,7 +94,7 @@ export const Lucratividade: React.FC = () => {
       </div>
 
       {/* Cards de Métricas de Alta Performance */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="bg-slate-900 border-slate-800 border-l-4 border-l-indigo-600 shadow-xl">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-[10px] font-black uppercase tracking-wider text-slate-500">Faturamento Real</CardTitle>
@@ -134,24 +133,9 @@ export const Lucratividade: React.FC = () => {
           </CardContent>
         </Card>
 
-        <Card className={cn(
-          "bg-slate-900 border-slate-800 border-l-4 shadow-xl",
-          metrics?.lowMarginAlerts && metrics.lowMarginAlerts > 0 ? "border-l-red-600 animate-pulse-slow" : "border-l-slate-700"
-        )}>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-[10px] font-black uppercase tracking-wider text-slate-500">Alertas de Margem</CardTitle>
-            <AlertTriangle className={cn("h-4 w-4", metrics?.lowMarginAlerts && metrics.lowMarginAlerts > 0 ? "text-red-500" : "text-slate-700")} />
-          </CardHeader>
-          <CardContent>
-            <div className={cn("text-3xl font-black", metrics?.lowMarginAlerts && metrics.lowMarginAlerts > 0 ? "text-red-600" : "text-white")}>
-              {metrics?.lowMarginAlerts}
-            </div>
-            <p className="text-[10px] font-medium text-slate-500 uppercase mt-2">Divergência Crítica</p>
-          </CardContent>
-        </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 gap-8">
         {/* Gráfico 1: Comparativo por Categoria */}
         <Card className="bg-slate-900 border-slate-800 shadow-2xl">
           <CardHeader className="flex flex-row items-center gap-3">
@@ -182,28 +166,6 @@ export const Lucratividade: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Gráfico 2: Divergência de Markup */}
-        <Card className="bg-slate-900 border-slate-800 shadow-2xl">
-          <CardHeader className="flex flex-row items-center gap-3">
-             <PieChart className="h-5 w-5 text-emerald-400" />
-             <div>
-                <CardTitle className="text-sm font-black uppercase tracking-widest text-white">Audit de Markups (Top Recentes)</CardTitle>
-                <p className="text-[10px] text-slate-500">Markup Real vs Alvo por Item</p>
-             </div>
-          </CardHeader>
-          <CardContent className="h-[300px] pt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={report.slice(0, 8).map(item => ({ name: item.productName.substring(0, 10), Real: item.realMarkup, Alvo: item.targetMarkup }))}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
-                <XAxis dataKey="name" fontSize={9} tickLine={false} axisLine={false} tick={{ fill: '#64748b' }} />
-                <YAxis fontSize={9} tickLine={false} axisLine={false} tick={{ fill: '#64748b' }} tickFormatter={(v) => `${v}x`} />
-                <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }} />
-                <Bar dataKey="Real" fill="#10b981" radius={[4, 4, 0, 0]} barSize={25} />
-                <Line type="step" dataKey="Alvo" stroke="#6366f1" strokeWidth={2} dot={{ r: 4, fill: '#6366f1' }} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Tabela de Snapshots Financial - Versão High-Tech */}
@@ -223,8 +185,7 @@ export const Lucratividade: React.FC = () => {
                   <th className="px-6 py-4">Pedido / Data</th>
                   <th className="px-6 py-4">Produto & Cliente</th>
                   <th className="px-6 py-4 text-center">Custo/Preço</th>
-                  <th className="px-6 py-4 text-center">Markup</th>
-                  <th className="px-6 py-4 text-center">Saúde</th>
+                  <th className="px-6 py-4 text-center">Markup Real</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/50">
@@ -245,20 +206,9 @@ export const Lucratividade: React.FC = () => {
                        <div className="text-xs font-black text-emerald-500 mt-0.5">R$ {item.unitPriceAtSale.toFixed(2)}</div>
                     </td>
                     <td className="px-6 py-4 text-center">
-                       <div className={cn(
-                         "inline-block px-2 py-1 rounded-lg text-[10px] font-black",
-                         item.isHealthy ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"
-                       )}>
+                       <div className="inline-block px-2 py-1 rounded-lg text-[10px] font-black bg-emerald-500/10 text-emerald-500">
                          {item.realMarkup.toFixed(2)}x
                        </div>
-                       <div className="text-[9px] text-slate-700 mt-1 font-bold">Target: {item.targetMarkup.toFixed(2)}x</div>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      {item.isHealthy ? (
-                        <Badge className="bg-emerald-500/10 text-emerald-500 border-none hover:bg-emerald-500/20 text-[9px] font-black italic">SAUDÁVEL</Badge>
-                      ) : (
-                        <Badge variant="destructive" className="bg-red-500/10 text-red-500 border-none hover:bg-red-500/20 text-[9px] font-black italic">REVISAR PREÇO</Badge>
-                      )}
                     </td>
                   </tr>
                 ))}

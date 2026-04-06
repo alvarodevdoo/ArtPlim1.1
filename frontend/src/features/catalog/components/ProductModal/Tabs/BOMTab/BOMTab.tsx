@@ -6,19 +6,19 @@ import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { cn } from '@/lib/utils';
 import { Combobox } from '@/components/ui/Combobox';
-import { useInsumos } from '@/features/insumos/useInsumos';
+import { useInsumos } from '@/features/supplies/useInsumos';
 import { DraftBOMItem, DraftVariationGroup } from '../../types';
 import { nanoid } from 'nanoid';
 
 interface BOMTabProps {
   productName: string;
+  salePrice: number;
   items: DraftBOMItem[];
   variationGroups: DraftVariationGroup[];
-  targetMarkup?: number;
   onChange: (items: DraftBOMItem[]) => void;
 }
 
-export const BOMTab: React.FC<BOMTabProps> = ({ productName, items, variationGroups, targetMarkup, onChange }) => {
+export const BOMTab: React.FC<BOMTabProps> = ({ productName, salePrice, items, variationGroups, onChange }) => {
   const { insumos } = useInsumos();
   const [showAddForm, setShowAddForm] = useState(false);
 
@@ -51,10 +51,13 @@ export const BOMTab: React.FC<BOMTabProps> = ({ productName, items, variationGro
         materialName: `${slotName.trim()} (Variável)`,
         unit: 'un',
         quantity,
+        width: 0,
+        height: 0,
         itemsPerUnit: ipu,
         costPerUnit: 0,
         effectiveCost: 0,
         subtotal: 0,
+        salePrice: 0,
         isFixed: false,
         configurationGroupId: selectedGroup,
       };
@@ -75,10 +78,13 @@ export const BOMTab: React.FC<BOMTabProps> = ({ productName, items, variationGro
         materialName: (material as any).name || (material as any).nome,
         unit: (material as any).unit || (material as any).unidadeBase,
         quantity,
+        width: 0,
+        height: 0,
         itemsPerUnit: ipu,
         costPerUnit,
         effectiveCost,
         subtotal: effectiveCost * quantity,
+        salePrice: (effectiveCost * quantity) * 2.5, // Markup padrão inicial
         isFixed: true,
       };
       onChange([...items, newItem]);
@@ -90,9 +96,9 @@ export const BOMTab: React.FC<BOMTabProps> = ({ productName, items, variationGro
     onChange(items.filter((i) => i.id !== id));
   };
 
-  const updateQty = (id: string, newQty: number) => {
+  const updateQty = (id: string, newQty: number, width?: number, height?: number) => {
     onChange(items.map((i) => i.id === id
-      ? { ...i, quantity: newQty, subtotal: i.effectiveCost * newQty }
+      ? { ...i, quantity: newQty, width, height, subtotal: i.effectiveCost * newQty }
       : i
     ));
   };
@@ -151,17 +157,11 @@ export const BOMTab: React.FC<BOMTabProps> = ({ productName, items, variationGro
             <p className="text-[10px] font-bold text-slate-400 uppercase">Defina o que compõe {productName || '...'}</p>
           </div>
         </div>
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-8">
           <div className="text-right">
             <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Custo Total</p>
             <p className="text-sm font-black text-slate-800">
               {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalCost)}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-[9px] font-black uppercase text-emerald-500 tracking-wider">Venda Sugerida</p>
-            <p className="text-sm font-black text-emerald-600">
-              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalCost * (targetMarkup || 1))}
             </p>
           </div>
           <Button onClick={() => setShowAddForm(true)} className="rounded-xl font-bold shadow-md shadow-primary/20">
@@ -282,10 +282,10 @@ export const BOMTab: React.FC<BOMTabProps> = ({ productName, items, variationGro
                   <BOMCard 
                     key={item.id} 
                     item={item} 
-                    targetMarkup={targetMarkup || 1} 
                     onRemove={handleRemove} 
                     onQtyChange={updateQty} 
                     onIpuChange={updateItemsPerUnit} 
+                    variationGroups={variationGroups}
                   />
                 ))}
               </div>
@@ -299,10 +299,10 @@ export const BOMTab: React.FC<BOMTabProps> = ({ productName, items, variationGro
                   <BOMCard 
                     key={item.id} 
                     item={item} 
-                    targetMarkup={targetMarkup || 1} 
                     onRemove={handleRemove} 
                     onQtyChange={updateQty} 
                     onIpuChange={updateItemsPerUnit} 
+                    variationGroups={variationGroups}
                   />
                 ))}
               </div>
@@ -328,22 +328,54 @@ export const BOMTab: React.FC<BOMTabProps> = ({ productName, items, variationGro
 // ─── BOM Card ─────────────────────────────────────────────────────────────────
 const BOMCard = ({
   item,
-  targetMarkup,
   onRemove,
   onQtyChange,
   onIpuChange,
+  variationGroups,
 }: {
   item: DraftBOMItem;
-  targetMarkup: number;
   onRemove: (id: string) => void;
-  onQtyChange: (id: string, qty: number) => void;
+  onQtyChange: (id: string, qty: number, width?: number, height?: number) => void;
   onIpuChange: (id: string, ipu: number) => void;
+  variationGroups: DraftVariationGroup[];
 }) => {
   const fmt = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n);
   
   const [showCalculator, setShowCalculator] = useState(false);
   const [calcWidth, setCalcWidth] = useState('0');
   const [calcHeight, setCalcHeight] = useState('0');
+
+  // Encontrar o preço de venda baseado na variação se for um slot
+  const getSalePrice = () => {
+    if (item.isFixed) return 0;
+    
+    if (item.configurationGroupId) {
+      const group = variationGroups.find(g => g.id === item.configurationGroupId);
+      if (!group) return 0;
+
+      if (group && group.options.length > 0) {
+        // Busca o menor valor fixo entre todas as opções do grupo
+        const prices = group.options
+          .map(o => Number(o.fixedValue || 0))
+          .filter(p => p > 0);
+          
+        if (prices.length > 0) {
+          return Math.min(...prices); 
+        }
+      }
+    }
+    return 0;
+  };
+
+  const itemSalePrice = getSalePrice();
+
+  // Sync internal calculator state when showing it
+  React.useEffect(() => {
+    if (showCalculator) {
+      setCalcWidth(String(item.width || 0));
+      setCalcHeight(String(item.height || 0));
+    }
+  }, [showCalculator, item.width, item.height]);
 
   // Determinar se o material é baseado em área (M2)
   const isAreaUnit = item.unit?.toLowerCase().includes('m²') || item.unit?.toLowerCase().includes('m2');
@@ -353,7 +385,7 @@ const BOMCard = ({
     const h = parseFloat(calcHeight) || 0;
     if (w > 0 && h > 0) {
       const areaM2 = (w * h) / 1000000;
-      onQtyChange(item.id, areaM2);
+      onQtyChange(item.id, areaM2, w, h);
     }
     setShowCalculator(false);
   };
@@ -380,6 +412,11 @@ const BOMCard = ({
               <span className="text-[10px] text-slate-400 font-bold">
                 Custo unit.: {fmt(item.effectiveCost)}
               </span>
+              {isAreaUnit && item.width && item.height && (
+                <span className="text-[10px] text-indigo-400 font-black">
+                  ({item.width} x {item.height} mm)
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -394,7 +431,12 @@ const BOMCard = ({
                 min={0}
                 step="0.0001"
                 value={item.quantity}
-                onChange={(e) => onQtyChange(item.id, parseFloat(e.target.value) || 0)}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value) || 0;
+                  onQtyChange(item.id, val, 0, 0);
+                  setCalcWidth('0');
+                  setCalcHeight('0');
+                }}
                 className="w-20 h-8 border rounded-lg text-center text-xs font-black focus:outline-none focus:border-indigo-400"
               />
               {isAreaUnit && (
@@ -431,11 +473,16 @@ const BOMCard = ({
             <p className="text-xs font-bold text-slate-500">{fmt(item.subtotal)}</p>
           </div>
 
-          {/* Subtotal Sale (Target) */}
-          <div className="text-right min-w-[100px] bg-emerald-50/50 p-2 rounded-xl border border-emerald-100/50">
-            <p className="text-[9px] font-black uppercase text-emerald-600 mb-1">Venda Sugerida</p>
-            <p className="text-sm font-black text-emerald-700">{fmt(item.subtotal * targetMarkup)}</p>
-          </div>
+          {/* Individual Sale Price (ReadOnly based on Variation) */}
+          {!item.isFixed && (
+            <div className="text-right min-w-[110px] bg-emerald-50/50 p-2 rounded-xl border border-emerald-100/50">
+              <p className="text-[9px] font-black uppercase text-emerald-600 mb-1">Preço de Venda</p>
+              <p className="text-xs font-black text-emerald-700">
+                {itemSalePrice > 0 ? fmt(itemSalePrice) : '---'}
+              </p>
+              <p className="text-[8px] font-bold text-emerald-400 uppercase mt-0.5">Variação</p>
+            </div>
+          )}
 
           <button
             onClick={() => onRemove(item.id)}

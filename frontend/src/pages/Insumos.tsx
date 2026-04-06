@@ -7,7 +7,7 @@ import {
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { Combobox } from '@/components/ui/Combobox';
-import { MaterialDrawer, type Material } from '@/features/insumos/components/MaterialDrawer';
+import { MaterialDrawer, type Material } from '@/features/supplies/components/MaterialDrawer';
 import { cn } from '@/lib/utils';
 
 const Insumos: React.FC = () => {

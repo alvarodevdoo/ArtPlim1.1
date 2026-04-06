@@ -7,8 +7,6 @@ export interface ProductDraft {
   pricingMode: 'SIMPLE_AREA' | 'SIMPLE_UNIT' | 'DYNAMIC_ENGINEER';
   salePrice: number;          // Preço de venda manual (priceOverride global)
   costPrice: number;
-  targetMarkup?: number;
-  targetMargin?: number;
   active: boolean;
   categoryId?: string;
   revenueAccountId?: string;
@@ -28,10 +26,13 @@ export interface DraftBOMItem {
   materialName: string;
   unit: string;
   quantity: number;
+  width?: number;
+  height?: number;
   itemsPerUnit: number;
   costPerUnit: number;
   effectiveCost: number;
   subtotal: number;
+  salePrice?: number;
   isFixed: boolean;
   configurationOptionId?: string | null;
   configurationGroupId?: string | null;
@@ -45,6 +46,8 @@ export interface DraftOption {
   value: string;
   /** Manual price override for this option (replaces global salePrice when selected) */
   priceOverride?: number | null;
+  /** Fixed sale value for this variation (e.g. "Valor Fixo" in UI) */
+  fixedValue?: number | null;
   /** Additional cost modifier (FIXED add-on to base cost) */
   priceModifier: number;
   priceModifierType: 'FIXED' | 'PERCENTAGE';
@@ -72,7 +75,6 @@ export interface FinancialSummary {
   salePrice: number;
   grossProfit: number;
   marginPercent: number;
-  healthStatus: 'healthy' | 'warning' | 'danger';
   isSalePriceOverridden?: boolean;
   baseSalePrice: number;
 }
