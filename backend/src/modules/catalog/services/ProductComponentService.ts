@@ -119,8 +119,8 @@ export class ProductComponentService {
             format: true,
             costPerUnit: true,
             unit: true,
-            standardWidth: true,
-            standardLength: true
+            width: true,
+            height: true
           }
         }
       }
@@ -176,8 +176,8 @@ export class ProductComponentService {
             format: true,
             costPerUnit: true,
             unit: true,
-            standardWidth: true,
-            standardLength: true,
+            width: true,
+            height: true,
             inventoryItems: {
               select: {
                 quantity: true
@@ -245,8 +245,8 @@ export class ProductComponentService {
             format: true,
             costPerUnit: true,
             unit: true,
-            standardWidth: true,
-            standardLength: true
+            width: true,
+            height: true
           }
         }
       }

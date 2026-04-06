@@ -15,7 +15,7 @@ export async function simulateComposition(params: {
   selectedOptionIds: string[];
   quantity: number;
 }): Promise<CompositionResult> {
-  const res = await api.post('/api/simulate-composition', params);
+  const res = await api.post('/api/sales/simulate-composition', params);
   if (!res.data?.success) throw new Error(res.data?.message || 'Erro ao simular composição');
   return res.data.data as CompositionResult;
 }
@@ -28,7 +28,7 @@ export async function fetchIncompatibilities(
     return { blockedIds: [], reasons: {} };
   }
   const ids = selectedOptionIds.join(',');
-  const res = await api.get(`/api/orders/incompatibilities?selectedOptionIds=${ids}`);
+  const res = await api.get(`/api/sales/orders/incompatibilities?selectedOptionIds=${ids}`);
   if (!res.data?.success) throw new Error(res.data?.message || 'Erro ao buscar incompatibilidades');
   return res.data.data as IncompatibilityResult;
 }
@@ -41,7 +41,7 @@ export async function confirmOrder(orderId: string): Promise<{
   stockMovementsCreated: number;
   warnings: string[];
 }> {
-  const res = await api.post(`/api/orders/${orderId}/confirm`);
+  const res = await api.post(`/api/sales/orders/${orderId}/confirm`);
   if (!res.data?.success) throw new Error(res.data?.message || 'Erro ao confirmar pedido');
   return res.data.data;
 }

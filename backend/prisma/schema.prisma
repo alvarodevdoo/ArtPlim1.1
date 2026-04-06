@@ -368,6 +368,7 @@ model ConfigurationOption {
   description          String?
   priceModifier        Decimal                  @default(0) @db.Decimal(10, 2)
   priceModifierType    String                   @default("FIXED")
+  priceOverride        Decimal?                 @db.Decimal(10, 2) // Sobrescreve o preço global se definido
   additionalComponents Json?
   removedComponents    Json?
   componentModifiers   Json?
@@ -1068,9 +1069,10 @@ model PricingRule {
 model FichaTecnicaInsumo {
   id                     String               @id @default(uuid())
   organizationId         String
-  insumoId               String
+  insumoId               String? // Opcional para suportar Slots (Draft-to-Slot)
   productId              String?
   configurationOptionId  String?
+  configurationGroupId   String? // Vínculo com grupo de variáveis para slots
   quantidade             Float
   custoCalculado         Decimal              @db.Decimal(10, 4)
   createdAt              DateTime             @default(now())
@@ -1078,11 +1080,10 @@ model FichaTecnicaInsumo {
   linkedQuantityVariable String?
   linkedVariable         String?
   option                 ConfigurationOption? @relation(fields: [configurationOptionId], references: [id], onDelete: Cascade)
-  material               Material             @relation(fields: [insumoId], references: [id])
+  material               Material?            @relation(fields: [insumoId], references: [id])
   organization           Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   product                Product?             @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  @@unique([productId, insumoId], name: "productId_insumoId")
   @@index([configurationOptionId])
   @@map("ficha_tecnica_insumos")
 }

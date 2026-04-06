@@ -65,9 +65,11 @@ export const ConfiguratorModal: React.FC<ConfiguratorModalProps> = ({
   // Sincronizar preço negociado com o preço sugerido ao receber composição
   useEffect(() => {
     if (composition && negotiatedPrice === 0) {
-      setNegotiatedPrice(composition.suggestedPrice);
+      // O motor retorna o total sugerido; o preço praticado no form é unitário.
+      const unitSuggested = composition.suggestedPrice / Math.max(1, quantity);
+      setNegotiatedPrice(Number(unitSuggested.toFixed(2)));
     }
-  }, [composition?.suggestedPrice]);
+  }, [composition?.suggestedPrice, quantity]);
 
   // Carregar configurações do produto
   useEffect(() => {

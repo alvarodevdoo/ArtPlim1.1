@@ -67,7 +67,11 @@ export const VariationSelector: React.FC<VariationSelectorProps> = ({
                 id={`opt-${option.id}`}
               >
                 {option.label}
-                {option.priceModifier !== 0 && !isDisabled && (
+                {(option.priceOverride !== undefined && option.priceOverride !== null) ? (
+                  <span className="variation-price-delta" style={{ background: '#eef2ff', color: '#4f46e5' }}>
+                    R$ {Number(option.priceOverride).toFixed(2)}
+                  </span>
+                ) : option.priceModifier !== 0 && !isDisabled && (
                   <span className="variation-price-delta">
                     {option.priceModifier > 0 ? '+' : ''}
                     {Number(option.priceModifier).toFixed(2)}

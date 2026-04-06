@@ -148,7 +148,7 @@ const ItemConfigurationModal: React.FC<ItemConfigurationModalProps> = ({
                     </div>
                 </CardHeader>
 
-                <CardContent>
+                <CardContent className="overflow-y-auto flex-1">
                     {isService ? (
                         <ServiceItemForm
                             produto={produto}

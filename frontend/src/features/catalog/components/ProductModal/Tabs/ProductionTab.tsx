@@ -1,16 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Workflow, Plus, Trash2, Clock, 
+  Workflow, Trash2, Clock, 
   DollarSign, Settings, Info, GitMerge,
-  PlayCircle
+  PlayCircle, Plus
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { Card, CardContent } from '@/components/ui/Card';
-import { Input } from '@/components/ui/Input';
-import { Label } from '@/components/ui/Label';
-import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import api from '@/lib/api';
+
 import { ProductDraft } from '../types';
 
 interface ProductionTabProps {

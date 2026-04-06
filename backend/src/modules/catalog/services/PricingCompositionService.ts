@@ -72,6 +72,9 @@ export class PricingCompositionService {
     const targetMarkup = product.targetMarkup || product.markup || 2.0;
     const breakdown: CompositionLineItem[] = [];
     const insufficientStock: InsufficientStockItem[] = [];
+    
+    let maxOverride = 0;
+    let totalModifiers = 0;
 
     // 2. Calcular custo da ficha técnica FIXA do produto (sem opções)
     let baseMaterialCost = 0;
@@ -117,11 +120,9 @@ export class PricingCompositionService {
       const options = await this.prisma.configurationOption.findMany({
         where: { id: { in: selectedOptionIds } },
         include: {
-          // Slot direto: opção vinculada a um único material
           material: {
             select: { id: true, name: true, averageCost: true, currentStock: true, unit: true }
           },
-          // Ficha técnica da opção (pode ter múltiplos materiais)
           fichasTecnicas: {
             include: {
               material: {
@@ -133,6 +134,11 @@ export class PricingCompositionService {
       });
 
       for (const opt of options) {
+        // Acumular modificadores e acompanhar o maior preço fixo (override)
+        totalModifiers += Number(opt.priceModifier || 0) * quantity;
+        const optOverride = Number(opt.priceOverride || 0) * quantity;
+        if (optOverride > maxOverride) maxOverride = optOverride;
+
         // 3a. Slot direto (materialId na própria option)
         if (opt.materialId && opt.material) {
           const mat = opt.material;
@@ -187,7 +193,12 @@ export class PricingCompositionService {
     }
 
     const totalCost = baseMaterialCost + variableMaterialCost;
-    const suggestedPrice = totalCost * targetMarkup;
+    
+    // Lógica Final de Preço Sugerido:
+    // Considera o maior entre (Custo x Markup) e (Maior Preço Fixo definido), somando os Modificadores Extras.
+    const costBasedPrice = totalCost * targetMarkup;
+    const suggestedPrice = Math.max(costBasedPrice, (maxOverride || 0)) + (totalModifiers || 0);
+
     const currentMargin = suggestedPrice > 0
       ? (suggestedPrice - totalCost) / suggestedPrice
       : 0;

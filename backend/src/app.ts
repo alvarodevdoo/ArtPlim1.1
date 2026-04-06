@@ -80,7 +80,7 @@ async function registerRoutes(fastify: FastifyInstance, options: { websocketServ
 
   await fastify.register(async function (api) {
     await api.register(authRoutes, { prefix: '/auth' });
-    await api.register(salesRoutes, { prefix: '/sales' });
+    await api.register(salesRoutes, { prefix: '/sales' }); // Vendas ficam em /api/sales (pedidos, simulação, etc)
     await api.register(catalogRoutes, { prefix: '/catalog' });
     await api.register(profilesRoutes, { prefix: '/profiles' });
     await api.register(organizationRoutes, { prefix: '/organization' });
@@ -113,7 +113,7 @@ async function registerRoutes(fastify: FastifyInstance, options: { websocketServ
 }
 
 function setupErrorHandler(fastify: FastifyInstance) {
-  fastify.setErrorHandler((error, request, reply) => {
+  fastify.setErrorHandler((error: any, request, reply) => {
     fastify.log.error(error);
 
     if (error instanceof AppError) {
@@ -124,9 +124,29 @@ function setupErrorHandler(fastify: FastifyInstance) {
     }
 
     if (error.validation) {
+      // Se for um array de erros do Zod/Fastify
+      const errorMsg = Array.isArray(error.validation)
+        ? `Dados inválidos: ${error.validation.map((v: any) => `${validingPath(v)} ${v.message}`).join(', ')}`
+        : 'Dados inválidos';
+
+      function validingPath(v: any) {
+        if (!v.instancePath) return '';
+        return v.instancePath.replace(/^\//, '') + ':';
+      }
+
       return reply.status(400).send({
         success: false,
-        error: { message: 'Dados inválidos', statusCode: 400, details: error.validation }
+        error: { message: errorMsg, statusCode: 400, details: error.validation }
+      });
+    }
+
+    // Se for erro do Zod importado diretamente e der throw, mas Fastify com Zod normalmente cai no error.validation se tiver configurado certo.
+    if (error.name === 'ZodError') {
+       const zodError = error as any;
+       const msg = zodError.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ');
+       return reply.status(400).send({
+        success: false,
+        error: { message: `Validação: ${msg}`, statusCode: 400 }
       });
     }
 

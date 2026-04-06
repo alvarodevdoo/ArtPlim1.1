@@ -250,11 +250,10 @@ export function SeletorInsumos({
             {!somenteLeitura && <span style={{ width: 36 }} />}
           </div>
 
-          {/* Linhas dos materiais */}
-          {materiaisAdicionados.map((m) => {
+          {materiaisAdicionados.map((m, index) => {
             const subtotal = m.quantidadeUtilizada * m.precoBase;
             return (
-              <div key={m.insumoId} style={styles.listaRow}>
+              <div key={`${m.insumoId || 'slot'}-${index}`} style={styles.listaRow}>
                 <span style={{ flex: 3, fontWeight: 500, color: '#0f172a' }}>{m.nome}</span>
 
                 {/* Seletor de Variável da Fórmula (Preço) */}

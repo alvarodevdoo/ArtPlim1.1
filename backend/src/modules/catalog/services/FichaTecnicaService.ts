@@ -9,10 +9,11 @@ import { PrismaClient } from '@prisma/client';
 import { AppError } from '../../../shared/infrastructure/errors/AppError';
 
 export interface FichaTecnicaItem {
-  insumoId: string;
+  insumoId?: string | null;
   quantidade: number;
   linkedVariable?: string;
   linkedQuantityVariable?: string;
+  configurationGroupId?: string | null;
 }
 
 export class FichaTecnicaService {
@@ -34,7 +35,7 @@ export class FichaTecnicaService {
     }
 
     // Executa em transação para garantir atomicidade
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx: any) => {
       // 1. Remover itens anteriores
       const where: any = { organizationId };
       if (productId) where.productId = productId;
@@ -42,25 +43,29 @@ export class FichaTecnicaService {
 
       await tx.fichaTecnicaInsumo.deleteMany({ where });
 
-      // 2. Buscar custos atuais dos insumos para gravar o custoCalculado (snapshot)
-      const insumoIds = items.map(i => i.insumoId);
-      const insumos = await tx.material.findMany({
-        where: { id: { in: insumoIds }, organizationId },
-        select: { id: true, costPerUnit: true }
-      });
+      // 2. Buscar custos atuais dos insumos (apenas os que não são nulos)
+      const insumoIds = items.filter(i => i.insumoId).map(i => i.insumoId as string);
+      const insumos = insumoIds.length > 0 
+        ? await tx.material.findMany({
+            where: { id: { in: insumoIds }, organizationId },
+            select: { id: true, costPerUnit: true }
+          })
+        : [];
 
-      const insumoMap = new Map(insumos.map(i => [i.id, Number(i.costPerUnit)]));
+      const insumoMap = new Map(insumos.map((i: any) => [i.id, Number(i.costPerUnit)]));
 
       // 3. Inserir novos itens
       const inserts = items.map(item => {
-        const custoUnitario = insumoMap.get(item.insumoId) || 0;
+        const custoUnitario = item.insumoId ? (insumoMap.get(item.insumoId) || 0) : 0;
+        const quantidade = Number(item.quantidade || 0);
         return {
           organizationId,
-          insumoId: item.insumoId,
+          insumoId: item.insumoId || null,
           productId,
           configurationOptionId,
-          quantidade: item.quantidade,
-          custoCalculado: custoUnitario * item.quantidade,
+          configurationGroupId: item.configurationGroupId || null,
+          quantidade,
+          custoCalculado: (custoUnitario as number) * quantidade,
           linkedVariable: item.linkedVariable || null,
           linkedQuantityVariable: item.linkedQuantityVariable || null
         };
@@ -99,6 +104,7 @@ export class FichaTecnicaService {
             name: true,
             unit: true,
             costPerUnit: true,
+            averageCost: true,
             description: true
           }
         }
@@ -112,6 +118,6 @@ export class FichaTecnicaService {
    */
   async calculateTotalCost(organizationId: string, targetId: string): Promise<number> {
     const items = await this.getByTarget(organizationId, targetId);
-    return items.reduce((total, item) => total + (Number(item.custoCalculado)), 0);
+    return items.reduce((total: number, item: any) => total + (Number(item.custoCalculado || 0)), 0);
   }
 }

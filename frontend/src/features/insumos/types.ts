@@ -38,14 +38,20 @@ export type CategoriaInsumo = typeof CATEGORIAS_INSUMO[number];
 export interface Insumo {
   id: string;
   organizationId: string;
+  // Campos em português (legado)
   nome: string;
   categoria: string;
-  unidadeBase: UnidadeBase;
-  /** Custo por unidade base (em Reais) */
+  unidadeBase: string;
+  /** Custo normalizado: averageCost se > 0, senão costPerUnit */
   custoUnitario: number;
   ativo: boolean;
   createdAt: string;
   updatedAt: string;
+  // Campos adicionais do backend (mapeados no hook)
+  name?: string;
+  unit?: string;
+  costPerUnit?: number;
+  averageCost?: number;
 }
 
 // ─── Formulário ───────────────────────────────────────────────────────────────

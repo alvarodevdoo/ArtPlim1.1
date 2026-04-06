@@ -50,54 +50,60 @@ export class CategoryService {
       where.type = type;
     }
 
-    return this.prisma.category.findMany({
-      where,
-      include: {
-        parent: {
-          select: {
-            id: true,
-            name: true
+    try {
+      const result = await this.prisma.category.findMany({
+        where,
+        include: {
+          parent: {
+            select: {
+              id: true,
+              name: true
+            }
+          },
+          chartOfAccount: {
+            select: {
+              id: true,
+              code: true,
+              name: true
+            }
+          },
+          inventoryAccount: {
+            select: {
+              id: true,
+              code: true,
+              name: true
+            }
+          },
+          expenseAccount: {
+            select: {
+              id: true,
+              code: true,
+              name: true
+            }
+          },
+          children: {
+            select: {
+              id: true,
+              name: true,
+              color: true
+            }
+          },
+          _count: {
+            select: {
+              transactions: true
+            }
           }
         },
-        chartOfAccount: {
-          select: {
-            id: true,
-            code: true,
-            name: true
-          }
-        },
-        inventoryAccount: {
-          select: {
-            id: true,
-            code: true,
-            name: true
-          }
-        },
-        expenseAccount: {
-          select: {
-            id: true,
-            code: true,
-            name: true
-          }
-        },
-        children: {
-          select: {
-            id: true,
-            name: true,
-            color: true
-          }
-        },
-        _count: {
-          select: {
-            transactions: true
-          }
-        }
-      },
-      orderBy: [
-        { parentId: 'asc' },
-        { name: 'asc' }
-      ]
-    });
+        orderBy: [
+          { parentId: 'asc' },
+          { name: 'asc' }
+        ]
+      });
+      return result;
+    } catch (error: any) {
+      console.error('[CATEGORY_SERVICE_LIST] Prisma Error:', error);
+      throw error;
+    }
   }
 
   async findById(id: string, organizationId: string) {

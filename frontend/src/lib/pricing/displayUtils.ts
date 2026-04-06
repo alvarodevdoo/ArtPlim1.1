@@ -13,14 +13,46 @@ export interface DisplayInfo {
  * considerando regras de precificação dinâmica ou preços fixos.
  */
 export const getProductDisplayInfo = (produto: any): DisplayInfo => {
-  // 1. Prioridade: Preço Fixo (se definido, maior que zero e não for cálculo dinâmico)
-  if (produto.salePrice > 0 && produto.pricingMode !== 'DYNAMIC_ENGINEER') {
-    return {
-      price: formatCurrency(produto.salePrice),
-      cost: produto.costPrice > 0 ? formatCurrency(produto.costPrice) : null,
-      isStarting: false,
-      note: null
-    };
+  // 1. Prioridade: Preço Fixo ou Por Unidade Simples (se não for cálculo dinâmico)
+  if (produto.pricingMode !== 'DYNAMIC_ENGINEER') {
+    let basePrice = Number(produto.salePrice || 0);
+    let isStarting = false;
+
+    // Se existirem configurações/variações, encontraremos o menor preço global
+    if (produto.configurations && Array.isArray(produto.configurations) && produto.configurations.length > 0) {
+      let lowestOverride: number | null = null;
+      let hasAnyOverride = false;
+
+      produto.configurations.forEach((group: any) => {
+        if (group.options && Array.isArray(group.options)) {
+          const overrides = group.options
+            .filter((o: any) => o.priceOverride != null && Number(o.priceOverride) > 0)
+            .map((o: any) => Number(o.priceOverride));
+
+          if (overrides.length > 0) {
+            hasAnyOverride = true;
+            const minInGroup = Math.min(...overrides);
+            if (lowestOverride === null || minInGroup < lowestOverride) {
+              lowestOverride = minInGroup;
+            }
+          }
+        }
+      });
+
+      if (hasAnyOverride && lowestOverride !== null) {
+        basePrice = lowestOverride;
+        isStarting = true; // Mostra "A partir de"
+      }
+    }
+
+    if (basePrice > 0 || !produto.pricingRule) {
+      return {
+        price: formatCurrency(basePrice),
+        cost: produto.costPrice > 0 ? formatCurrency(produto.costPrice) : null,
+        isStarting: isStarting,
+        note: null
+      };
+    }
   }
 
   // 2. Prioridade: Regra de Precificação Dinâmica

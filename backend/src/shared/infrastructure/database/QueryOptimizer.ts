@@ -20,6 +20,18 @@ export class QueryOptimizer {
         active: true,
         formulaData: true,
         pricingRule: true,
+        configurations: {
+          select: {
+            id: true,
+            options: {
+              select: {
+                id: true,
+                priceOverride: true,
+                priceModifier: true
+              }
+            }
+          }
+        },
         components: {
           select: {
             id: true,
@@ -440,10 +452,17 @@ export class QueryOptimizer {
       // Índices para profiles (clientes)
       'CREATE INDEX IF NOT EXISTS idx_profiles_org_customer ON profiles("organizationId", "isCustomer") WHERE "isCustomer" = true',
       'CREATE INDEX IF NOT EXISTS idx_profiles_document ON profiles(document)',
+      'CREATE INDEX IF NOT EXISTS idx_profiles_org ON profiles("organizationId")',
 
-      // Índices compostos para analytics
+      // Índices para Status de Processo e Configurações
+      'CREATE INDEX IF NOT EXISTS idx_process_statuses_org ON process_statuses("organizationId", active)',
+      'CREATE INDEX IF NOT EXISTS idx_process_statuses_parent ON process_statuses("parentId")',
+      'CREATE INDEX IF NOT EXISTS idx_org_settings_org ON organization_settings("organizationId")',
+
+      // Índices compostos para analytics e performance
       'CREATE INDEX IF NOT EXISTS idx_orders_analytics ON orders("organizationId", status, "createdAt")',
-      'CREATE INDEX IF NOT EXISTS idx_order_items_analytics ON order_items("orderId", "productId", "totalPrice")'
+      'CREATE INDEX IF NOT EXISTS idx_order_items_analytics ON order_items("orderId", "productId", "totalPrice")',
+      'CREATE INDEX IF NOT EXISTS idx_order_items_product_status ON order_items("productId", status)'
     ];
 
     console.log('🔧 Criando índices otimizados...');

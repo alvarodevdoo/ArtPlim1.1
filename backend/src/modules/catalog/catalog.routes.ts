@@ -18,7 +18,7 @@ const listQuerySchema = z.object({
 
 const createProductSchema = z.object({
   name: z.string().min(2),
-  description: z.string().optional(),
+  description: z.string().optional().nullable(),
   productType: z.enum(['PRODUCT', 'SERVICE', 'PRINT_SHEET', 'PRINT_ROLL', 'LASER_CUT', 'UNIT', 'SQUARE_METER', 'TIME_AREA']).optional().default('PRODUCT'),
   pricingMode: z.enum(['SIMPLE_AREA', 'SIMPLE_UNIT', 'DYNAMIC_ENGINEER']).optional().default('SIMPLE_AREA'),
   pricingRuleId: z.preprocess((val) => val === '' ? null : val, z.string().uuid().optional().nullable()),
@@ -26,6 +26,8 @@ const createProductSchema = z.object({
   localFormulaId: z.preprocess((val) => val === '' ? null : val, z.string().optional().nullable()),
   salePrice: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional()),
   costPrice: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional()),
+  targetMarkup: z.number().optional().nullable(),
+  targetMargin: z.number().optional().nullable(),
   // Controle de estoque
   trackStock: z.boolean().optional().default(false),
   sellWithoutStock: z.boolean().optional().default(true),
@@ -114,7 +116,9 @@ const createOptionSchema = z.object({
     unit: z.string().optional()
   })).optional(),
   displayOrder: z.number().int().min(1).optional(),
-  isAvailable: z.boolean().optional()
+  isAvailable: z.boolean().optional(),
+  priceOverride: z.preprocess((val) => (val === '' || val === null || val === undefined) ? null : isNaN(Number(val)) ? null : Number(val), z.number().nullable().optional()),
+  materialId: z.preprocess((val) => val === '' ? null : val, z.string().uuid().optional().nullable()),
 });
 
 const createTemplateSchema = z.object({
@@ -788,7 +792,11 @@ export async function catalogRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const prisma = getTenantClient(request.user!.organizationId);
     const service = new PricingRuleService(prisma);
-    const rules = await service.list();
+    
+    // Garante as regras padrão (M² e Unidade)
+    await service.ensureDefaultRules(request.user!.organizationId);
+    
+    const rules = await service.list(request.user!.organizationId);
     return reply.send({ success: true, data: rules });
   });
 
@@ -839,7 +847,7 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const prisma = getTenantClient(request.user!.organizationId);
     const service = new PricingRuleService(prisma);
     const updateData: any = { ...body };
-    const rule = await service.update(id, updateData);
+    const rule = await service.update(id, request.user!.organizationId, updateData);
     return reply.send({ success: true, data: rule });
   });
 
@@ -850,7 +858,7 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     const prisma = getTenantClient(request.user!.organizationId);
     const service = new PricingRuleService(prisma);
-    const history = await service.getHistory(id);
+    const history = await service.getHistory(id, request.user!.organizationId);
     return reply.send({ success: true, data: history });
   });
 
@@ -861,7 +869,7 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     const prisma = getTenantClient(request.user!.organizationId);
     const service = new PricingRuleService(prisma);
-    await service.delete(id);
+    await service.delete(id, request.user!.organizationId);
     return reply.send({ success: true, message: 'Regra removida' });
   });
 

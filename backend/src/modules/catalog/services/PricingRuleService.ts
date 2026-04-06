@@ -26,9 +26,10 @@ export class PricingRuleService {
         });
     }
 
-    async list() {
+    async list(organizationId: string) {
         return this.prisma.pricingRule.findMany({
             where: {
+                organizationId,
                 active: true,
                 isLatest: true
             },
@@ -43,9 +44,9 @@ export class PricingRuleService {
         });
     }
 
-    async findById(id: string) {
-        const rule = await this.prisma.pricingRule.findUnique({
-            where: { id }
+    async findById(id: string, organizationId: string) {
+        const rule = await this.prisma.pricingRule.findFirst({
+            where: { id, organizationId }
         });
 
         if (!rule) {
@@ -55,10 +56,10 @@ export class PricingRuleService {
         return rule;
     }
 
-    async update(id: string, data: Partial<CreatePricingRuleInput>) {
+    async update(id: string, organizationId: string, data: Partial<CreatePricingRuleInput>) {
         // 1. Verificar se a regra atual já foi usada em algum pedido
-        const currentRule = await this.prisma.pricingRule.findUnique({
-            where: { id },
+        const currentRule = await this.prisma.pricingRule.findFirst({
+            where: { id, organizationId },
             include: { orderItems: { take: 1 } }
         });
 
@@ -120,10 +121,10 @@ export class PricingRuleService {
         });
     }
 
-    async getHistory(id: string) {
+    async getHistory(id: string, organizationId: string) {
         // Encontrar a regra raiz
-        const rule = await this.prisma.pricingRule.findUnique({
-            where: { id }
+        const rule = await this.prisma.pricingRule.findFirst({
+            where: { id, organizationId }
         });
 
         if (!rule) throw new NotFoundError('Regra de Precificação');
@@ -132,6 +133,7 @@ export class PricingRuleService {
 
         return this.prisma.pricingRule.findMany({
             where: {
+                organizationId,
                 OR: [
                     { id: rootId },
                     { parentId: rootId }
@@ -143,10 +145,68 @@ export class PricingRuleService {
         });
     }
 
-    async delete(id: string) {
+    async delete(id: string, organizationId: string) {
+        // Importante: verificar se pertence à organização
+        const rule = await this.prisma.pricingRule.findFirst({
+            where: { id, organizationId }
+        });
+
+        if (!rule) throw new NotFoundError('Regra de Precificação');
+
         await this.prisma.pricingRule.delete({
             where: { id }
         });
         return { message: 'Regra removida com sucesso' };
+    }
+
+    async ensureDefaultRules(organizationId: string) {
+        const existingRules = await this.prisma.pricingRule.findMany({
+            where: { organizationId, isLatest: true },
+            select: { name: true }
+        });
+
+        const existingNames = existingRules.map((r: any) => r.name);
+
+        const defaults = [
+            {
+                name: 'Preço por M² (Fórmula Padrão)',
+                type: 'PRODUCT',
+                formula: {
+                    formulaString: "(LARGURA/1000) * (ALTURA/1000) * VALOR_BASE",
+                    variables: [
+                        { id: 'LARGURA', name: 'Largura (mm)', defaultUnit: 'mm', type: 'INPUT', visible: true, required: true },
+                        { id: 'ALTURA', name: 'Altura (mm)', defaultUnit: 'mm', type: 'INPUT', visible: true, required: true },
+                        { id: 'VALOR_BASE', name: 'Valor do M²', defaultUnit: 'moeda', type: 'INPUT', visible: true, role: 'SALE_PRICE' }
+                    ]
+                }
+            },
+            {
+                name: 'Preço por Unidade Fixa',
+                type: 'PRODUCT',
+                formula: {
+                    formulaString: "VALOR_BASE",
+                    variables: [
+                        { id: 'VALOR_BASE', name: 'Preço Unitário', defaultUnit: 'moeda', type: 'INPUT', visible: true, role: 'SALE_PRICE' }
+                    ]
+                }
+            }
+        ];
+
+        for (const rule of defaults) {
+            if (!existingNames.includes(rule.name)) {
+                console.log(`[PricingRuleService] Criando regra padrão '${rule.name}' para organização ${organizationId}...`);
+                await this.prisma.pricingRule.create({
+                    data: {
+                        organizationId,
+                        name: rule.name,
+                        type: rule.type as any,
+                        formula: rule.formula,
+                        isLatest: true,
+                        version: 1,
+                        active: true
+                    }
+                });
+            }
+        }
     }
 }

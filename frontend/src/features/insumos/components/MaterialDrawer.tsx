@@ -280,13 +280,17 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
                     <History className="w-3 h-3" />
                     Categoria de Insumo (Apropriação Financeira)
                   </label>
-                  <Controller control={control} name="categoryId" render={({ field }) => (
-                    <Combobox 
-                      value={field.value} 
-                      onChange={field.onChange} 
-                      options={categories.map(c => ({ id: c.id, label: c.name }))}
-                      placeholder="Selecione a categoria..."
-                    />
+                  <Controller control={control} name="categoryId" rules={{ required: true }} render={({ field, fieldState }) => (
+                    <div className="flex flex-col gap-1">
+                      <Combobox 
+                        value={field.value} 
+                        onChange={field.onChange} 
+                        options={categories.map(c => ({ id: c.id, label: c.name }))}
+                        placeholder="Selecione a categoria..."
+                        className={cn(fieldState.error && "border-red-500")}
+                      />
+                      {fieldState.error && <span className="text-[10px] text-red-500">Categoria é obrigatória</span>}
+                    </div>
                   )} />
                   <p className="text-[9px] text-muted-foreground px-1 italic">* Define as contas contábeis padrão para este item.</p>
                 </div>

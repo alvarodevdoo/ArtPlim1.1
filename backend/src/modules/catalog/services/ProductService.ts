@@ -3,7 +3,7 @@ import { NotFoundError, ValidationError } from '../../../shared/infrastructure/e
 
 interface CreateProductInput {
   name: string;
-  description?: string;
+  description?: string | null;
   productType?: string;
   pricingMode: PricingMode;
   pricingRuleId?: string | null;
@@ -20,6 +20,8 @@ interface CreateProductInput {
   customFormula?: string | null;
   categoryId?: string | null;
   revenueAccountId?: string | null;
+  targetMarkup?: number | null;
+  targetMargin?: number | null;
 }
 
 interface UpdateProductInput extends Partial<CreateProductInput> {
@@ -150,36 +152,48 @@ export class ProductService {
         : { disconnect: true };
     }
 
-    const product = await this.prisma.product.update({
-      where: { id },
-      data: {
+    try {
+      console.log('[PRODUCT-UPDATE] Payload data:', {
         ...cleanData,
-        // Atualizar Categoria
-        ...(categoryId !== undefined ? (
-          categoryId ? { category: { connect: { id: categoryId } } } : { category: { disconnect: true } }
-        ) : {}),
-        
-        // Atualizar Conta de Receita (já resolvida acima)
-        ...(revenueAccountConnect ? { revenueAccount: revenueAccountConnect } : {}),
+        categoryId,
+        revenueAccountId,
+        pricingRuleId
+      });
 
-        // Re-mapear campos de relação padrão
-        ...(pricingRuleId !== undefined ? (
-          pricingRuleId ? { pricingRule: { connect: { id: pricingRuleId } } } : { pricingRule: { disconnect: true } }
-        ) : {}),
-        updatedAt: new Date()
-      },
-      include: {
-        components: {
-          include: {
-            material: true
-          }
+      const product = await this.prisma.product.update({
+        where: { id },
+        data: {
+          ...cleanData,
+          // Atualizar Categoria
+          ...(categoryId !== undefined ? (
+            categoryId ? { category: { connect: { id: categoryId } } } : { category: { disconnect: true } }
+          ) : {}),
+          
+          // Atualizar Conta de Receita (já resolvida acima)
+          ...(revenueAccountConnect ? { revenueAccount: revenueAccountConnect } : {}),
+
+          // Re-mapear campos de relação padrão
+          ...(pricingRuleId !== undefined ? (
+            pricingRuleId ? { pricingRule: { connect: { id: pricingRuleId } } } : { pricingRule: { disconnect: true } }
+          ) : {}),
+          updatedAt: new Date()
         },
-        operations: true,
-        pricingRule: true
-      }
-    });
+        include: {
+          components: {
+            include: {
+              material: true
+            }
+          },
+          operations: true,
+          pricingRule: true
+        }
+      });
 
-    return product;
+      return product;
+    } catch (err) {
+      console.error('[PRODUCT-UPDATE] ERROR:', err);
+      throw err;
+    }
   }
 
   async delete(id: string) {

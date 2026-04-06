@@ -46,6 +46,7 @@ export interface ConfigOption {
   isAvailable: boolean;
   materialId?: string;
   slotQuantity?: number;
+  priceOverride?: number;
 }
 
 export interface ProductConfig {

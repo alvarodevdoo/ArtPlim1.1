@@ -57,10 +57,19 @@ export function useInsumos() {
       const mappedInsumos: Insumo[] = (Array.isArray(data) ? data : []).map(mat => ({
         id: mat.id,
         organizationId: mat.organizationId,
+        name: mat.name || mat.nome,
         nome: mat.name || mat.nome,
         categoria: mat.category?.name || mat.categoria || 'Geral',
+        unit: mat.unit || mat.unidadeBase,
         unidadeBase: mat.unit || mat.unidadeBase,
-        custoUnitario: Number(mat.costPerUnit || mat.custoUnitario || 0),
+        // custo base cadastrado manualmente
+        costPerUnit: Number(mat.costPerUnit || 0),
+        // custo médio ponderado atualizado por entradas (pode ser 0 se nunca houve entrada)
+        averageCost: Number(mat.averageCost || 0),
+        // campo normalizado: prefere averageCost se > 0, senão usa costPerUnit
+        custoUnitario: Number(mat.averageCost || 0) > 0
+          ? Number(mat.averageCost)
+          : Number(mat.costPerUnit || mat.custoUnitario || 0),
         ativo: mat.active !== undefined ? mat.active : mat.ativo,
         createdAt: mat.createdAt,
         updatedAt: mat.updatedAt

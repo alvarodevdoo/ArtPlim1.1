@@ -1,14 +1,12 @@
-import { BudgetStatus, OrderStatus, PricingMode, ItemType } from '@prisma/client';
-
+// ─── General Product Draft ────────────────────────────────────────────────────
 export interface ProductDraft {
   id?: string;
   name: string;
   description?: string;
-  productType: ItemType;
-  pricingMode: PricingMode;
-  salePrice: number;
+  productType: 'PRODUCT' | 'SERVICE' | 'PRINT_SHEET' | 'PRINT_ROLL' | 'LASER_CUT' | 'UNIT' | 'SQUARE_METER' | 'TIME_AREA';
+  pricingMode: 'SIMPLE_AREA' | 'SIMPLE_UNIT' | 'DYNAMIC_ENGINEER';
+  salePrice: number;          // Preço de venda manual (priceOverride global)
   costPrice: number;
-  markup: number;
   targetMarkup?: number;
   targetMargin?: number;
   active: boolean;
@@ -21,30 +19,60 @@ export interface ProductDraft {
   sellWithoutStock: boolean;
   formulaData?: any;
   pricingRuleId?: string;
-  
-  // Real-time Composition (Simulated)
-  compositionSnapshot?: any;
 }
 
-export interface BOMItem {
-  id?: string;
-  materialId: string;
+// ─── BOM (Ficha Técnica) Draft ─────────────────────────────────────────────────
+export interface DraftBOMItem {
+  id: string;
+  materialId?: string | null;
   materialName: string;
+  unit: string;
   quantity: number;
+  itemsPerUnit: number;
   costPerUnit: number;
+  effectiveCost: number;
   subtotal: number;
   isFixed: boolean;
-  variationGroupId?: string; // If null, it's fixed. If set, it's a slot for a group.
+  configurationOptionId?: string | null;
+  configurationGroupId?: string | null;
 }
 
-export interface ConfigurationOption {
+// ─── Variations Draft ──────────────────────────────────────────────────────────
+export interface DraftOption {
+  /** UUID from DB if persisted, otherwise a temp ID */
   id: string;
   label: string;
   value: string;
-  materialId?: string;
+  /** Manual price override for this option (replaces global salePrice when selected) */
+  priceOverride?: number | null;
+  /** Additional cost modifier (FIXED add-on to base cost) */
   priceModifier: number;
   priceModifierType: 'FIXED' | 'PERCENTAGE';
+  materialId?: string | null;
+  materialName?: string | null;
   isAvailable: boolean;
   displayOrder: number;
-  incompatibilities: string[]; // List of other option IDs that are incompatible
+}
+
+export interface DraftVariationGroup {
+  /** UUID from DB if persisted, otherwise a temp ID */
+  id: string;
+  name: string;
+  type: 'SELECT' | 'NUMBER' | 'BOOLEAN' | 'TEXT';
+  required: boolean;
+  displayOrder: number;
+  options: DraftOption[];
+}
+
+// ─── Financial Summary (computed, never stored) ───────────────────────────────
+export interface FinancialSummary {
+  fixedCost: number;
+  variationCost: number;
+  totalCost: number;
+  salePrice: number;
+  grossProfit: number;
+  marginPercent: number;
+  healthStatus: 'healthy' | 'warning' | 'danger';
+  isSalePriceOverridden?: boolean;
+  baseSalePrice: number;
 }

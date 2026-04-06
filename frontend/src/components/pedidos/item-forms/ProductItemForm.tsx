@@ -1,25 +1,30 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Label } from '@/components/ui/Label';
 import CurrencyInput from '@/components/ui/CurrencyInput';
-import { Save, Plus, Lock, Settings2 } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
+import { 
+    Plus, 
+    Package, 
+    Save,
+    Coins
+} from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import { useInsumos } from '@/features/insumos/useInsumos';
 import { SeletorInsumos } from '@/features/insumos/SeletorInsumos';
 import { InsumoMaterialSelecionado } from '@/features/insumos/types';
 import { calculatePricingResult } from '@/lib/pricing/formulaUtils';
-import { ConfiguratorModal } from '@/features/orders/components/ConfiguratorModal/ConfiguratorModal';
-import '@/features/orders/components/ConfiguratorModal/configurator.css';
-
-// 🔥 CACHE GLOBAL (Backup de Memória Rápida)
-const formBackupCache = new Map<string, {
-    vars: Record<string, any>;
-    materiais: InsumoMaterialSelecionado[];
-    notes: string;
-    options: Record<string, string>;
-}>();
+import { useComposition } from '@/features/orders/hooks/useComposition';
+import { useIncompatibilities } from '@/features/orders/hooks/useIncompatibilities';
+import { PriceSummaryPanel } from '@/features/orders/components/ConfiguratorModal/PriceSummaryPanel';
+import { 
+    Select, 
+    SelectContent, 
+    SelectItem, 
+    SelectTrigger, 
+    SelectValue 
+} from '@/components/ui/select';
 
 interface Produto {
     id: string;
@@ -30,6 +35,7 @@ interface Produto {
     pricingRuleId?: string;
     pricingRule?: { id: string; name: string; formula: any; };
     formulaData?: any;
+    targetMarkup?: number;
 }
 
 interface ProductItemFormProps {
@@ -45,364 +51,159 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
     editingData,
     isEditing = false
 }) => {
-    const [quantity, setQuantity] = useState<number>(1);
-    const [unitPrice, setUnitPrice] = useState<number>(0);
-    const [notes, setNotes] = useState('');
+    // ── Estados Principais ────────────────────────────────────────────
+    const [quantity, setQuantity] = useState<number>(editingData?.quantity || 1);
+    const [unitPrice, setUnitPrice] = useState<number>(editingData?.unitPrice || 0);
+    const [notes, setNotes] = useState(editingData?.notes || '');
+    const [materiaisSelecionados, setMateriaisSelecionados] = useState<InsumoMaterialSelecionado[]>(
+        editingData?.attributes?.insumos || []
+    );
+    const [dynamicVariables, setDynamicVariables] = useState<Record<string, { value: any; unit: string | null }>>(
+        editingData?.attributes?.dynamicVariables || {}
+    );
+    const [opcoesSelecionadas, setOpcoesSelecionadas] = useState<Record<string, string>>(
+        editingData?.attributes?.selectedOptions || {}
+    );
+    const [configuracoes, setConfiguracoes] = useState<any[]>([]);
     const [simulatingPrice, setSimulatingPrice] = useState(false);
-    const [materiaisSelecionados, setMateriaisSelecionados] = useState<InsumoMaterialSelecionado[]>([]);
-    const [dynamicVariables, setDynamicVariables] = useState<Record<string, { value: any; unit: string | null }>>({});
     const { insumos } = useInsumos();
 
-    const [configuracoes, setConfiguracoes] = useState<any[]>([]);
-    const [opcoesSelecionadas, setOpcoesSelecionadas] = useState<Record<string, string>>({});
-    const [showConfigurator, setShowConfigurator] = useState(false);
-    // Snapshot de custo do Motor de Composição (preenchido ao confirmar no ConfiguratorModal)
-    const [compositionSnapshot, setCompositionSnapshot] = useState<{
-        unitCostEstimate: number;
-        profitEstimate: number;
-    } | null>(null);
+    // ── Motor de Composição ───────────────────────────────────────────
+    const { composition, loading: compLoading } = useComposition({
+        productId: produto.id,
+        selectedOptionIds: Object.values(opcoesSelecionadas).filter(Boolean),
+        quantity
+    });
 
-    const [resolvedPricingRule, setResolvedPricingRule] = useState<any>(null);
-    const loadedSignatureRef = useRef<string | null>(null);
+    const { blockedIds } = useIncompatibilities(Object.values(opcoesSelecionadas).filter(Boolean));
 
-    useEffect(() => {
-        const pricingRuleId = (editingData as any)?.pricingRuleId || (produto as any)?.pricingRuleId || (produto as any)?.pricingRule?.id;
-        if (!pricingRuleId) return setResolvedPricingRule(null);
-
-        api.get(`/api/catalog/pricing-rules/${pricingRuleId}`)
-            .then(res => { if (res.data?.success && res.data?.data) setResolvedPricingRule(res.data.data); })
-            .catch(() => { /* silencioso */ });
-    }, [(produto as any)?.pricingRuleId, (produto as any)?.pricingRule?.id, (editingData as any)?.pricingRuleId]);
-
-    // 2. Memoização da Fórmula
-    const parsedFormulaData = useMemo(() => {
-        let attributes = editingData?.attributes || {};
-        if (typeof attributes === 'string') { try { attributes = JSON.parse(attributes); } catch { attributes = {}; } }
-        if (attributes.formula_snapshot && editingData?.productId === produto?.id) return attributes.formula_snapshot;
-
-        const ruleFromProp = (produto as any)?.pricingRule;
-        if (ruleFromProp?.formula) return typeof ruleFromProp.formula === 'string' ? JSON.parse(ruleFromProp.formula) : ruleFromProp.formula;
-        if (resolvedPricingRule?.formula) return typeof resolvedPricingRule.formula === 'string' ? JSON.parse(resolvedPricingRule.formula) : resolvedPricingRule.formula;
-        return null;
-    }, [(produto as any)?.pricingRule, resolvedPricingRule, editingData?.attributes, editingData?.productId]);
-
-    // Gatilho para carregar as configurações do produto de forma independente
+    // ── Carregamento de Dados ─────────────────────────────────────────
     useEffect(() => {
         if (!produto?.id) return;
         
-        let isMounted = true;
-        
-        api.get(`/api/catalog/products/${produto.id}/configurations`)
+        api.get(`/api/catalog/products/${produto.id}/configurations/complete`)
             .then(res => {
-                if (isMounted && res.data?.success && Array.isArray(res.data.data)) {
-                    console.log(`[Config] Carregadas ${res.data.data.length} configs para o produto ${produto.id}`);
-                    setConfiguracoes(res.data.data);
+                if (res.data?.success && res.data.data?.configurations) {
+                    setConfiguracoes(res.data.data.configurations);
+                    if (!isEditing && Object.keys(opcoesSelecionadas).length === 0) {
+                        const defaults: Record<string, string> = {};
+                        res.data.data.configurations.forEach((c: any) => {
+                            if (c.required && c.options.length > 0) {
+                                defaults[c.id] = c.options[0].value;
+                            }
+                        });
+                        setOpcoesSelecionadas(defaults);
+                    }
                 }
             })
-            .catch(err => {
-                console.error("Erro ao buscar configurações no formulário:", err);
-            });
+            .catch(err => console.error("Erro ao carregar variações:", err));
             
-        return () => { isMounted = false; };
-    }, [produto?.id]);
+        if (!isEditing && materiaisSelecionados.length === 0) {
+            api.get(`/api/catalog/products/${produto.id}/ficha-tecnica`)
+                .then(res => {
+                    if (res.data?.success && res.data.data) {
+                        const fichaBase = res.data.data.map((item: any) => {
+                            const m = item.material || {};
+                            return {
+                                insumoId: item.materialId,
+                                nome: m.name || 'Insumo sem nome',
+                                precoBase: Number(m.costPrice || m.averageCost || 0),
+                                quantidadeUtilizada: item.quantidade || 0,
+                                unidadeBase: m.unit || 'un'
+                            };
+                        });
+                        setMateriaisSelecionados(fichaBase);
+                    }
+                })
+                .catch(err => console.error("Erro ao carregar ficha técnica:", err));
+        }
+    }, [produto.id]);
 
-    const inputVars = useMemo(() => parsedFormulaData?.variables?.filter((v: any) => v.visible !== false && (v.type === 'INPUT' || !v.type)) || [], [parsedFormulaData]);
+    const pricingRule = useMemo(() => {
+        const ruleFromProp = (produto as any)?.pricingRule;
+        if (ruleFromProp?.formula) return typeof ruleFromProp.formula === 'string' ? JSON.parse(ruleFromProp.formula) : ruleFromProp.formula;
+        return null;
+    }, [produto]);
 
+    const inputVars = useMemo(() => pricingRule?.variables?.filter((v: any) => {
+        const isHidden = v.visible === false;
+        const isPriceField = v.role === 'SALE_PRICE' || v.role === 'MONETARY' || 
+                             (v.name || '').toUpperCase().includes('PREÇO') || 
+                             (v.name || '').toUpperCase().includes('PRECO') ||
+                             (v.name || '').toUpperCase().includes('PRICE');
+        const isInput = v.type === 'INPUT' || !v.type;
+        return !isHidden && !isPriceField && isInput;
+    }) || [], [pricingRule]);
 
-    // Gatilho seguro para detectar atualizações na API após o F5
-    const attributesStr = useMemo(() => {
-        if (!editingData?.attributes) return "{}";
-        if (typeof editingData.attributes === 'string') return editingData.attributes;
-        try { return JSON.stringify(editingData.attributes); } catch { return "{}"; }
-    }, [editingData?.attributes]);
+    // Mantém o resultado da fórmula em estado para compor
+    const [formulaResultValue, setFormulaResultValue] = useState<number>(0);
 
-    // 3. CARREGAMENTO ESTRITO (Sobrevive a F5 e Auto-Save)
     useEffect(() => {
-        let isMounted = true;
-        const currentProdId = produto?.id || 'NO_PROD';
-        const currentItemId = editingData?.id || 'NEW_ITEM';
-
-        if (!parsedFormulaData?.variables && (produto as any)?.pricingRuleId) return;
-
-        // Se o escudo já travou com sucesso PARA ESTE ITEM, ignoramos updates da prop (evita wipe enquanto digita)
-        if (loadedSignatureRef.current === currentItemId) return;
-
-        let attributes = editingData?.attributes || {};
-        if (typeof attributes === 'string') { try { attributes = JSON.parse(attributes); } catch { attributes = {}; } }
-
-        const savedVars = attributes.dynamicVariables || {};
-        const hasSavedVars = Object.keys(savedVars).length > 0;
-        const hasRootDimensions = editingData?.width !== undefined || editingData?.height !== undefined;
-
-        // O segredo do F5: Só consideramos "Hidratado" se os dados já vieram da API ou se for explicitamente um item novo.
-        const hasVariables = !!(parsedFormulaData?.variables && parsedFormulaData.variables.length > 0);
-        const isHydrated = (hasSavedVars || hasRootDimensions || currentItemId === 'NEW_ITEM') && (hasVariables || !(produto as any)?.pricingRuleId);
-
-        const carregarDadosIniciais = async () => {
-            if (!isHydrated) return;
-
-            const initialProductDefaults = typeof (produto as any)?.formulaData === 'string'
-               ? JSON.parse((produto as any).formulaData)
-               : ((produto as any)?.formulaData || {});
-
-            let productDef: Record<string, any> = {};
-            Object.entries(initialProductDefaults).forEach(([k, v]) => productDef[k.toLowerCase()] = v);
-
-            const backup = formBackupCache.get(currentProdId);
-            const varsToUse = hasSavedVars ? savedVars : (backup?.vars || {});
-            const matToUse = attributes.insumos ? attributes.insumos : (backup?.materiais || null);
-            const optToUse = Object.keys(attributes.selectedOptions || {}).length > 0 ? attributes.selectedOptions : (backup?.options || {});
-            const notesToUse = editingData?.notes || backup?.notes || '';
-
-            const buildInitialVariables = () => {
-                const initialVars: Record<string, { value: any; unit: string | null }> = {};
-
-                // Pré-computar: quais variáveis estão TRAVADAS no produto mas sem valor?
-                // O salePrice do produto é o valor que deve ser usado nessas situações.
-                const rawSalePrice = (produto as any)?.salePrice;
-                const normalizedSalePriceVal = rawSalePrice !== undefined && rawSalePrice !== null ? Number(rawSalePrice) : 0;
-
-                parsedFormulaData.variables.forEach((v: any) => {
-                    const varIdLow = v.id.toLowerCase();
-
-                    // Prioridade de Valor: 1. DB (JSON) | 2. DB (Raiz fallback) | 3. Cache Memória
-                    let savedVal = varsToUse[v.id] ?? varsToUse[varIdLow];
-
-                    if (savedVal === undefined && editingData) {
-                        if (varIdLow === 'largura' || varIdLow === 'width') savedVal = editingData.width;
-                        if (varIdLow === 'altura' || varIdLow === 'height') savedVal = editingData.height;
-                    }
-
-                    if (savedVal === undefined && backup?.vars) {
-                        const backupVar = backup.vars[v.id] ?? backup.vars[varIdLow];
-                        if (backupVar !== undefined) savedVal = typeof backupVar === 'object' && 'value' in backupVar ? backupVar.value : backupVar;
-                    }
-
-                    // Prioridade de Unidade: 1. DB | 2. Defaults do Produto | 3. Formula
-                    const unitFromProductDefaults = productDef[`${varIdLow}_unit`];
-                    const fallbackUnit = unitFromProductDefaults || v.defaultUnit || v.unit || v.baseUnit || (v.allowedUnits?.length ? v.allowedUnits[0] : null);
-
-                    let finalValue = savedVal;
-                    let finalUnit = fallbackUnit;
-
-                    if (savedVal !== undefined && savedVal !== null && savedVal !== '') {
-                        if (typeof savedVal === 'object' && 'value' in savedVal) {
-                            finalValue = savedVal.value;
-                            finalUnit = savedVal.unit || fallbackUnit;
-                        }
-                    } else {
-                        // Sem valor salvo — tentar defaults do produto (formulaData)
-                        const productDefaultVal = productDef[varIdLow];
-                        if (productDefaultVal !== undefined && productDefaultVal !== null && productDefaultVal !== '') {
-                            finalValue = productDefaultVal;
-                        } else {
-                            finalValue = v.type === 'FIXED' ? v.fixedValue : (v.defaultValue ?? '');
-                        }
-                    }
-
-                    // 🔑 INJEÇÃO DO SALE PRICE — Sincronização com o Cadastro do Produto
-                    // O valor do cadastro (produto.salePrice) é a nossa "Verdade Absoluta" para variáveis de preço,
-                    // a menos que o usuário tenha digitado um valor específico no formulário.
-
-                    const isEmpty = finalValue === '' || finalValue === undefined || finalValue === null || finalValue === 0;
-                    const isRoleSalePrice = v.role === 'SALE_PRICE';
-                    const isLockedWithNoValue = productDef[`${varIdLow}_locked`] === true && isEmpty;
-
-                    // Se a variável é de preço de venda ou está travada e não tem valor específico, injeta o salePrice do banco
-                    if (normalizedSalePriceVal > 0 && isEmpty && (isRoleSalePrice || isLockedWithNoValue)) {
-                        finalValue = normalizedSalePriceVal;
-                    }
-
-                    initialVars[v.id] = { value: finalValue, unit: finalUnit };
-                });
-
-                setDynamicVariables(initialVars);
-                return initialVars;
-            };
-
-            // 🚀 PRIORIDADE 1: Carregar Variáveis da Fórmula (Preço e Medidas)
-            // Fazemos isso PRIMEIRO e sincronicamente para a UI não piscar vazia.
-            if (parsedFormulaData?.variables) {
-                const initial = buildInitialVariables();
-                loadedSignatureRef.current = currentItemId;
-
-                // Dispara cálculo inicial (sem setTimeout aqui para ser atômico)
-                const priceScope: Record<string, any> = { QTDE: 1 };
-                Object.entries(initial).forEach(([k, v]) => {
-                    priceScope[k] = v.value;
-                    priceScope[`${k}_unit`] = v.unit;
-                });
-                const res = calculatePricingResult(parsedFormulaData.formulaString, parsedFormulaData.variables, priceScope);
-                setUnitPrice(res.value);
-            }
-
-            // 🚀 PRIORIDADE 2: Carregar dados de edição (se houver)
-            if (editingData && editingData.productId === produto?.id) {
-                setQuantity(editingData.quantity || 1);
-                setUnitPrice(editingData.unitPrice || 0);
-                setNotes(notesToUse);
-                if (matToUse) setMateriaisSelecionados(matToUse);
-                if (optToUse) setOpcoesSelecionadas(optToUse);
-            } else if (produto?.id) {
-                setQuantity(1);
-                setNotes(backup?.notes || '');
-                if (optToUse) setOpcoesSelecionadas(optToUse);
-
-                // Se não for edição, tentamos carregar a Ficha Técnica padrão
-                if (!matToUse && isMounted) {
-                    try {
-                        const resFicha = await api.get(`/api/catalog/products/${produto.id}/ficha-tecnica`);
-                        if (resFicha.data.success && resFicha.data.data) {
-                            // Mapeamento seguro: aceita 'nome' ou 'name' e 'custoUnitario' ou 'costPrice'
-                            const fichaBase = resFicha.data.data.map((item: any) => {
-                                    const m = item.insumo || item.material || {};
-                                    return {
-                                        insumoId: item.insumoId || item.materialId,
-                                        nome: m.nome || m.name || 'Insumo sem nome',
-                                        precoBase: Number(m.costPrice || m.custoUnitario || 0),
-                                        quantidadeUtilizada: item.quantidade || 0,
-                                        unidadeBase: m.unidadeBase || m.unit || 'un'
-                                    };
-                            });
-                            setMateriaisSelecionados(fichaBase);
-                        }
-                    } catch (err) {
-                        console.warn('Erro ao carregar ficha técnica, continuando sem materiais:', err);
-                    }
-                } else if (matToUse) {
-                    setMateriaisSelecionados(matToUse);
-                }
-            }
-
-            if (isMounted) {
-                // SÓ trava o recarregamento se tivermos certeza que recebemos os dados reais da API.
-                // Se o componente montou vazio antes da API terminar, o isHydrated será false e deixará
-                // esse useEffect rodar de novo assim que o attributesStr atualizar com a resposta.
-                if (isHydrated) {
-                    loadedSignatureRef.current = currentItemId;
-                }
-            }
-        };
-
-        carregarDadosIniciais();
-        return () => { isMounted = false; };
-
-        // Dependências ajustadas para reagir magicamente quando o F5 terminar de baixar os dados
-    }, [produto?.id, editingData?.id, editingData?.width, editingData?.height, attributesStr, parsedFormulaData]);
-
-    // 4. Motor de Precificação (Execução)
-    useEffect(() => {
-        if (!parsedFormulaData?.formulaString) return;
-
+        if (!pricingRule?.formulaString) return;
         const timer = setTimeout(() => {
-            const inputs: Record<string, any> = {};
-            
-            // Variáveis dinâmicas (Inputs do usuário)
+            const inputs: Record<string, any> = { QTDE: quantity, quantidade: quantity };
             Object.entries(dynamicVariables).forEach(([id, data]) => {
-                const idLow = id.toLowerCase();
-                inputs[idLow] = data.value;
-                inputs[`${idLow}_unit`] = data.unit;
-                inputs[id] = data.value;
-                inputs[`${id}_unit`] = data.unit;
+                inputs[id.toLowerCase()] = data.value;
+                inputs[`${id.toLowerCase()}_unit`] = data.unit;
             });
-
-            // Materiais/Insumos
-            const custoMateriais = materiaisSelecionados.reduce((acc, m) => acc + (m.quantidadeUtilizada * m.precoBase), 0);
-            inputs['custo_materiais'] = custoMateriais;
-            inputs['quantidade'] = quantity;
-            inputs['QTDE'] = quantity;
-
             setSimulatingPrice(true);
             try {
-                const result = calculatePricingResult(parsedFormulaData.formulaString, parsedFormulaData.variables, inputs);
-                setUnitPrice(Number(result.value || 0));
+                const result = calculatePricingResult(pricingRule.formulaString, pricingRule.variables, inputs);
+                const formulaVal = Number(result.value || 0);
+                setFormulaResultValue(formulaVal);
+                
+                // Se o produto NÃO tem opções de configuração, a fórmula dita o preço base
+                if (configuracoes.length === 0 && !isEditing && unitPrice === 0) {
+                    setUnitPrice(formulaVal);
+                }
             } catch (err) {
-                console.error("Erro no cálculo:", err);
+                console.error("Erro no cálculo da fórmula:", err);
             } finally {
                 setSimulatingPrice(false);
             }
         }, 500);
-
         return () => clearTimeout(timer);
-    }, [parsedFormulaData, dynamicVariables, materiaisSelecionados, quantity]);
+    }, [pricingRule, dynamicVariables, quantity, configuracoes.length]);
 
-    // 5. Handlers
-    const handleDynamicVarChange = useCallback((id: string, field: 'value' | 'unit', val: any) => {
-        setDynamicVariables(prev => {
-            const next = { ...prev, [id]: { ...prev[id], [field]: val } };
-            if (produto?.id) {
-                const currentCache = formBackupCache.get(produto.id) || { vars: {}, materiais: [], notes: '', options: {} };
-                formBackupCache.set(produto.id, { ...currentCache, vars: next });
+    // O Motor de Composição sugere o preço, mas ele não deve esmagar a fórmula caso ela gere um valor maior.
+    useEffect(() => {
+        if (!isEditing) {
+            let suggested = 0;
+            
+            if (composition && configuracoes.length > 0) {
+                const compositionSuggested = composition.suggestedPrice / Math.max(1, quantity);
+                // Pegamos o maior entre a sugestão da composição (que tem markup sobre insumos)
+                // e o valor calculado pela fórmula do produto (ou preço base).
+                suggested = Math.max(compositionSuggested, formulaResultValue, Number(produto.salePrice || 0));
+            } else if (formulaResultValue > 0) {
+                suggested = formulaResultValue;
+            } else {
+                suggested = Number(produto.salePrice || 0);
             }
-            return next;
-        });
-    }, [produto?.id]);
 
-    const handleMateriaisChange = useCallback((novosMateriais: InsumoMaterialSelecionado[]) => {
-        setMateriaisSelecionados(novosMateriais);
-        if (produto?.id) {
-            const currentCache = formBackupCache.get(produto.id) || { vars: {}, materiais: [], notes: '', options: {} };
-            formBackupCache.set(produto.id, { ...currentCache, materiais: novosMateriais });
+            if (suggested > 0) {
+                // Atualiza o unitPrice de imediato, e caso mude a opção pra uma + cara
+                // Para manter a manualidade, idealmente só preenchemos automático no início ou se a variação forçar muito
+                // Como não queremos travar o usuário de digitar, colocamos um limiar ou só se o unitPrice atual for menor
+                if (unitPrice === 0 || suggested > unitPrice) {
+                    setUnitPrice(Number(Number(suggested).toFixed(2)));
+                } else if (configuracoes.length > 0 && unitPrice === 0) {
+                   setUnitPrice(Number(Number(suggested).toFixed(2)));
+                }
+            }
         }
-    }, [produto?.id]);
+    }, [composition, formulaResultValue, quantity, isEditing, configuracoes.length, produto.salePrice]);
 
-    const handleNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        setNotes(e.target.value);
-        if (produto?.id) {
-            const currentCache = formBackupCache.get(produto.id) || { vars: {}, materiais: [], notes: '', options: {} };
-            formBackupCache.set(produto.id, { ...currentCache, notes: e.target.value });
-        }
+    const handleDynamicVarChange = (id: string, field: 'value' | 'unit', val: any) => {
+        setDynamicVariables(prev => ({ ...prev, [id]: { ...prev[id], [field]: val } }));
     };
 
-    // handleOptionChange: mantido para compatibilidade com modo legado de selects sem configurador
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const handleOptionChange = useCallback(async (configId: string, optionId: string) => {
-        const novaSelecao = { ...opcoesSelecionadas, [configId]: optionId };
-        setOpcoesSelecionadas(novaSelecao);
-
-        if (produto?.id) {
-            const currentCache = formBackupCache.get(produto.id) || { vars: {}, materiais: [], notes: '', options: {} };
-            formBackupCache.set(produto.id, { ...currentCache, options: novaSelecao });
-        }
-
-        if (!optionId) return;
-
-        try {
-            const response = await api.get(`/api/catalog/options/${optionId}/ficha-tecnica`);
-            if (response.data.success && response.data.data) {
-                const novosInsumos = response.data.data.map((item: any) => ({
-                    insumoId: item.insumoId, nome: item.insumo.nome, precoBase: Number(item.insumo.custoUnitario), quantidadeUtilizada: item.quantidade, unidadeBase: item.insumo.unidadeBase
-                }));
-
-                setMateriaisSelecionados(prev => {
-                    const baseMap = new Map();
-                    prev.forEach(m => baseMap.set(m.insumoId, m));
-                    novosInsumos.forEach((m: any) => { if (!baseMap.has(m.insumoId)) baseMap.set(m.insumoId, m); });
-                    const novoArray = Array.from(baseMap.values());
-
-                    if (produto?.id) {
-                        const currentCache = formBackupCache.get(produto.id) || { vars: {}, materiais: [], notes: '', options: {} };
-                        formBackupCache.set(produto.id, { ...currentCache, materiais: novoArray as any });
-                    }
-                    return novoArray as any;
-                });
-            }
-        } catch (error) { console.error("Erro ao carregar ficha da opção:", error); }
-    }, [opcoesSelecionadas, produto?.id]);
-
-    const handleSubmit = useCallback(() => {
-        if (quantity <= 0 || unitPrice <= 0) return toast.error('Preencha os campos e aguarde o cálculo');
-
-        const vars = {} as any;
-        Object.entries(dynamicVariables).forEach(([k, v]) => vars[k.toLowerCase()] = (v as any).value);
-
-        const itemData = {
+    const handleSubmit = () => {
+        if (quantity <= 0 || unitPrice <= 0) return toast.error('Coloque a quantidade e o preço.');
+        onSubmit({
             id: editingData?.id || `temp-${Math.random().toString(36).substr(2, 9)}`,
             productId: produto.id,
             product: produto,
-            width: vars.largura ?? vars.width ?? editingData?.width,
-            height: vars.altura ?? vars.height ?? editingData?.height,
-            pricingRuleId: resolvedPricingRule?.id || (produto as any)?.pricingRuleId || (produto as any)?.pricingRule?.id || editingData?.pricingRuleId,
             quantity: Number(quantity),
             unitPrice: Number(unitPrice),
             totalPrice: Number(unitPrice * quantity),
@@ -411,143 +212,153 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 dynamicVariables,
                 insumos: materiaisSelecionados,
                 selectedOptions: opcoesSelecionadas,
-                compositionSnapshot,
-                CUSTO_MATERIAIS: compositionSnapshot?.unitCostEstimate
-                    ? compositionSnapshot.unitCostEstimate * quantity
-                    : materiaisSelecionados.reduce((acc, m) => acc + (m.quantidadeUtilizada * m.precoBase), 0)
+                compositionSnapshot: composition ? {
+                    unitCostEstimate: composition.totalCost / quantity,
+                    profitEstimate: (unitPrice * quantity) - composition.totalCost
+                } : null
             }
-        };
-
-        onSubmit(itemData);
-    }, [produto, editingData, quantity, unitPrice, notes, dynamicVariables, materiaisSelecionados, opcoesSelecionadas, onSubmit, resolvedPricingRule, compositionSnapshot]);
+        });
+    };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4 animate-in fade-in duration-300">
+            
+            {/* ── GRID DE CAMPOS UNIFICADO ─────────────────────────────────── */}
+            <div className="p-4 border border-slate-200 bg-slate-50/50 rounded-xl">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                    
+                    {/* Variations */}
+                    {configuracoes.map(config => (
+                        <div key={config.id} className="space-y-1">
+                            <Label className="text-[10px] font-bold text-slate-500 uppercase">
+                                {config.name} {config.required && <span className="text-red-500">*</span>}
+                            </Label>
+                            <Select
+                                value={opcoesSelecionadas[config.id] || ''}
+                                onValueChange={(val) => setOpcoesSelecionadas(prev => ({ ...prev, [config.id]: val }))}
+                            >
+                                <SelectTrigger className="bg-white border-slate-300 h-9 rounded-md text-sm shadow-sm focus:ring-1 focus:ring-indigo-500">
+                                    <SelectValue placeholder="Opção..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {config.options.map((opt: any) => (
+                                        <SelectItem key={opt.id} value={opt.value} disabled={blockedIds.includes(opt.id) || !opt.isAvailable}>
+                                            <div className="flex justify-between items-center w-full min-w-[180px] text-xs">
+                                                <span>{opt.label}</span>
+                                                {Number(opt.priceModifier) !== 0 && (
+                                                    <span className="text-[9px] text-emerald-600 ml-2">
+                                                        {Number(opt.priceModifier) > 0 ? '+' : ''} R$ {Number(opt.priceModifier).toFixed(2)}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    ))}
 
-            {/* ── Botão de Configuração de Variações (Motor de Composição) ── */}
-            {configuracoes.length > 0 && (
-                <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center justify-between gap-4">
-                    <div>
-                        <p className="text-sm font-semibold text-indigo-800">
-                            <Settings2 className="w-4 h-4 inline mr-1" />
-                            Variações disponíveis
-                        </p>
-                        {Object.keys(opcoesSelecionadas).filter(k => opcoesSelecionadas[k]).length > 0 ? (
-                            <p className="text-xs text-indigo-600 mt-0.5">
-                                {Object.values(opcoesSelecionadas).filter(Boolean).length} variação(ões) selecionada(s)
-                                {compositionSnapshot && (
-                                    <span className="ml-2 text-emerald-700 font-semibold">
-                                        | Custo estimado: {formatCurrency(compositionSnapshot.unitCostEstimate)}
+                    {/* Dimensions Input */}
+                    {inputVars.map((v: any) => (
+                        <div key={v.id} className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase">{v.name}</label>
+                            <div className="flex rounded-md overflow-hidden border border-slate-300 bg-white shadow-sm">
+                                <Input 
+                                    type="text" 
+                                    value={dynamicVariables[v.id]?.value ?? ''} 
+                                    onChange={(e) => handleDynamicVarChange(v.id, 'value', e.target.value)} 
+                                    className="h-9 border-0 bg-transparent flex-1 text-center text-sm font-bold" 
+                                />
+                                {v.allowedUnits?.length > 0 && (
+                                    <span className="flex items-center px-2 bg-slate-100 text-[10px] font-bold text-slate-500 border-l border-slate-200 uppercase">
+                                        {dynamicVariables[v.id]?.unit || v.defaultUnit}
                                     </span>
                                 )}
-                            </p>
-                        ) : (
-                            <p className="text-xs text-indigo-500 mt-0.5">Clique para selecionar o material deste pedido</p>
-                        )}
-                    </div>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowConfigurator(true)}
-                        className="shrink-0 border-indigo-300 text-indigo-700 hover:bg-indigo-100"
-                    >
-                        {Object.keys(opcoesSelecionadas).filter(k => opcoesSelecionadas[k]).length > 0
-                            ? '✏ Editar seleção'
-                            : '⚙ Configurar'}
-                    </Button>
-                </div>
-            )}
+                            </div>
+                        </div>
+                    ))}
 
-            {/* ── ConfiguratorModal inline ────────────────────────────────── */}
-            {showConfigurator && (
-                <div className="border border-indigo-200 rounded-xl overflow-hidden shadow-lg bg-white p-4">
-                    <ConfiguratorModal
-                        produto={produto as any}
+                    {/* Quantity */}
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase">Quantidade</label>
+                        <Input 
+                            type="number" 
+                            value={quantity || ''} 
+                            onChange={(e) => setQuantity(Number(e.target.value))} 
+                            placeholder="1" 
+                            min="1" 
+                            className="h-9 border-slate-300 bg-white text-center font-bold text-sm shadow-sm" 
+                        />
+                    </div>
+
+                    {/* PRICE FIELD - THE ONLY ONE */}
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-indigo-700 uppercase flex items-center gap-1">
+                            Preço Unitário (R$)
+                        </label>
+                        <div className="relative">
+                            <CurrencyInput 
+                                value={unitPrice} 
+                                onValueChange={(val) => setUnitPrice(val || 0)} 
+                                className="h-9 border-indigo-400 bg-indigo-50/20 text-center font-black text-sm rounded-md text-indigo-900 shadow-sm focus:ring-2 focus:ring-indigo-500" 
+                            />
+                            {compLoading && (
+                                <div className="absolute inset-y-0 right-2 flex items-center">
+                                    <div className="w-3 h-3 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* ── RODAPÉ REESTRUTURADO ─────────────────────────────────────── */}
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+                
+                {/* Lado Esquerdo: Insumos (3/5) */}
+                <div className="lg:col-span-3 space-y-2">
+                    <div className="flex items-center gap-2 text-slate-500 font-bold text-[10px] uppercase tracking-wider">
+                        <Package className="w-3 h-3" />
+                        Composição de Insumos
+                    </div>
+                    <div className="border border-slate-200 rounded-xl p-3 bg-white shadow-sm min-h-[160px]">
+                        <SeletorInsumos insumos={insumos} materiaisIniciais={materiaisSelecionados} onMaterialsChange={setMateriaisSelecionados} />
+                    </div>
+                </div>
+
+                {/* Lado Direito: Financeiro (2/5) */}
+                <div className="lg:col-span-2 space-y-2">
+                    <div className="flex items-center gap-2 text-slate-500 font-bold text-[10px] uppercase tracking-wider">
+                        <Coins className="w-3 h-3" />
+                        Resumo de Lucratividade
+                    </div>
+                    <PriceSummaryPanel
+                        composition={composition}
+                        loading={compLoading}
+                        negotiatedPrice={unitPrice}
                         quantity={quantity}
-                        onQuantityChange={setQuantity}
-                        initialOptions={opcoesSelecionadas}
-                        onSubmit={result => {
-                            setOpcoesSelecionadas(result.selectedOptions);
-                            setUnitPrice(result.negotiatedPrice);
-                            setCompositionSnapshot({
-                                unitCostEstimate: result.unitCostEstimate,
-                                profitEstimate: result.profitEstimate
-                            });
-                            setShowConfigurator(false);
-                            toast.success('Configuração salva!');
-                        }}
-                        onCancel={() => setShowConfigurator(false)}
+                        targetMarkup={produto.targetMarkup || 2.0}
                     />
                 </div>
-            )}
-
-            {/* ── Grid de Variáveis da Fórmula ─────────────────────────────── */}
-            {!showConfigurator && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-slate-50/50 rounded-xl border border-slate-200">
-                    {inputVars.map((v: any) => {
-                        const isLocked = produto.formulaData?.[`${v.id}_locked`] === true;
-                        const hasUnits = v.allowedUnits && v.allowedUnits.length > 0;
-                        return (
-                            <div key={v.id} className="space-y-1.5">
-                                <label className="text-sm font-semibold text-slate-700 flex items-center gap-1">
-                                    {v.name}
-                                    {isLocked && <Lock className="w-3 h-3 text-slate-400" />}
-                                </label>
-                                <div className="flex gap-1">
-                                    {v.defaultUnit === 'moeda' || v.role === 'MONETARY' || v.role === 'SALE_PRICE' ? (
-                                        <CurrencyInput value={dynamicVariables[v.id]?.value || 0} onValueChange={(val) => handleDynamicVarChange(v.id, 'value', val || 0)} disabled={isLocked} className="flex-1" />
-                                    ) : (
-                                        <Input type="text" value={dynamicVariables[v.id]?.value ?? ''} onChange={(e) => handleDynamicVarChange(v.id, 'value', e.target.value)} className="h-10 border-slate-200 bg-white flex-1 font-mono text-center" disabled={isLocked} />
-                                    )}
-                                    {hasUnits && (
-                                        <select value={dynamicVariables[v.id]?.unit || v.defaultUnit || v.unit || ''} onChange={(e) => handleDynamicVarChange(v.id, 'unit', e.target.value)} disabled={isLocked} className="w-20 h-10 px-1 border border-slate-200 rounded-md bg-white text-xs">
-                                            {(v.allowedUnits || []).map((u: string) => <option key={u} value={u}>{u}</option>)}
-                                        </select>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
-                    <div className="space-y-1.5">
-                        <label className="text-sm font-semibold text-slate-700">Quantidade</label>
-                        <Input type="number" value={quantity || ''} onChange={(e) => setQuantity(Number(e.target.value))} placeholder="1" min="1" className="h-10 border-slate-200 bg-white" />
-                    </div>
-                </div>
-            )}
-
-            {/* ── Painel de Preço ──────────────────────────────────────────── */}
-            <div className="flex flex-col sm:flex-row items-end sm:items-center justify-between gap-4 p-4 bg-emerald-50 rounded-xl border border-emerald-100 shadow-sm">
-                <div className="flex flex-col">
-                    <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Preço Unitário</span>
-                    {simulatingPrice ? (
-                        <div className="flex items-center gap-2 text-primary font-bold animate-pulse">
-                            <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                            <span>Calculando...</span>
-                        </div>
-                    ) : (
-                        <span className="text-2xl font-black text-emerald-700">{formatCurrency(unitPrice)}</span>
-                    )}
-                </div>
-                <div className="text-right">
-                    <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider block">Total do Item</span>
-                    <div className="text-3xl font-black text-emerald-600">{formatCurrency(unitPrice * quantity)}</div>
-                </div>
             </div>
 
-            <div className="pt-2">
-                <SeletorInsumos insumos={insumos} materiaisIniciais={materiaisSelecionados} onMaterialsChange={handleMateriaisChange} />
+            {/* Obs e Botão Final */}
+            <div className="flex flex-col sm:flex-row gap-4 pt-2">
+                <div className="flex-1">
+                   <textarea 
+                        value={notes || ''} 
+                        onChange={(e) => setNotes(e.target.value)} 
+                        placeholder="Observações do item..." 
+                        className="w-full h-10 p-2 border border-slate-200 rounded-lg bg-slate-50 text-[11px] font-medium resize-none focus:h-20 transition-all" 
+                    />
+                </div>
+                <div className="w-full sm:w-64">
+                    <Button onClick={handleSubmit} disabled={quantity <= 0 || unitPrice <= 0 || simulatingPrice} className="w-full h-10 text-xs font-bold uppercase tracking-widest bg-indigo-600 hover:bg-indigo-700 shadow-md rounded-lg">
+                        {isEditing ? <Save className="w-3.5 h-3.5 mr-2" /> : <Plus className="w-3.5 h-3.5 mr-2" />}
+                        {isEditing ? 'Salvar Item' : 'Adicionar Item'}
+                    </Button>
+                </div>
             </div>
-
-            <div>
-                <label className="text-sm font-medium">Observações</label>
-                <textarea value={notes} onChange={handleNotesChange} placeholder="Observações do item..." className="w-full h-20 p-3 border border-input rounded-md resize-none mt-1" />
-            </div>
-
-
-            <Button onClick={handleSubmit} disabled={quantity <= 0 || unitPrice <= 0 || simulatingPrice} className="w-full">
-                {isEditing ? <><Save className="w-4 h-4 mr-2" /> Salvar</> : <><Plus className="w-4 h-4 mr-2" /> Adicionar</>}
-            </Button>
         </div>
     );
 };

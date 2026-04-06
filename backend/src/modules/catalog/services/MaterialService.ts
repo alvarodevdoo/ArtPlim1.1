@@ -50,6 +50,7 @@ export class MaterialService {
 
     const material = await this.prisma.material.create({
       data: {
+        organizationId,
         name: data.name,
         categoryId: data.categoryId,
         description: data.description,
