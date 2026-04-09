@@ -15,7 +15,9 @@ export interface Produto {
     productType?: ItemType;
     pricingMode: 'SIMPLE_AREA' | 'SIMPLE_UNIT' | 'DYNAMIC_ENGINEER';
     salePrice?: number;
+    priceLocked?: boolean;
     standardSizes?: StandardSize[];
+    formulaData?: any;
     pricingRule?: {
         id: string;
         name: string;

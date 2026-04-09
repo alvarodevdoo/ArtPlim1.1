@@ -39,6 +39,7 @@ const updateSettingsSchema = z.object({
   defaultRevenueCategoryId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   defaultBackupPassword: z.string().min(6, 'Senha mestre muito curta').or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   recoveryToken: z.string().nullable().optional(),
+  defaultSalesUnit: z.string().optional(),
   freightExpenseAccountId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   taxExpenseAccountId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional()
 });

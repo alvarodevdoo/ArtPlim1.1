@@ -217,4 +217,51 @@ export class AuthService {
          user.role === 'ADMIN' ? ['admin.settings', 'admin.users', 'finance.view', 'sales.view', 'production.view', 'inventory.view', 'finance.reports'] : [])
     };
   }
+
+  async authorizeSupervisor(organizationId: string, email: string, password: string) {
+    email = email.toLowerCase();
+    
+    // Buscar usuário
+    const user = await prisma.user.findUnique({
+      where: {
+        organizationId_email: {
+          organizationId,
+          email
+        }
+      },
+      include: {
+        customRole: {
+          include: { permissions: true }
+        }
+      }
+    });
+
+    if (!user || !user.active) {
+      throw new ValidationError('Credenciais inválidas');
+    }
+
+    // Verificar senha
+    const isValidPassword = await bcrypt.compare(password, user.password);
+
+    if (!isValidPassword) {
+      throw new ValidationError('Credenciais inválidas');
+    }
+
+    // Verificar se é supervisor (ADMIN, OWNER, MANAGER) ou tem a permissão sales.edit_price
+    const isSystemSupervisor = ['OWNER', 'ADMIN', 'MANAGER'].includes(user.role);
+    const hasPermission = user.customRole?.permissions.some(p => p.permissionKey === 'sales.edit_price');
+
+    if (!isSystemSupervisor && !hasPermission) {
+      throw new ValidationError('Usuário não tem permissão de supervisor para liberar edição de preço');
+    }
+
+    return {
+      authorized: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        role: user.role
+      }
+    };
+  }
 }

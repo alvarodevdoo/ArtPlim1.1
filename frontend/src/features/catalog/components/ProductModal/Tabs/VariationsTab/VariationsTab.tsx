@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import {
   Settings, Plus, Trash2, Link as LinkIcon,
-  CheckCircle2, ChevronDown, ChevronRight, DollarSign,
+  CheckCircle2, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 import { Combobox } from '@/components/ui/Combobox';
+import { MultiInsumoCombobox, SelectedInsumo } from './MultiInsumoCombobox';
 import { useInsumos } from '@/features/supplies/useInsumos';
 import { DraftVariationGroup, DraftOption } from '../../types';
 
@@ -25,7 +26,8 @@ const InlineInput = ({
   className,
   placeholder,
   type = 'text',
-  isEditing = false
+  isEditing = false,
+  formatAsCurrency = false
 }: { 
   initialValue: string | number; 
   onSave: (val: string) => void;
@@ -33,13 +35,17 @@ const InlineInput = ({
   placeholder?: string;
   type?: 'text' | 'number';
   isEditing?: boolean;
+  formatAsCurrency?: boolean;
 }) => {
   const [val, setVal] = useState(String(initialValue));
   const inputRef = React.useRef<HTMLInputElement>(null);
   useEffect(() => { setVal(String(initialValue)); }, [initialValue]);
 
   if (!isEditing) {
-    return <span className={cn("inline-block", className)}>{initialValue}</span>;
+    const displayValue = formatAsCurrency && typeof initialValue === 'number'
+      ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(initialValue)
+      : initialValue;
+    return <span className={cn("inline-block", className)}>{displayValue}</span>;
   }
 
   return (
@@ -78,10 +84,10 @@ export const VariationsTab: React.FC<VariationsTabProps> = ({
 
   // New Option form (keyed by groupId)
   const [addingToGroup, setAddingToGroup] = useState<string | null>(null);
-  const [newOptionLabel, setNewOptionLabel] = useState('');
-  const [newOptionPrice, setNewOptionPrice] = useState('0');
-  const [newOptionOverridePrice, setNewOptionOverridePrice] = useState('');
-  const [newOptionMaterialId, setNewOptionMaterialId] = useState<string | null>(null);
+  const [newOptionPricingMode, setNewOptionPricingMode] = useState<'ADJUST' | 'FIXED'>('ADJUST');
+  const [newOptionValue, setNewOptionValue] = useState('0');
+  /** Lista de insumos selecionados (multi-select) para criação em lote */
+  const [selectedInsumos, setSelectedInsumos] = useState<SelectedInsumo[]>([]);
 
   // Global editing toggle
   const [isGlobalEditing, setIsGlobalEditing] = useState(false);
@@ -116,25 +122,28 @@ export const VariationsTab: React.FC<VariationsTabProps> = ({
 
   // ── Option CRUD ─────────────────────────────────────────────────────────────
   const handleAddOption = (groupId: string) => {
-    if (!newOptionLabel.trim()) return;
-    const newOption: DraftOption = {
-      id: tempId(),
-      label: newOptionLabel.trim(),
-      value: newOptionLabel.trim().toLowerCase().replace(/\s+/g, '_'),
-      priceModifier: parseFloat(newOptionPrice) || 0,
-      priceModifierType: 'FIXED',
-      fixedValue: newOptionOverridePrice ? parseFloat(newOptionOverridePrice) : null,
-      materialId: newOptionMaterialId,
-      isAvailable: true,
-      displayOrder: 1,
-    };
-    onChange(groups.map((g) =>
-      g.id === groupId ? { ...g, options: [...g.options, newOption] } : g
-    ));
-    setNewOptionLabel('');
-    setNewOptionPrice('0');
-    setNewOptionOverridePrice('');
-    setNewOptionMaterialId(null);
+    // Se há insumos selecionados via multi-select, cria uma opção para cada um
+    if (selectedInsumos.length > 0) {
+      const group = groups.find((g) => g.id === groupId);
+      const baseOrder = group ? group.options.length : 0;
+      const newOptions: DraftOption[] = selectedInsumos.map((insumo, idx) => ({
+        id: tempId(),
+        label: insumo.editedLabel.trim() || insumo.rawName.trim(),
+        value: (insumo.editedLabel.trim() || insumo.rawName.trim()).toLowerCase().replace(/\s+/g, '_'),
+        priceModifier: newOptionPricingMode === 'ADJUST' ? (parseFloat(newOptionValue) || 0) : 0,
+        priceModifierType: 'FIXED',
+        fixedValue: newOptionPricingMode === 'FIXED' ? (parseFloat(newOptionValue) || 0) : null,
+        materialId: insumo.id,
+        isAvailable: true,
+        displayOrder: baseOrder + idx + 1,
+      }));
+      onChange(groups.map((g) =>
+        g.id === groupId ? { ...g, options: [...g.options, ...newOptions] } : g
+      ));
+    }
+    setSelectedInsumos([]);
+    setNewOptionValue('0');
+    setNewOptionPricingMode('ADJUST');
     setAddingToGroup(null);
   };
 
@@ -305,59 +314,80 @@ export const VariationsTab: React.FC<VariationsTabProps> = ({
                     {/* Add Option Form */}
                     {addingToGroup === group.id ? (
                       <div className="p-5 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl space-y-4 animate-in slide-in-from-top duration-200">
-                        <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
-                          <div className="md:col-span-3 space-y-1">
-                            <p className="text-[9px] font-black uppercase text-slate-400">Nome da Opção</p>
-                            <input
-                              autoFocus
-                              value={newOptionLabel}
-                              onChange={(e) => setNewOptionLabel(e.target.value)}
-                              className="w-full h-10 px-3 rounded-lg border-2 focus:border-amber-400 focus:outline-none text-sm font-bold"
-                              placeholder="Ex: Couché 150g..."
-                            />
-                          </div>
-                          <div className="md:col-span-4 space-y-1">
-                            <p className="text-[9px] font-black uppercase text-slate-400">Vincular Material (Slot)</p>
-                            <Combobox
-                              value={newOptionMaterialId || ''}
-                              onChange={(matId) => setNewOptionMaterialId(matId || null)}
-                              placeholder="Pesquisar material..."
-                              className="h-10 border-2"
-                              options={insumos.map((i: any) => ({
+                        {/* ── Seleção múltipla de insumos ── */}
+                        <div className="space-y-1">
+                          <p className="text-[9px] font-black uppercase text-slate-400">
+                            Selecionar Insumos (nome da variação = nome do insumo)
+                          </p>
+                          <MultiInsumoCombobox
+                            options={insumos
+                              .filter((i: any) => !group.options.some(o => o.materialId === i.id))
+                              .map((i: any) => ({
                                 id: i.id,
                                 label: i.name || i.nome,
                                 sublabel: `${i.unit || i.unidadeBase} • R$ ${Number(i.averageCost || i.custoUnitario || 0).toFixed(2)}`,
                               }))}
-                            />
-                          </div>
-                          <div className="md:col-span-2 space-y-1">
-                            <p className="text-[9px] font-black uppercase text-slate-400" title="Soma ou subtrai do preço base">Ajuste (+/- R$)</p>
+                            selected={selectedInsumos}
+                            onChangeSelected={setSelectedInsumos}
+                            placeholder="Pesquisar e selecionar insumos..."
+                          />
+                        </div>
+
+                        {/* ── Precificação da Opção ── */}
+                        <div className="space-y-1 w-full md:w-1/2">
+                          <p className="text-[9px] font-black uppercase text-slate-400" title="Como essa opção afeta o preço do produto?">Regra de Preço</p>
+                          <div className="flex bg-white rounded-lg border-2 border-slate-200 overflow-hidden focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-100 transition-all">
+                            <select 
+                              value={newOptionPricingMode}
+                              onChange={(e) => setNewOptionPricingMode(e.target.value as 'ADJUST' | 'FIXED')}
+                              className="h-10 px-3 bg-slate-50 border-r-2 border-slate-100 text-xs font-bold text-slate-600 focus:outline-none cursor-pointer"
+                            >
+                              <option value="ADJUST">Ajuste (+ R$)</option>
+                              <option value="FIXED">Valor Fixo (R$)</option>
+                            </select>
                             <input
                               type="number"
-                              value={newOptionPrice}
-                              onChange={(e) => setNewOptionPrice(e.target.value)}
-                              className="w-full h-10 px-3 rounded-lg border-2 focus:border-amber-400 focus:outline-none text-sm font-bold text-center text-emerald-600"
-                            />
-                          </div>
-                          <div className="md:col-span-3 space-y-1">
-                            <p className="text-[9px] font-black uppercase text-slate-400" title="Substitui o preço final do produto">Preço Fixo (Manual)</p>
-                            <input
-                              type="number"
-                              value={newOptionOverridePrice}
-                              onChange={(e) => setNewOptionOverridePrice(e.target.value)}
-                              className="w-full h-10 px-3 rounded-lg border-2 focus:border-indigo-400 focus:outline-none text-sm font-bold text-center text-indigo-700"
-                              placeholder="Auto"
+                              value={newOptionValue}
+                              onChange={(e) => setNewOptionValue(e.target.value)}
+                              className={cn(
+                                "flex-1 h-10 px-3 text-sm font-black text-center focus:outline-none",
+                                newOptionPricingMode === 'ADJUST' ? "text-emerald-600" : "text-indigo-600"
+                              )}
+                              placeholder="0"
                             />
                           </div>
                         </div>
+
                         <div className="flex justify-end gap-2 pt-2 border-t border-slate-200/50">
-                          <Button variant="ghost" onClick={() => setAddingToGroup(null)} className="h-10 px-6 font-bold text-slate-500">Cancelar</Button>
-                          <Button onClick={() => handleAddOption(group.id)} className="h-10 px-8 bg-indigo-600 hover:bg-indigo-700 text-white font-black">Adicionar Opção</Button>
+                          <Button
+                            variant="ghost"
+                            onClick={() => {
+                              setAddingToGroup(null);
+                              setSelectedInsumos([]);
+                            }}
+                            className="h-10 px-6 font-bold text-slate-500"
+                          >
+                            Cancelar
+                          </Button>
+                          <Button
+                            onClick={() => handleAddOption(group.id)}
+                            disabled={selectedInsumos.length === 0}
+                            className="h-10 px-8 bg-indigo-600 hover:bg-indigo-700 text-white font-black disabled:opacity-40"
+                          >
+                            {selectedInsumos.length > 1
+                              ? `Adicionar ${selectedInsumos.length} Opções`
+                              : 'Adicionar Opção'}
+                          </Button>
                         </div>
                       </div>
                     ) : (
                       <button
-                        onClick={() => { setAddingToGroup(group.id); setNewOptionLabel(''); setNewOptionPrice('0'); setNewOptionOverridePrice(''); setNewOptionMaterialId(null); }}
+                        onClick={() => {
+                          setAddingToGroup(group.id);
+                          setNewOptionValue('0');
+                          setNewOptionPricingMode('ADJUST');
+                          setSelectedInsumos([]);
+                        }}
                         className="flex items-center gap-2 px-4 py-2 text-[10px] font-black uppercase text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-all"
                       >
                         <Plus className="w-3.5 h-3.5" /> Adicionar Opção
@@ -438,35 +468,46 @@ const OptionCard = ({
           </div>
         </div>
 
-        {/* Price modifier */}
-        <div className="text-right shrink-0">
-          <p className="text-[9px] font-black uppercase text-slate-400 mb-1" title="Acréscimo sobre o preço base">Ajuste (+ R$)</p>
-          <InlineInput
-            type="number"
-            initialValue={option.priceModifier}
-            isEditing={isGlobalEditing}
-            onSave={(val) => onChange({ priceModifier: parseFloat(val) || 0 })}
-            className={cn(
-              "text-center font-black text-emerald-600",
-              isGlobalEditing ? "w-20 h-8 border-amber-200" : "text-sm"
-            )}
-          />
-        </div>
+        {/* Unified Price Modifier / Override */}
+        <div className="flex flex-col items-end shrink-0 w-28">
+          {!isGlobalEditing ? (
+             <p className="text-[9px] font-black uppercase text-slate-400 mb-0.5">
+               {option.fixedValue !== null ? 'Valor Fixo' : 'Ajuste (+ R$)'}
+             </p>
+          ) : (
+            <select
+              value={option.fixedValue !== null ? 'FIXED' : 'ADJUST'}
+              onChange={(e) => {
+                if (e.target.value === 'FIXED') {
+                  onChange({ fixedValue: option.priceModifier || 0, priceModifier: 0 });
+                } else {
+                  onChange({ fixedValue: null, priceModifier: option.fixedValue || 0 });
+                }
+              }}
+              className="text-[9px] font-black uppercase text-amber-600 bg-amber-50 rounded px-1 py-0.5 mb-0.5 cursor-pointer border border-amber-200 focus:outline-none"
+            >
+              <option value="ADJUST">Ajuste (+ R$)</option>
+              <option value="FIXED">Valor Fixo</option>
+            </select>
+          )}
 
-        {/* Price Override */}
-        <div className="text-center shrink-0">
-          <p className="text-[9px] font-black uppercase text-slate-400 flex items-center gap-1" title="Substitui o preço final do produto">
-            <DollarSign className="w-2.5 h-2.5" /> Valor Fixo
-          </p>
           <InlineInput
             type="number"
-            initialValue={option.fixedValue ?? ''}
+            initialValue={option.fixedValue !== null ? option.fixedValue : (option.priceModifier ?? 0)}
             isEditing={isGlobalEditing}
-            onSave={(val) => onChange({ fixedValue: val === '' ? null : parseFloat(val) })}
-            placeholder="Auto"
+            formatAsCurrency={true}
+            onSave={(val) => {
+              const numVal = parseFloat(val) || 0;
+              if (option.fixedValue !== null) {
+                onChange({ fixedValue: numVal, priceModifier: 0 });
+              } else {
+                onChange({ priceModifier: numVal, fixedValue: null });
+              }
+            }}
             className={cn(
-              "text-center font-black",
-              isGlobalEditing ? "w-20 h-8 border-indigo-200 text-indigo-700" : "text-indigo-400 text-xs"
+              "text-right font-black",
+              option.fixedValue !== null ? "text-indigo-600" : "text-emerald-600",
+              isGlobalEditing ? (option.fixedValue !== null ? "w-full h-8 border-indigo-200 text-center" : "w-full h-8 border-emerald-200 text-center") : "text-sm pr-1"
             )}
           />
         </div>

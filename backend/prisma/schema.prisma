@@ -82,6 +82,7 @@ model OrganizationSettings {
   allowDuplicatePhones       Boolean @default(true)
   requireDocumentKeyForEntry Boolean @default(false)
   enableCategoryAppropriation Boolean @default(true)
+  defaultSalesUnit           String  @default("MM")
 
   // Configurações de Apropriação Financeira (Plano de Contas)
   defaultReceivableCategoryId String?
@@ -309,6 +310,7 @@ model Product {
   costPrice        Decimal?               @db.Decimal(10, 2)
   markup           Float                  @default(2.0)
   active           Boolean                @default(true)
+  priceLocked      Boolean                @default(false)
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
   pricingRuleId    String?

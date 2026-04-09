@@ -26,6 +26,7 @@ const createProductSchema = z.object({
   localFormulaId: z.preprocess((val) => val === '' ? null : val, z.string().optional().nullable()),
   salePrice: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional()),
   costPrice: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional()),
+  priceLocked: z.boolean().optional().default(false),
   targetMarkup: z.number().optional().nullable(),
   targetMargin: z.number().optional().nullable(),
   // Controle de estoque

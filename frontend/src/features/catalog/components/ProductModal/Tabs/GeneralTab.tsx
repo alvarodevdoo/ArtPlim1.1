@@ -2,13 +2,14 @@ import React from 'react';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { Switch } from '@/components/ui/switch';
-import { ShoppingBag, Briefcase, Info, TrendingUp } from 'lucide-react';
+import { ShoppingBag, Briefcase, Info, TrendingUp, Lock, Unlock } from 'lucide-react';
 import { ProductDraft } from '../types';
+import { cn } from '@/lib/utils';
 
 interface GeneralTabProps {
   draft: ProductDraft;
   setDraft: React.Dispatch<React.SetStateAction<ProductDraft>>;
-  pricingRules?: { id: string, name: string }[];
+  pricingRules?: { id: string; name: string; formula?: any }[];
 }
 
 export const GeneralTab: React.FC<GeneralTabProps> = ({ draft, setDraft, pricingRules = [] }) => {
@@ -64,17 +65,34 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({ draft, setDraft, pricing
 
           {draft.pricingMode !== 'DYNAMIC_ENGINEER' && (
             <div className="space-y-3 pt-4 border-t border-slate-100">
-              <Label className="text-xs font-black uppercase tracking-widest text-emerald-600">Preço Fixo Base (Catálogo)</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">R$</span>
-                <Input 
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={draft.salePrice || ''}
-                  onChange={(e) => handleChange('salePrice', parseFloat(e.target.value) || 0)}
-                  className="h-12 pl-10 font-black text-lg border-2 focus:border-emerald-500 bg-emerald-50/30"
-                />
+              <Label className="text-xs font-black uppercase tracking-widest text-emerald-600 flex justify-between items-center">
+                <span>Preço Fixo Base (Catálogo)</span>
+                {draft.priceLocked && <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-sm flex items-center gap-1"><Lock className="w-3 h-3"/> TRAVADO</span>}
+              </Label>
+              <div className="flex gap-2 items-center">
+                <div className="relative flex-1">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">R$</span>
+                  <Input 
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={draft.salePrice || ''}
+                    onChange={(e) => handleChange('salePrice', parseFloat(e.target.value) || 0)}
+                    className="h-12 pl-10 font-black text-lg border-2 focus:border-emerald-500 bg-emerald-50/30"
+                  />
+                </div>
+                <button
+                  type="button"
+                  title={draft.priceLocked ? "Preço Bloqueado para Vendedores" : "Preço Editável para Vendedores"}
+                  onClick={() => handleChange('priceLocked', !draft.priceLocked)}
+                  className={`flex items-center justify-center shrink-0 h-12 w-12 rounded-xl border-2 transition-all ${
+                    draft.priceLocked 
+                    ? 'bg-amber-50 border-amber-200 text-amber-600 hover:bg-amber-100 hover:border-amber-300' 
+                    : 'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100'
+                  }`}
+                >
+                  {draft.priceLocked ? <Lock className="w-5 h-5" /> : <Unlock className="w-5 h-5 opacity-60" />}
+                </button>
               </div>
               <p className="text-[10px] text-slate-500 font-medium italic">
                 Como seu produto não usa fórmulas vitrine, este é o preço que será exibido no cartão principal do catálogo.
@@ -119,21 +137,92 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({ draft, setDraft, pricing
 
                 {/* Só mostra o seletor de regras se for Modo Dinâmico */}
                 {draft.pricingMode === 'DYNAMIC_ENGINEER' && (
-                  <div className="space-y-2 animate-in slide-in-from-top duration-300">
-                    <Label className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest">Regra de Cálculo Específica</Label>
-                    <select 
-                      value={draft.pricingRuleId || ''}
-                      onChange={(e) => handleChange('pricingRuleId', e.target.value || null)}
-                      className="w-full h-11 px-4 bg-white border-2 border-indigo-100 rounded-xl text-sm font-bold text-indigo-900 focus:border-indigo-500 focus:outline-none transition-all"
-                    >
-                      <option value="">— Escolha uma Fórmula —</option>
-                      {pricingRules.map(rule => (
-                        <option key={rule.id} value={rule.id}>{rule.name}</option>
-                      ))}
-                    </select>
-                    <p className="text-[10px] text-indigo-400 font-bold leading-relaxed">
-                      Selecione a lógica de cálculo dinâmica aplicada a este item.
-                    </p>
+                  <div className="space-y-6 animate-in slide-in-from-top duration-300">
+                    <div className="space-y-2">
+                        <Label className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest">Regra de Cálculo Específica</Label>
+                        <select 
+                        value={draft.pricingRuleId || ''}
+                        onChange={(e) => handleChange('pricingRuleId', e.target.value || null)}
+                        className="w-full h-11 px-4 bg-white border-2 border-indigo-100 rounded-xl text-sm font-bold text-indigo-900 focus:border-indigo-500 focus:outline-none transition-all"
+                        >
+                            <option value="">— Escolha uma Fórmula —</option>
+                            {pricingRules.map(rule => (
+                                <option key={rule.id} value={rule.id}>{rule.name}</option>
+                            ))}
+                        </select>
+                        <p className="text-[10px] text-indigo-400 font-bold leading-relaxed">
+                            Selecione a lógica de cálculo dinâmica aplicada a este item.
+                        </p>
+                    </div>
+
+                    {/* Variáveis Dinâmicas da Fórmula */}
+                    {draft.pricingRuleId && (
+                        <div className="p-4 bg-white/60 border-2 border-dashed border-indigo-200 rounded-2xl space-y-4 shadow-inner">
+                            <div className="flex items-center gap-2 border-b border-indigo-100 pb-2">
+                                <TrendingUp className="w-4 h-4 text-indigo-500" />
+                                <h5 className="text-[10px] font-black uppercase text-indigo-600 tracking-wider">Variáveis Padrão do Produto</h5>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 gap-3">
+                                {(() => {
+                                    const rule = pricingRules.find(r => r.id === draft.pricingRuleId);
+                                    const formula = (rule as any)?.formula;
+                                    const variables = formula?.variables || [];
+                                    
+                                    if (variables.length === 0) {
+                                        return <p className="text-[10px] text-slate-400 font-bold italic py-2">Esta fórmula não possui variáveis configuráveis.</p>;
+                                    }
+
+                                    return variables.map((variable: any) => {
+                                        const key = variable.id || variable.name; // ID prioritário
+                                        const config = draft.formulaData?.[key] || { value: variable.defaultValue || 0, locked: false };
+                                        
+                                        const updateVariable = (field: 'value' | 'locked', val: any) => {
+                                            const newFormulaData = { 
+                                                ...(draft.formulaData || {}),
+                                                [key]: { ...config, [field]: val }
+                                            };
+                                            handleChange('formulaData', newFormulaData);
+                                        };
+
+                                        return (
+                                            <div key={key} className="flex flex-col gap-1.5 p-2 rounded-lg hover:bg-white transition-all border border-transparent hover:border-indigo-100">
+                                                <div className="flex items-center justify-between">
+                                                    <label className="text-[10px] font-black text-slate-500 uppercase">{variable.label || key}</label>
+                                                    <span className="text-[8px] font-bold text-indigo-300 italic">{variable.unit || ''}</span>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <Input 
+                                                        type="number"
+                                                        value={config.value}
+                                                        onChange={(e) => updateVariable('value', parseFloat(e.target.value) || 0)}
+                                                        className="h-9 text-xs font-bold border-indigo-50/50 bg-white/50 focus:bg-white transition-all shadow-none"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => updateVariable('locked', !config.locked)}
+                                                        title={config.locked ? "Valor travado para o vendedor" : "Vendedor pode editar no pedido"}
+                                                        className={cn(
+                                                            "flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg border-2 transition-all",
+                                                            config.locked 
+                                                            ? "bg-amber-100 border-amber-200 text-amber-600" 
+                                                            : "bg-slate-50 border-slate-100 text-slate-300 hover:text-slate-400 hover:border-slate-200"
+                                                        )}
+                                                    >
+                                                        {config.locked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        );
+                                    });
+                                })()}
+                            </div>
+                            <p className="text-[9px] text-indigo-400/80 leading-tight italic px-1">
+                                <Info className="w-2.5 h-2.5 inline mr-1" />
+                                Use o cadeado para decidir se o vendedor pode alterar este valor ao criar um item de pedido.
+                            </p>
+                        </div>
+                    )}
                   </div>
                 )}
                 

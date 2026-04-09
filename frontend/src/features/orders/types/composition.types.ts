@@ -9,6 +9,7 @@
 export interface CompositionLineItem {
   materialId: string;
   materialName: string;
+  materialCategory?: string; // Categoria para filtragem visual
   quantity: number;
   costPerUnit: number;
   subtotal: number;
@@ -29,6 +30,7 @@ export interface CompositionResult {
   variableMaterialCost: number;
   totalCost: number;
   suggestedPrice: number;
+  unitSuggestedPrice?: number; // Preço unitário pronto vindo do backend
   suggestedMarkup: number;
   currentMargin: number;      // 0.0–1.0
   breakdown: CompositionLineItem[];

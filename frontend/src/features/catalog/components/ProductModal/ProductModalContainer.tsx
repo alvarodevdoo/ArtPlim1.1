@@ -63,7 +63,7 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
   const [draft, setDraft] = useState<ProductDraft>(emptyDraft());
   const [bomItems, setBomItems] = useState<DraftBOMItem[]>([]);
   const [varGroups, setVarGroups] = useState<DraftVariationGroup[]>([]);
-  const [pricingRules, setPricingRules] = useState<{ id: string, name: string }[]>([]);
+  const [pricingRules, setPricingRules] = useState<{ id: string; name: string; formula?: any }[]>([]);
 
   // which option is "selected" in the simulator per group
   const [selectedOptionIds, setSelectedOptionIds] = useState<Record<string, string>>({});

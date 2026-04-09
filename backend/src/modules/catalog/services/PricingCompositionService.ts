@@ -12,6 +12,7 @@
 export interface CompositionLineItem {
   materialId: string;
   materialName: string;
+  materialCategory?: string; // Categoria do material para filtragem visual
   quantity: number;
   costPerUnit: number;   // averageCost do estoque
   subtotal: number;
@@ -60,7 +61,9 @@ export class PricingCompositionService {
         fichasTecnicas: {
           include: {
             material: {
-              select: { id: true, name: true, averageCost: true, currentStock: true, unit: true }
+              include: {
+                category: { select: { name: true } }
+              }
             }
           }
         }
@@ -93,6 +96,7 @@ export class PricingCompositionService {
       breakdown.push({
         materialId: mat.id,
         materialName: mat.name,
+        materialCategory: (mat as any).category?.name,
         quantity: qtd,
         costPerUnit,
         subtotal,
@@ -120,12 +124,16 @@ export class PricingCompositionService {
         where: { id: { in: selectedOptionIds } },
         include: {
           material: {
-            select: { id: true, name: true, averageCost: true, currentStock: true, unit: true }
+            include: {
+              category: { select: { name: true } }
+            }
           },
           fichasTecnicas: {
             include: {
               material: {
-                select: { id: true, name: true, averageCost: true, currentStock: true, unit: true }
+                include: {
+                  category: { select: { name: true } }
+                }
               }
             }
           }
@@ -134,7 +142,8 @@ export class PricingCompositionService {
 
       for (const opt of options) {
         // Acumular modificadores e acompanhar o maior preço fixo (override ou fixedValue)
-        totalModifiers += Number(opt.priceModifier || 0) * quantity;
+        const modifier = Number(opt.priceModifier || 0) * quantity;
+        totalModifiers += modifier;
         
         // fixedValue é o novo campo para Preço Fixo de Venda da opção
         // priceOverride é o campo legado que tinha o mesmo propósito
@@ -142,7 +151,9 @@ export class PricingCompositionService {
         const optOverride = Number(opt.priceOverride || 0) * quantity;
         const currentMax = Math.max(optFixedValue, optOverride);
         
-        if (currentMax > maxOverride) maxOverride = currentMax;
+        if (currentMax > maxOverride) {
+            maxOverride = currentMax;
+        }
 
         // 3a. Slot direto (materialId na própria option)
         if (opt.materialId && opt.material) {
@@ -155,6 +166,7 @@ export class PricingCompositionService {
           breakdown.push({
             materialId: mat.id,
             materialName: mat.name,
+            materialCategory: (mat as any).category?.name,
             quantity: qtd,
             costPerUnit,
             subtotal,
@@ -187,6 +199,7 @@ export class PricingCompositionService {
           breakdown.push({
             materialId: mat.id,
             materialName: mat.name,
+            materialCategory: (mat as any).category?.name,
             quantity: qtd,
             costPerUnit,
             subtotal,
@@ -212,13 +225,18 @@ export class PricingCompositionService {
     }
 
     // Fallback absoluto: se o preço sugerido ainda for 0, usamos o custo total para não ficar vazio
-    if (suggestedPrice === 0) suggestedPrice = totalCost;
+    if (suggestedPrice === 0) {
+        suggestedPrice = totalCost;
+    }
+
+    const unitSuggestedPrice = suggestedPrice / Math.max(1, quantity);
 
     return {
       baseMaterialCost,
       variableMaterialCost,
       totalCost,
       suggestedPrice,
+      unitSuggestedPrice,
       suggestedMarkup: 1.0,
       currentMargin: 0,
       breakdown,

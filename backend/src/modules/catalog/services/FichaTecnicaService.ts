@@ -110,7 +110,12 @@ export class FichaTecnicaService {
             unit: true,
             costPerUnit: true,
             averageCost: true,
-            description: true
+            description: true,
+            category: {
+              select: {
+                name: true
+              }
+            }
           }
         }
       },

@@ -49,6 +49,31 @@ export async function authRoutes(fastify: FastifyInstance) {
     });
   });
 
+  const authorizeSupervisorSchema = z.object({
+    email: z.string().email('Email inválido'),
+    password: z.string().min(1, 'Senha é obrigatória'),
+  });
+
+  // Autorização de Supervisor
+  fastify.post('/authorize-supervisor', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    try {
+      const body = authorizeSupervisorSchema.parse(request.body);
+      const result = await authService.authorizeSupervisor(request.user!.organizationId, body.email, body.password);
+      
+      return reply.code(200).send({
+        success: true,
+        data: result
+      });
+    } catch (error: any) {
+      return reply.code(401).send({
+        success: false,
+        message: error.message
+      });
+    }
+  });
+
   // Verificar token
   fastify.get('/me', {
     preHandler: [fastify.authenticate]

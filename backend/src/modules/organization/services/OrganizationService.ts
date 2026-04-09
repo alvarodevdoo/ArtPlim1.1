@@ -31,6 +31,7 @@ interface UpdateSettingsInput {
   defaultRevenueCategoryId?: string | null;
   defaultBackupPassword?: string | null;
   recoveryToken?: string | null;
+  defaultSalesUnit?: string;
   freightExpenseAccountId?: string | null;
   taxExpenseAccountId?: string | null;
 }
@@ -96,7 +97,8 @@ export class OrganizationService {
           taxRate: 0.0,
           validadeOrcamento: 7,
           allowDuplicatePhones: true,
-          requireDocumentKeyForEntry: false
+          requireDocumentKeyForEntry: false,
+          defaultSalesUnit: 'MM'
         }
       });
     }

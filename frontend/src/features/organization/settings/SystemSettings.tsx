@@ -17,6 +17,7 @@ interface SystemSettingsData {
   requireDocumentKeyForEntry: boolean;
   enableCategoryAppropriation: boolean;
   inventoryValuationMethod: string;
+  defaultSalesUnit: string;
   freightExpenseAccountId?: string;
   taxExpenseAccountId?: string;
 }
@@ -169,6 +170,27 @@ export const SystemSettings: React.FC<SystemSettingsProps> = ({
                     />
                   </div>
                 </label>
+
+                <div className="flex flex-col p-4 border rounded-xl bg-slate-50 border-slate-200">
+                  <span className="text-xs font-bold uppercase tracking-wide mb-2 text-slate-600">Unidade de Medida Padrão (Vendas)</span>
+                  <div className="flex gap-2">
+                    {(['M', 'CM', 'MM'] as const).map((u) => (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => setSettings(prev => ({ ...prev, defaultSalesUnit: u }))}
+                        className={`flex-1 py-2 text-xs font-black rounded-lg transition-all ${
+                          settings.defaultSalesUnit === u 
+                          ? 'bg-indigo-600 text-white shadow-md scale-105' 
+                          : 'bg-white border text-slate-500 hover:border-indigo-300'
+                        }`}
+                      >
+                        {u}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[9px] text-slate-400 mt-2 italic">Define a unidade inicial ao abrir o configurador de itens.</p>
+                </div>
               </div>
             </div>
           </div>

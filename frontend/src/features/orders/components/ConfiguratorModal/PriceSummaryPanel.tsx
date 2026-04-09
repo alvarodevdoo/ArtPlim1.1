@@ -55,7 +55,7 @@ export const PriceSummaryPanel: React.FC<PriceSummaryPanelProps> = ({
             R$ {totalNegotiated.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
           <div className="text-[10px] font-bold text-slate-400">
-            (R$ {negotiatedPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / un)
+            (R$ {negotiatedPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / un)
           </div>
         </div>
       </div>

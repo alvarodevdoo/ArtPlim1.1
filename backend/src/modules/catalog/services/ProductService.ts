@@ -20,6 +20,7 @@ interface CreateProductInput {
   customFormula?: string | null;
   categoryId?: string | null;
   revenueAccountId?: string | null;
+  priceLocked?: boolean;
   targetMarkup?: number | null;
   targetMargin?: number | null;
 }

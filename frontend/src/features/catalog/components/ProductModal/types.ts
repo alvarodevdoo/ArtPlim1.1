@@ -8,6 +8,7 @@ export interface ProductDraft {
   salePrice: number;          // Preço de venda manual (priceOverride global)
   costPrice: number;
   active: boolean;
+  priceLocked?: boolean;
   categoryId?: string;
   revenueAccountId?: string;
   trackStock: boolean;
