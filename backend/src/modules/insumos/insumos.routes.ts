@@ -98,6 +98,19 @@ export async function insumosRoutes(fastify: FastifyInstance) {
     return reply.send({ success: true, data: insumo });
   });
 
+  // ── GET /api/insumos/:id/batches ──────────────────────────────────────────
+  // Retorna os lotes ativos seguindo a regra PEPS.
+  fastify.get('/:id/batches', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new InsumoService(prisma);
+
+    const batches = await service.getFifoBatches(id, request.user!.organizationId);
+    return reply.send({ success: true, data: batches });
+  });
+
   // ── POST /api/insumos ─────────────────────────────────────────────────────
   // Cria um novo insumo.
   fastify.post('/', {

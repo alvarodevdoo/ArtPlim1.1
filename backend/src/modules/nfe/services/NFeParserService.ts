@@ -58,6 +58,9 @@ export class NFeParserService {
         cfop: prod.CFOP,
         unidade: prod.uCom,
         quantidade: qtd,
+        quantidadeOriginal: qtd,
+        unidadeTributavel: prod.uTrib,
+        quantidadeTributavel: parseFloat(prod.qTrib || 1),
         valorUnitario: vUnCom,
         valorTotal: vProd,
         custosAcessorios: {

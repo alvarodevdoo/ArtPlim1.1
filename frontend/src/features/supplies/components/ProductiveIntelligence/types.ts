@@ -8,6 +8,7 @@ export interface ProductiveIntelligenceData {
   multiplicador_padrao_entrada: number; // Fator de Embalagem Sugerido (Inteiro)
   largura_unitaria: number; // Largura em METROS
   altura_unitaria: number; // Altura em METROS
+  purchasePrice?: number; // Preço de Compra da Unidade Integral (Opcional para cálculo)
   
   // Aba Consumo / Venda
   controlUnit: ControlUnit; // unidade_controle (Ex: M2)

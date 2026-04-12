@@ -10,6 +10,7 @@ import LoginPage from '@/pages/auth/LoginPage';
 import RegisterPage from '@/pages/auth/RegisterPage';
 import DashboardSimple from '@/pages/DashboardSimple';
 import Clientes from '@/pages/Clientes';
+import Fornecedores from '@/pages/Fornecedores';
 import Funcionarios from '@/pages/Funcionarios';
 import Produtos from '@/pages/Produtos';
 import Insumos from '@/pages/Insumos';
@@ -56,6 +57,14 @@ function App() {
                 </ProtectedRoute>
               } />
 
+              <Route path="/fornecedores" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Fornecedores />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+
               <Route path="/clientes" element={
                 <ProtectedRoute>
                   <Layout>
@@ -63,6 +72,8 @@ function App() {
                   </Layout>
                 </ProtectedRoute>
               } />
+
+
 
               <Route path="/funcionarios" element={
                 <ProtectedRoute permission="admin.users">

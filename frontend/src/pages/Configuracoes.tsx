@@ -50,6 +50,11 @@ interface OrganizationSettings {
   inventoryValuationMethod: string;
   freightExpenseAccountId?: string;
   taxExpenseAccountId?: string;
+  nfeCertificate?: string | null;
+  nfeCertificatePassword?: string | null;
+  nfeCertificateExpiry?: string | null;
+  nfeCertificateSubject?: string | null;
+  nfeCertificateFileName?: string | null;
 }
 
 const Configuracoes: React.FC = () => {
@@ -76,7 +81,12 @@ const Configuracoes: React.FC = () => {
     allowDuplicatePhones: true,
     requireDocumentKeyForEntry: false,
     enableCategoryAppropriation: true,
-    inventoryValuationMethod: 'AVERAGE'
+    inventoryValuationMethod: 'AVERAGE',
+    nfeCertificate: null,
+    nfeCertificatePassword: null,
+    nfeCertificateExpiry: null,
+    nfeCertificateSubject: null,
+    nfeCertificateFileName: null
   });
 
   const [selectedModules, setSelectedModules] = useState<Record<string, boolean>>({
@@ -120,7 +130,9 @@ const Configuracoes: React.FC = () => {
       toast.success('Dados da empresa atualizados!');
       loadSettings();
     } catch (error: any) {
-      toast.error(error.response?.data?.error?.message || 'Erro ao salvar organização');
+      const msg = error.response?.data?.message || error.response?.data?.error?.message || 'Erro ao salvar organização';
+      toast.error(msg);
+      console.error('Erro Organization PUT:', error.response?.data);
     } finally {
       setLoading(false);
     }
@@ -135,7 +147,9 @@ const Configuracoes: React.FC = () => {
       await refreshSettings();
       loadSettings();
     } catch (error: any) {
-      toast.error(error.response?.data?.error?.message || 'Erro ao salvar sistema');
+      const msg = error.response?.data?.message || error.response?.data?.error?.message || 'Erro ao salvar configurações';
+      toast.error(msg);
+      console.error('Erro Settings PUT:', error.response?.data);
     } finally {
       setLoading(false);
     }

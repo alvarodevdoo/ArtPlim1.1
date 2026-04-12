@@ -121,7 +121,7 @@ export const MovementHistory: React.FC<Props> = ({
                     </span>
                     <div className="flex gap-2 items-center">
                       <span className="text-[8px] text-primary uppercase font-black bg-primary/5 px-1 rounded">
-                        R$ {(parseFloat(m.unitCost) * conversionFactor).toLocaleString(undefined, { minimumFractionDigits: 2 })} / Unidade
+                        R$ {parseFloat(m.unitCost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} / {unit}
                       </span>
                     </div>
                   </div>

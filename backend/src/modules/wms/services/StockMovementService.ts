@@ -69,6 +69,7 @@ export class StockMovementService {
           documentKey: data.documentKey,
           documentUrl: data.documentUrl,
           supplierId: data.supplierId,
+          quantityRemaining: new Prisma.Decimal(newQuantity),
         }
       });
 
@@ -113,7 +114,6 @@ export class StockMovementService {
       if (material.organizationId !== organizationId) throw new AppError('Acesso não autorizado', 403);
 
       const currentStock = Number(material.currentStock ?? 0);
-      const averageCost = Number(material.averageCost ?? 0);
       const consumeQuantity = data.quantity;
 
       if (currentStock < consumeQuantity && !material.sellWithoutStock) {
@@ -123,10 +123,59 @@ export class StockMovementService {
         );
       }
 
-      const totalCostOfConsumption = consumeQuantity * averageCost;
+      // --- ALGORITMO PEPS (FIFO) ---
+      // Localizar lotes com saldo disponível (mais antigos primeiro)
+      const activeBatches = await tx.stockMovement.findMany({
+        where: {
+          materialId: material.id,
+          organizationId,
+          type: 'ENTRY',
+          isCancelled: false,
+          quantityRemaining: { gt: 0 }
+        },
+        orderBy: { createdAt: 'asc' }
+      });
+
+      let remainingToConsume = consumeQuantity;
+      let totalValueCalculated = 0;
+      const consumedPortions = [];
+
+      for (const batch of activeBatches) {
+        if (remainingToConsume <= 0) break;
+
+        const batchQty = Number(batch.quantityRemaining);
+        const amountToTakeFromThisBatch = Math.min(batchQty, remainingToConsume);
+
+        // Atualizar saldo do lote
+        await tx.stockMovement.update({
+          where: { id: batch.id },
+          data: { 
+            quantityRemaining: new Prisma.Decimal(batchQty - amountToTakeFromThisBatch) 
+          }
+        });
+
+        totalValueCalculated += amountToTakeFromThisBatch * Number(batch.unitCost);
+        consumedPortions.push({
+          batchId: batch.id,
+          quantity: amountToTakeFromThisBatch,
+          unitCost: batch.unitCost
+        });
+
+        remainingToConsume -= amountToTakeFromThisBatch;
+      }
+
+      // Se ainda sobrou algo para consumir (ex: estoque negativo permitido)
+      // usamos o custo médio ou o último custo como fallback para a parte negativa
+      if (remainingToConsume > 0) {
+        const fallbackCost = Number(material.averageCost || 0);
+        totalValueCalculated += remainingToConsume * fallbackCost;
+        console.warn(`[FIFO] Consumo excedeu lotes disponíveis. ${remainingToConsume} unidades avaliadas ao custo médio.`);
+      }
+
+      const calculatedUnitCost = totalValueCalculated / consumeQuantity;
       const newStock = currentStock - consumeQuantity;
 
-      // 3. Atualiza o estoque
+      // 3. Atualiza o estoque do material
       await tx.material.update({
         where: { id: material.id },
         data: { currentStock: new Prisma.Decimal(newStock) }
@@ -140,13 +189,13 @@ export class StockMovementService {
           userId,
           type: 'INTERNAL_CONSUMPTION',
           quantity: new Prisma.Decimal(consumeQuantity),
-          unitCost: new Prisma.Decimal(averageCost),
-          totalCost: new Prisma.Decimal(totalCostOfConsumption),
+          unitCost: new Prisma.Decimal(calculatedUnitCost),
+          totalCost: new Prisma.Decimal(totalValueCalculated),
           oldQuantity: new Prisma.Decimal(currentStock),
-          oldUnitCost: new Prisma.Decimal(averageCost),
+          oldUnitCost: new Prisma.Decimal(material.averageCost || 0),
           machineId: data.machineId,
           machineCounter: data.machineCounter,
-          notes: data.notes
+          notes: data.notes + (consumedPortions.length > 0 ? `\n[PEPS] Consumido de ${consumedPortions.length} lote(s).` : '')
         }
       });
 
@@ -318,6 +367,7 @@ export class StockMovementService {
             notes: item.notes || data.notes,
             documentKey: item.documentKey || data.documentKey,
             supplierId: data.supplierId,
+            quantityRemaining: new Prisma.Decimal(item.quantity),
           }
         });
 

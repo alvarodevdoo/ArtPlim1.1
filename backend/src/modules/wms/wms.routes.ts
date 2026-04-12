@@ -107,7 +107,7 @@ export async function wmsRoutes(fastify: FastifyInstance) {
     materialId: z.string().uuid(),
     type: z.enum(['ENTRY', 'CONSUMPTION', 'ADJUSTMENT']),
     quantity: z.coerce.number().positive(),
-    unitCost: z.coerce.number().positive(),
+    unitCost: z.coerce.number().nonnegative(),
     notes: z.string().optional(),
     justification: z.string().min(3),
   });
@@ -137,32 +137,42 @@ export async function wmsRoutes(fastify: FastifyInstance) {
       body = request.body;
     }
 
-    const data = adjustmentSchema.parse(body);
-    const prisma = getTenantClient(request.user!.organizationId);
-    const service = new StockMovementService(prisma);
+    try {
+      const data = adjustmentSchema.parse(body);
+      const prisma = getTenantClient(request.user!.organizationId);
+      const service = new StockMovementService(prisma);
 
-    let result;
-    if (data.type === 'ENTRY') {
-      result = await service.registerEntry(request.user!.organizationId, {
-        ...data,
-        userId: request.user!.id,
-        justification: data.justification,
-        documentUrl: fileUrl
-      } as any);
-    } else if (data.type === 'CONSUMPTION') {
-      result = await service.registerInternalConsumption(request.user!.organizationId, request.user!.id, {
-        ...data,
-        machineId: '00000000-0000-0000-0000-000000000000', // Default para manual
-      } as any);
-    } else {
-      result = await service.registerAdjustment(request.user!.organizationId, request.user!.id, {
-        ...data,
-        averageCost: data.unitCost,
-        documentUrl: fileUrl
-      });
+      let result;
+      if (data.type === 'ENTRY') {
+        result = await service.registerEntry(request.user!.organizationId, {
+          ...data,
+          userId: request.user!.id,
+          justification: data.justification,
+          documentUrl: fileUrl
+        } as any);
+      } else if (data.type === 'CONSUMPTION') {
+        result = await service.registerInternalConsumption(request.user!.organizationId, request.user!.id, {
+          ...data,
+          machineId: '00000000-0000-0000-0000-000000000000', // Default para manual
+        } as any);
+      } else {
+        result = await service.registerAdjustment(request.user!.organizationId, request.user!.id, {
+          ...data,
+          averageCost: data.unitCost,
+          documentUrl: fileUrl
+        });
+      }
+
+      return reply.code(201).send({ success: true, data: result });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return reply.code(400).send({ 
+          success: false, 
+          message: `Erro de validação: ${error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}` 
+        });
+      }
+      throw error;
     }
-
-    return reply.code(201).send({ success: true, data: result });
   });
 
   fastify.post('/movements/:id/cancel', {

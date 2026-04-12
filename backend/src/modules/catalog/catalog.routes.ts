@@ -63,9 +63,9 @@ const createMaterialSchema = z.object({
   expenseAccountId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   minStockQuantity: z.preprocess((val) => (val === '' || val === null || val === undefined) ? null : isNaN(Number(val)) ? null : Number(val), z.number().min(0).nullable().optional()),
   trackStock: z.boolean().optional().default(true),
-  ncm: z.string().optional().nullable(),
-  ean: z.string().optional().nullable(),
-  spedType: z.string().optional().nullable(),
+  ncm: z.coerce.string().optional().nullable(),
+  ean: z.coerce.string().optional().nullable(),
+  spedType: z.coerce.string().optional().nullable(),
   suppliers: z.array(z.object({
     supplierId: z.string().uuid(),
     costPrice: z.number().min(0),
@@ -249,20 +249,32 @@ export async function catalogRoutes(fastify: FastifyInstance) {
   fastify.post('/materials', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const body = createMaterialSchema.parse(request.body);
-    const prisma = getTenantClient(request.user!.organizationId);
-    const materialService = new MaterialService(prisma);
+    try {
+      const body = createMaterialSchema.parse(request.body);
+      const prisma = getTenantClient(request.user!.organizationId);
+      const materialService = new MaterialService(prisma);
 
-    const material = await materialService.create(
-      (request.user as any).id,
-      request.user!.organizationId,
-      body
-    );
+      const material = await materialService.create(
+        (request.user as any).id,
+        request.user!.organizationId,
+        body
+      );
 
-    return reply.code(201).send({
-      success: true,
-      data: material
-    });
+      return reply.code(201).send({
+        success: true,
+        data: material
+      });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        request.log.error({ zodErrors: error.errors }, 'Erro de validação no cadastro de material');
+        return reply.code(400).send({ 
+          success: false, 
+          message: `Erro de validação: ${error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+          errors: error.errors 
+        });
+      }
+      throw error;
+    }
   });
 
   // Buscar material por ID

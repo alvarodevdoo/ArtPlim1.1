@@ -1,7 +1,10 @@
-import { Settings } from 'lucide-react';
+import { Settings, Shield, Lock, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
+import { toast } from 'sonner';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 interface SystemSettingsData {
   id: string;
@@ -20,6 +23,9 @@ interface SystemSettingsData {
   defaultSalesUnit: string;
   freightExpenseAccountId?: string;
   taxExpenseAccountId?: string;
+  nfeCertificate?: string | null;
+  nfeCertificatePassword?: string | null;
+  nfeCertificateExpiry?: string | null;
 }
 
 interface SystemSettingsProps {
@@ -194,7 +200,7 @@ export const SystemSettings: React.FC<SystemSettingsProps> = ({
               </div>
             </div>
           </div>
-          
+
           <Button type="submit" disabled={loading} className="w-full md:w-auto px-10 shadow-lg">
             {loading ? 'Sincronizando...' : 'Salvar Configurações do Sistema'}
           </Button>

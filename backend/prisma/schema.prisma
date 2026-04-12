@@ -93,9 +93,12 @@ model OrganizationSettings {
   // Método de Valoração de Estoque (AVERAGE_COST ou PEPS)
   inventoryValuationMethod String @default("AVERAGE")
 
-  // Criptografia e Segurança
-  defaultBackupPassword String? // Senha Cofre Mestra (Hash) para Backups
-  recoveryToken         String? // Token Master de Recuperação (Habilitado para PDF)
+  // Certificado Digital NF-e (A1)
+  nfeCertificate         String? // Conteúdo .pfx em Base64
+  nfeCertificatePassword String? // Senha criptografada
+  nfeCertificateSubject  String?
+  nfeCertificateFileName String?
+  nfeCertificateExpiry   DateTime? // Data de expiração capturada no upload
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -269,6 +272,7 @@ model Material {
   components               ProductComponent[]
   productionWastes         ProductionWaste[]
   averageCost              Decimal               @default(0) @db.Decimal(10, 4)
+  purchasePrice            Decimal?              @db.Decimal(10, 2)
   currentStock             Decimal               @default(0) @db.Decimal(15, 4)
   // Motor de Composição: opções de variação vinculadas a este insumo
   optionSlots              ConfigurationOption[] @relation("OptionMaterial")
@@ -1534,6 +1538,7 @@ model StockMovement {
   isCancelled     Boolean           @default(false)
   cancelledAt     DateTime?
   cancelledById   String?
+  quantityRemaining Decimal?          @db.Decimal(15, 4) // Saldo restante deste lote (para PEPS)
   createdAt       DateTime          @default(now())
   
   organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)

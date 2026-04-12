@@ -155,7 +155,7 @@ const Produtos: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
           {filteredProdutos.map((produto) => (
             <Card key={produto.id} className="hover:shadow-md transition-shadow">
               <CardHeader className="pb-3">

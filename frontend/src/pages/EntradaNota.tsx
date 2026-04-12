@@ -1,4 +1,5 @@
 import { NFeUploadArea } from '@/features/nfe/components/NFeUploadArea';
+import { NFeKeyInput } from '@/features/nfe/components/NFeKeyInput';
 import { NFeSupplierSummary } from '@/features/nfe/components/NFeSupplierSummary';
 import { NFeItemMapper } from '@/features/nfe/components/NFeItemMapper';
 import { useNFeImport } from '@/features/nfe/hooks/useNFeImport';
@@ -20,9 +21,13 @@ export default function EntradaNota() {
     handleDragLeave,
     handleDrop,
     processFile,
+    fetchNFeByChave,
+    hasKeyError,
+    clearKeyError,
     handleCreateNewToggle,
     handleBindExisting,
     handleToggleSkip,
+    handleUpdateQuantity,
     handleSetDistributionMode,
     importNFe
   } = useNFeImport();
@@ -51,14 +56,32 @@ export default function EntradaNota() {
       </div>
 
       {step === 1 && (
-        <NFeUploadArea 
-          isDragging={isDragging}
-          isLoading={isLoading}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          onFileProcess={processFile}
-        />
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+          <NFeKeyInput 
+            onSearch={fetchNFeByChave}
+            isLoading={isLoading}
+            clearOnError={hasKeyError}
+            onErrorCleared={clearKeyError}
+          />
+          
+          <div className="relative flex items-center justify-center py-4">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <span className="relative bg-slate-50 px-4 text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">
+              Ou se preferir
+            </span>
+          </div>
+
+          <NFeUploadArea 
+            isDragging={isDragging}
+            isLoading={isLoading}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onFileProcess={processFile}
+          />
+        </div>
       )}
 
       {step === 2 && nfeData && (
@@ -80,6 +103,7 @@ export default function EntradaNota() {
           onToggleSkip={handleToggleSkip}
           onToggleSelect={handleToggleSelect}
           onSelectAll={handleSelectAll}
+          onUpdateQuantity={handleUpdateQuantity}
           onBulkUpdate={bulkUpdate}
           onSetDistributionMode={handleSetDistributionMode}
           categories={categories}

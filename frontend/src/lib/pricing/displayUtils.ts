@@ -111,7 +111,48 @@ export const getProductDisplayInfo = (produto: any): DisplayInfo => {
       }
 
       // Calcula Preço de Venda
-      const res = calculatePricingResult(formulaString, variables, activeValues);
+      let res = calculatePricingResult(formulaString, variables, activeValues);
+
+      let usedFallback = false;
+
+      // 🛡️ NOVO: Inteligência de Vitrine para Dimensões Zeradas
+      if (res.value === 0) {
+        const dimensionKeywords = ['LARGURA', 'ALTURA', 'COMPRIMENTO', 'DIAMETRO', 'AREA', 'PROFUNDIDADE', 'ESPESSURA', 'VALOR', 'PRECO', 'BASE', 'L', 'A', 'W', 'H', 'Q'];
+        const fallbackValues = { ...activeValues };
+        let hasFixedZeros = false;
+
+        variables.forEach((v: any) => {
+          const vid = v.id.toUpperCase();
+          const isTarget = dimensionKeywords.some(k => vid === k || vid.includes(k));
+          const currentVal = fallbackValues[v.id];
+
+          if (isTarget && (currentVal === 0 || !currentVal)) {
+            fallbackValues[v.id] = 1000;
+            fallbackValues[vid] = 1000;
+            fallbackValues[`${v.id}_unit`] = 'mm';
+            fallbackValues[`${v.id}_UNIT`] = 'mm';
+            hasFixedZeros = true;
+          }
+        });
+
+        if (hasFixedZeros) {
+          const fallbackRes = calculatePricingResult(formulaString, variables, fallbackValues);
+          if (fallbackRes.value > 0) {
+            res = fallbackRes;
+            usedFallback = true;
+          }
+        }
+
+        if (res.value === 0) {
+          const basePriceVar = variables.find((v: any) => 
+            ['VALOR_BASE', 'PRECO_BASE', 'VALOR', 'PRECO'].some(k => v.id.toUpperCase().includes(k))
+          );
+          if (basePriceVar && activeValues[basePriceVar.id] > 0) {
+            res.value = Number(activeValues[basePriceVar.id]);
+            usedFallback = true;
+          }
+        }
+      }
       
       // Calcula Preço de Custo (se houver costFormulaString)
       let calculatedCost: string | null = null;
@@ -135,7 +176,7 @@ export const getProductDisplayInfo = (produto: any): DisplayInfo => {
       return {
         price: formatCurrency(res.value),
         cost: calculatedCost,
-        isStarting: !hasProductOverride,
+        isStarting: !hasProductOverride || usedFallback || res.value === 0,
         note: noteParts.length > 0 ? noteParts.join(' x ') : null
       };
     } catch (error) {

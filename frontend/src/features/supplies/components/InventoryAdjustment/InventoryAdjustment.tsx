@@ -66,11 +66,12 @@ export const InventoryAdjustment: React.FC<Props> = ({
   const [file, setFile] = useState<File | null>(null);
   const [entryMode, setEntryUnit] = useState<'purchase' | 'control'>('purchase');
   const [editingMovementId, setEditingMovementId] = useState<string | null>(null);
-
+  const [batches, setBatches] = useState<any[]>([]);
+  
   const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm<AdjustmentFormData>({
     defaultValues: {
       type: 'ENTRY',
-      quantity: 1,
+      quantity: 0,
       unitCost: 0,
       totalCost: 0,
       notes: '',
@@ -122,22 +123,52 @@ export const InventoryAdjustment: React.FC<Props> = ({
   const factorValue = parseSafe(conversionFactor);
   
   // Projeção em Tempo Real
+  const isMeasurementUnit = ['M2', 'M', 'ML'].includes(unit.toUpperCase());
+  
+  // Carregar lotes via PEPS
+  const fetchBatches = async () => {
+    try {
+      const resp = await api.get(`/api/insumos/${materialId}/batches`);
+      setBatches(resp.data.data || []);
+    } catch (err) {
+      console.error('Erro ao carregar lotes:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchBatches();
+  }, [materialId]);
+
+  // Projeção em Tempo Real
   let projectedStock = currentStockValue;
   const inputQty = parseSafe(watchQty);
   
   if (watchType === 'ENTRY') {
-    const qtyInControlUnit = entryMode === 'purchase' ? (inputQty * parseSafe(multiplier) * factorValue) : inputQty;
-    projectedStock = currentStockValue + qtyInControlUnit;
+    // Se for entrada em modo compra, precisamos saber quanto isso adiciona à unidade de controle
+    if (entryMode === 'purchase') {
+      const internalUnitsCount = inputQty * parseSafe(multiplier);
+      const qtyToAdd = isMeasurementUnit ? internalUnitsCount * factorValue : internalUnitsCount;
+      projectedStock = currentStockValue + qtyToAdd;
+    } else {
+      projectedStock = currentStockValue + inputQty;
+    }
   } else if (watchType === 'INTERNAL_CONSUMPTION') {
     projectedStock = currentStockValue - inputQty;
   } else if (watchType === 'ADJUSTMENT') {
     projectedStock = inputQty;
   }
 
-  const totalUnitsRaw = projectedStock / factorValue;
-  const wholeUnits = Math.floor(totalUnitsRaw + 0.00001); // Pequena margem para erro de ponto flutuante
-  const fractionalPart = totalUnitsRaw - wholeUnits;
-  const consumptionPercent = fractionalPart > 0.00001 ? Math.round((1 - fractionalPart) * 100) : 0;
+  // Se a unidade de controle é medida (M2, M, ML), dividimos pela área da peça para ter total de peças
+  // Se a unidade já é contagem (CH, UN), total de peças é o próprio saldo
+  const totalPieces = isMeasurementUnit ? (projectedStock / (factorValue || 1)) : projectedStock;
+  
+  // Para saber quantas chapas inteiras, dividimos o total de peças pelo multiplicador
+  // Proteção contra valores negativos no monitor
+  const unitsInBoards = Math.max(0, totalPieces / (parseSafe(multiplier) || 1));
+  
+  const wholeUnits = Math.min(1000000, Math.floor(unitsInBoards + 0.00001)); 
+  const fractionalPart = Math.max(0, unitsInBoards - wholeUnits); 
+  const consumptionPercent = Math.min(100, fractionalPart > 0.00001 ? Math.round((1 - fractionalPart) * 100) : 0);
   const hasOffcut = fractionalPart > 0.00001;
 
   // Ajustar campos ao mudar o tipo
@@ -152,8 +183,9 @@ export const InventoryAdjustment: React.FC<Props> = ({
     } else if (watchType === 'ENTRY') {
       // Ao mudar para Entrada, voltamos para o modo compra por padrão
       setEntryUnit('purchase');
-      setValue('unitCost', 0);
-      setValue('quantity', 1);
+      // Sugerir o custo médio atual em vez de zero para facilitar o preenchimento
+      setValue('unitCost', initialCost);
+      setValue('quantity', 0);
     }
   }, [watchType, initialStock, initialCost, setValue]);
 
@@ -198,13 +230,18 @@ export const InventoryAdjustment: React.FC<Props> = ({
 
       // Se estiver no modo de compra, converter para unidades internas
       if (entryMode === 'purchase') {
-        // 1 Unidade de compra gera [multiplier] unidades de estoque
-        // Se cada unidade interna tem uma área [conversionFactor], o saldo em m2 é finalQty * conversionFactor
-        const internalUnits = data.quantity * multiplier;
-        finalQty = internalUnits * conversionFactor;
+        // 1 Unidade de compra gera [multiplier] unidades de estoque (ex: 1 chapa -> 4 pedaços)
+        const internalUnitsCount = data.quantity * (multiplier || 1);
         
-        // O custo unitário interno é o Valor Total / Quantidade Final (m2)
-        finalUnitCost = data.totalCost / finalQty;
+        // Só multiplicamos pela área se a unidade de controle (unit) for baseada em medida
+        // Nota: Assumindo que 'M2', 'M', 'ML' são as unidades de medida padrão
+        const isMeasurementUnit = ['M2', 'M', 'ML'].includes(unit.toUpperCase());
+        
+        // Se for CH/UN, finalQty é apenas a contagem. Se for M2, é contagem * área unitária.
+        finalQty = isMeasurementUnit ? internalUnitsCount * (conversionFactor || 1) : internalUnitsCount;
+        
+        // O custo unitário interno é o Valor Total / Quantidade Final que efetivamente entrou no estoque
+        finalUnitCost = data.totalCost / (finalQty || 1);
       }
 
       const formData = new FormData();
@@ -235,108 +272,24 @@ export const InventoryAdjustment: React.FC<Props> = ({
 
   return (
     <div className={styles.container}>
-      {/* Resumo Atual */}
-      <div className={styles.summary}>
-        <div className={styles.item}>
-          <label>Saldo em Estoque</label>
-          <div className="flex items-baseline gap-1">
-            <span>{initialStock.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
-            <small className="text-[10px] font-black uppercase text-muted-foreground">{unit}</small>
+      {/* Cabeçalho de Saldo Simplificado */}
+      <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 mb-6 flex items-center justify-between">
+        <div className="flex flex-col">
+          <span className="uppercase tracking-widest text-[9px] font-black opacity-50 mb-1">Saldo Atual em Estoque</span>
+          <div className="flex items-baseline gap-2">
+            <h2 className="text-2xl font-black text-primary">{initialStock.toFixed(3)} <small className="text-xs opacity-60">{unit}</small></h2>
+            <span className="text-[10px] font-bold text-muted-foreground">— {(initialStock / (parseSafe(multiplier) || 1)).toFixed(2)} {purchaseUnit}s</span>
           </div>
-          <p className="text-[9px] text-muted-foreground font-bold uppercase mt-1">
-            Equivale a: <strong className="text-primary">{(currentStockValue / factorValue).toFixed(2)} unidades</strong> inteiras
-          </p>
-          {minStock && initialStock < minStock && (
-            <p className="text-[10px] text-red-500 font-bold flex items-center gap-1 mt-1">
-              <AlertCircle size={10} /> Abaixo do Mínimo ({minStock})
-            </p>
-          )}
         </div>
-        <div className={styles.item}>
-          <label>Custo Médio Atual</label>
-          <div className="flex flex-col gap-0.5">
-            <div className="flex items-baseline gap-1">
-              <small className="text-[10px] font-black uppercase text-muted-foreground">R$</small>
-              <span className="text-primary font-black">{(initialCost * conversionFactor).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-              <small className="text-[9px] font-bold text-muted-foreground uppercase">/ Peça (Unitário)</small>
-            </div>
+        <div className="text-right">
+          <span className="uppercase tracking-widest text-[9px] font-black text-blue-600 mb-1">Custo do Lote Atual</span>
+          <div className="font-black text-xl text-blue-700">
+            R$ {batches[0]?.unitCost ? (batches[0].unitCost * (entryMode === 'purchase' ? multiplier : 1)).toFixed(2) : initialCost.toFixed(2)}
           </div>
         </div>
       </div>
 
-      {/* Monitor de Consumo em Tempo Real */}
-      <div className="p-4 bg-muted/30 rounded-2xl border border-dashed space-y-3 mb-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Zap className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Monitor de Consumo de Área</span>
-          </div>
-          <div className="flex gap-2">
-            <div className="px-2 py-0.5 bg-muted rounded text-[10px] font-black text-muted-foreground uppercase border">
-              Saldo: {currentStockValue.toFixed(4)} {unit}
-            </div>
-            <div className="px-2 py-0.5 bg-primary/10 rounded text-[10px] font-black text-primary uppercase border border-primary/20">
-              Projetado: {projectedStock.toFixed(4)} {unit}
-            </div>
-          </div>
-        </div>
 
-        <div className="flex items-end gap-3">
-          <div className="flex-1 space-y-1.5">
-            <div className="flex justify-between items-baseline">
-              <span className="text-sm font-black text-foreground">
-                {wholeUnits} {wholeUnits === 1 ? 'Unidade' : 'Unidades'} <span className="text-muted-foreground font-medium">inteiras</span>
-              </span>
-              {hasOffcut && (
-                <span className="text-[10px] font-bold text-orange-600 uppercase tracking-tighter">
-                  Consumo {inputQty > 0 ? '(Projetado)' : '(Atual)'}: {consumptionPercent}%
-                </span>
-              )}
-            </div>
-            
-            {/* Barra de Progresso do Consumo */}
-            <div className="h-3 w-full bg-muted rounded-full overflow-hidden flex border border-muted-foreground/10">
-              <div 
-                className={cn(
-                  "h-full transition-all duration-500 ease-in-out",
-                  consumptionPercent > 80 ? "bg-red-500" : consumptionPercent > 50 ? "bg-orange-500" : "bg-green-500"
-                )}
-                style={{ width: `${consumptionPercent}%` }}
-              />
-            </div>
-          </div>
-
-          {hasOffcut && onDiscardOffcut && (
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-10 w-10 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-600 border border-orange-200"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-64 p-4 z-[9999]">
-                <h4 className="font-black text-xs uppercase mb-2 flex items-center gap-2">
-                  <Trash2 size={12} className="text-red-500" />
-                  Descartar Retalhos?
-                </h4>
-                <p className="text-[11px] text-muted-foreground mb-4 leading-relaxed">
-                  Deseja remover os <strong>{(fractionalPart * factorValue).toFixed(3)} {unit}</strong> restantes da unidade atual? 
-                  Isso zerará a fração e manterá apenas as unidades inteiras.
-                </p>
-                <Button 
-                  onClick={() => onDiscardOffcut(fractionalPart * factorValue)}
-                  className="w-full bg-red-500 hover:bg-red-600 text-white font-black uppercase text-[10px] h-9"
-                >
-                  Confirmar Descarte
-                </Button>
-              </PopoverContent>
-            </Popover>
-          )}
-        </div>
-      </div>
 
       {/* Formulário de Ajuste */}
       <section className={styles.formSection}>
@@ -412,6 +365,7 @@ export const InventoryAdjustment: React.FC<Props> = ({
                   {...register('quantity', { required: true, min: 0.0001 })} 
                   className={cn(errors.quantity && "border-red-500")}
                 />
+                {errors.quantity && <span className="text-[10px] text-red-500 font-bold block mt-1">Quantidade é obrigatória</span>}
               </div>
 
               <div className={styles.field}>
@@ -425,6 +379,7 @@ export const InventoryAdjustment: React.FC<Props> = ({
                   {...register('unitCost', { required: true })} 
                   className={cn(watchType === 'INTERNAL_CONSUMPTION' && "bg-muted opacity-70 cursor-not-allowed")}
                 />
+                {errors.unitCost && <span className="text-[10px] text-red-500 font-bold block mt-1">Custo é obrigatório</span>}
               </div>
             </>
           )}
@@ -488,6 +443,7 @@ export const InventoryAdjustment: React.FC<Props> = ({
               placeholder="Ex: Compra manual sem NF, Ajuste de inventário rotativo..."
               className={cn(errors.justification && "border-red-500")}
             />
+            {errors.justification && <span className="text-[10px] text-red-500 font-bold block mt-1">A justificativa é obrigatória para este ajuste</span>}
           </div>
 
           <div className={cn(styles.field, styles.fullWidth)}>

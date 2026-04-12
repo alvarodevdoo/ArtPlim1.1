@@ -13,4 +13,8 @@ export async function nfeRoutes(fastify: FastifyInstance) {
   fastify.post('/import', {
     preHandler: [fastify.authenticate]
   }, nfeController.importProcessedXml.bind(nfeController));
+  // 3. Buscar pela Chave (Automático via SEFAZ)
+  fastify.post('/fetch', {
+    preHandler: [fastify.authenticate]
+  }, nfeController.fetchByChave.bind(nfeController));
 }

@@ -24,13 +24,15 @@ export const useProductiveIntelligence = (
     return v;
   }, []);
 
-  const calculateConversionFactor = useCallback((width: number, height: number): number => {
-    return Number((width * height).toFixed(4));
+  const calculateConversionFactor = useCallback((width: number, height: number, multiplier: number): number => {
+    const totalArea = width * height;
+    const factorPerInternalUnit = multiplier > 0 ? totalArea / multiplier : totalArea;
+    return Number(factorPerInternalUnit.toFixed(6));
   }, []);
 
   const handleWidthChange = useCallback((valStr: string) => {
     const newMeters = toMeters(valStr, dimUnit);
-    const newFactor = calculateConversionFactor(newMeters, value.altura_unitaria);
+    const newFactor = calculateConversionFactor(newMeters, value.altura_unitaria, value.multiplicador_padrao_entrada);
     
     // Auto-define unidade e regra
     let controlUnit = value.controlUnit;
@@ -55,7 +57,7 @@ export const useProductiveIntelligence = (
 
   const handleHeightChange = useCallback((valStr: string) => {
     const newMeters = toMeters(valStr, dimUnit);
-    const newFactor = calculateConversionFactor(value.largura_unitaria, newMeters);
+    const newFactor = calculateConversionFactor(value.largura_unitaria, newMeters, value.multiplicador_padrao_entrada);
     
     // Auto-define unidade e regra
     let controlUnit = value.controlUnit;
@@ -79,17 +81,24 @@ export const useProductiveIntelligence = (
   }, [dimUnit, value, onChange, toMeters, calculateConversionFactor]);
 
   const handleMultiplicadorChange = useCallback((val: number) => {
+    const x = Math.floor(val) || 1;
+    const newFactor = calculateConversionFactor(value.largura_unitaria, value.altura_unitaria, x);
+    
     onChange({
       ...value,
-      multiplicador_padrao_entrada: Math.floor(val)
+      multiplicador_padrao_entrada: x,
+      conversionFactor: newFactor
     });
-  }, [value, onChange]);
+  }, [value, onChange, calculateConversionFactor]);
 
   const feedbackMessage = useMemo(() => {
-    const x = value.multiplicador_padrao_entrada || 0;
-    const y = (value.conversionFactor * x).toFixed(2);
-    return `Com base no multiplicador, 1 unidade na NF gerará ${x} unidades no estoque, totalizando ${y} m²`;
-  }, [value.multiplicador_padrao_entrada, value.conversionFactor]);
+    const x = value.multiplicador_padrao_entrada || 1;
+    const areaTotal = (value.largura_unitaria * value.altura_unitaria).toFixed(4);
+    const areaUnitária = (value.conversionFactor).toFixed(4);
+    const custoStr = value.purchasePrice ? ` | Custo: R$ ${(value.purchasePrice / x).toFixed(2)}` : '';
+    
+    return `1 unidade na NF gerará ${x} unidades no estoque. Total por compra: ${areaTotal} m² (${areaUnitária} m² por pedaço)${custoStr}`;
+  }, [value.multiplicador_padrao_entrada, value.conversionFactor, value.largura_unitaria, value.altura_unitaria]);
 
   return {
     dimUnit,

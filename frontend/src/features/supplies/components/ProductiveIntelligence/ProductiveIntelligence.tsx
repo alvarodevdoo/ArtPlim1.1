@@ -142,15 +142,35 @@ export const ProductiveIntelligence: React.FC<Props> = ({
                     </PopoverContent>
                   </Popover>
                 </div>
-                <input
+                 <input
                   type="number"
                   step="1"
                   min="1"
                   value={value.multiplicador_padrao_entrada || 1}
-                  onChange={e => onChange({ ...value, multiplicador_padrao_entrada: parseInt(e.target.value) || 1 })}
+                  onChange={e => handleMultiplicadorChange(parseInt(e.target.value) || 1)}
                   placeholder="Ex: 5"
                 />
               </div>
+            </div>
+
+            <div className={styles.field}>
+              <label>Preço de Compra (Unidade Inteira/NF)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground italic">R$</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={value.purchasePrice || 0}
+                  onChange={e => {
+                    const val = parseFloat(e.target.value) || 0;
+                    onChange({ ...value, purchasePrice: val });
+                  }}
+                  className="pl-9 font-bold bg-primary/5 border-primary/20"
+                  placeholder="0,00"
+                />
+              </div>
+              <p className="text-[9px] text-muted-foreground italic mt-1">* Digite o valor da chapa para calcular o custo unitário.</p>
             </div>
 
             <div className="space-y-2">
@@ -260,7 +280,47 @@ export const ProductiveIntelligence: React.FC<Props> = ({
             <span className="uppercase tracking-wider text-[10px] font-black">Resumo da Inteligência</span>
           </div>
           <div className={styles.calculation}>
-            Cálculo: {Number(value.largura_unitaria || 0).toFixed(3)}m × {Number(value.altura_unitaria || 0).toFixed(3)}m = {Number(value.conversionFactor || 0).toFixed(4)} m² (Área Unitária)
+            {(() => {
+              const w = Number(value.largura_unitaria || 0);
+              const h = Number(value.altura_unitaria || 0);
+              const mult = Number(value.multiplicador_padrao_entrada || 1);
+              const totalArea = w * h;
+              const perPiece = totalArea / (mult || 1);
+              
+              return (
+                <div className="flex flex-col gap-1.5 border-t border-primary/10 pt-2 mt-1">
+                  <div className="flex items-center gap-1">
+                    <span className="text-muted-foreground line-through decoration-muted-foreground/50 opacity-0 w-0"></span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Área: </span>
+                    <span>{w.toFixed(3)}m × {h.toFixed(3)}m = </span>
+                    <strong className="text-primary">{totalArea.toFixed(4)} m²</strong>
+                    <span className="text-[9px] text-muted-foreground ml-1">(Chapa Inteira)</span>
+                  </div>
+                  
+                  {mult > 1 && (
+                    <div className="flex items-center gap-1 text-[9px]">
+                      <span className="text-slate-500">Fracionado em {mult}: {totalArea.toFixed(4)} ÷ {mult} = </span>
+                      <strong className="text-amber-500">{perPiece.toFixed(4)} m²</strong>
+                      <span className="text-muted-foreground ml-1">por pedaço (CH)</span>
+                    </div>
+                  )}
+
+                  {value.purchasePrice ? (
+                    <div className="flex items-center gap-1 bg-green-50 p-1.5 rounded-lg border border-green-100 mt-0.5">
+                      <span className="text-[10px] uppercase font-black text-green-700">➜ Custo Unitário (Base):</span>
+                      <span className="text-[11px] font-black text-green-900">
+                        R$ {value.purchasePrice.toFixed(2)} ÷ {mult} = 
+                        <span className="ml-1 text-blue-700 underline underline-offset-2">R$ {(value.purchasePrice / mult).toFixed(2)}</span>
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 text-[9px] text-muted-foreground italic">
+                      <span>* Informe o preço de compra para calcular o custo unitário.</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
           <div className={styles.message}>
             {feedbackMessage}

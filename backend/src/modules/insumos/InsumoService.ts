@@ -142,6 +142,7 @@ export class InsumoService {
         ...(data.unidadeBase !== undefined && { unit: data.unidadeBase.toLowerCase() }),
         ...(data.custoUnitario !== undefined && { costPerUnit: data.custoUnitario }),
         ...(data.ativo !== undefined && { active: data.ativo }),
+        purchasePrice: (data as any).purchasePrice !== undefined ? (data as any).purchasePrice : undefined,
       },
     });
   }
@@ -231,5 +232,63 @@ export class InsumoService {
   async removeFornecedor(insumoId: string, relationId: string, organizationId: string) {
     await this.findById(insumoId, organizationId);
     return this.prisma.insumoFornecedor.delete({ where: { id: relationId } });
+  }
+
+  // ─── Lotes PEPS (FIFO) ─────────────────────────────────────────────────────
+
+  /**
+   * Calcula a fila de lotes ativos seguindo a regra PEPS (Primeiro que Entra, Primeiro que Sai).
+   */
+  async getFifoBatches(materialId: string, organizationId: string) {
+    // 1. Buscar todas as movimentações não canceladas deste material
+    const movements = await this.prisma.stockMovement.findMany({
+      where: {
+        materialId,
+        organizationId,
+        isCancelled: false
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    // 2. Extrair Entradas (Lotes em potencial)
+    const batches: any[] = [];
+    let totalConsumido = 0;
+
+    // Primeiro, acumulamos quanto foi efetivamente "tirado" do estoque
+    for (const mov of movements) {
+      if (mov.type === 'INTERNAL_CONSUMPTION') {
+        totalConsumido += Math.abs(Number(mov.quantity));
+      } else if (mov.type === 'ADJUSTMENT' && Number(mov.quantity) < 0) {
+        totalConsumido += Math.abs(Number(mov.quantity));
+      }
+    }
+
+    // Segundo, processamos as Entradas (e Ajustes positivos) como lotes
+    for (const mov of movements) {
+      if (mov.type === 'ENTRY' || (mov.type === 'ADJUSTMENT' && Number(mov.quantity) > 0)) {
+        const qtyOriginal = Math.abs(Number(mov.quantity));
+        batches.push({
+          id: mov.id,
+          createdAt: mov.createdAt,
+          unitCost: Number(mov.unitCost),
+          quantityOriginal: qtyOriginal,
+          quantityRemaining: qtyOriginal,
+          notes: mov.notes
+        });
+      }
+    }
+
+    // 3. Abater o consumo acumulado da fila de lotes (FIFO)
+    let debito = totalConsumido;
+    for (const batch of batches) {
+      if (debito <= 0) break;
+
+      const abate = Math.min(batch.quantityRemaining, debito);
+      batch.quantityRemaining -= abate;
+      debito -= abate;
+    }
+
+    // 4. Filtrar apenas lotes que ainda possuem saldo (Ativos)
+    return batches.filter(b => b.quantityRemaining > 0);
   }
 }

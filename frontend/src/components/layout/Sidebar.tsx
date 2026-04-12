@@ -16,6 +16,7 @@ import {
   Warehouse,
   Factory,
   DollarSign,
+  Truck,
   TrendingUp,
   ChevronDown,
   ChevronRight,
@@ -47,6 +48,12 @@ const allMenuItems: MenuItem[] = [
     title: 'Clientes',
     href: '/clientes',
     icon: Users,
+    alwaysVisible: true
+  },
+  {
+    title: 'Fornecedores',
+    href: '/fornecedores',
+    icon: Truck,
     alwaysVisible: true
   },
   {

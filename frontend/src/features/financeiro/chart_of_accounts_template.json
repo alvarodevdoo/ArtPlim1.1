@@ -375,6 +375,15 @@
       "systemRole": "COST_EXPENSE"
     },
     {
+      "code": "4.1.1.04",
+      "name": "Consumo e Pequenos Materiais",
+      "nature": "COST",
+      "type": "ANALYTIC",
+      "parentCode": "4.1.1",
+      "systemRole": "COST_EXPENSE",
+      "description": "Baixas de consumo interno, amostras e materiais de apoio."
+    },
+    {
       "code": "4.1.2",
       "name": "Logística e Fretes de Compra",
       "nature": "COST",

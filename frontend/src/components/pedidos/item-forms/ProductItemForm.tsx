@@ -63,7 +63,10 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
 }) => {
     // ── Estados Principais ────────────────────────────────────────────
     const [quantity, setQuantity] = useState<number>(editingData?.quantity || 1);
-    const [unitPrice, setUnitPrice] = useState<number>(editingData?.unitPrice || 0);
+    const isStaticAreaBased = produto.pricingMode === 'SIMPLE_AREA';
+    const [unitPrice, setUnitPrice] = useState<number | string>(
+        editingData?.unitPrice ?? (isStaticAreaBased ? 0 : (produto.salePrice || 0))
+    );
     const [notes, setNotes] = useState(editingData?.notes || '');
     const [materiaisSelecionados, setMateriaisSelecionados] = useState<InsumoMaterialSelecionado[]>(
         editingData?.attributes?.insumos || []
@@ -140,12 +143,11 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
     const { blockedIds } = useIncompatibilities(Object.values(opcoesSelecionadas).filter(Boolean));
 
     const handleIndividualUnitChange = (id: string, newUnit: string) => {
-        console.log(`[ArtPlim] Alterando unidade da variável ${id} para: ${newUnit}`);
         const conversionMap: Record<string, number> = { 'mm': 1, 'cm': 10, 'm': 1000 };
         const targetUnit = newUnit.toLowerCase();
         
         setDynamicVariables(prev => {
-            const currentVar = prev[id] || { value: '', unit: 'mm' }; // Fallback caso não exista
+            const currentVar = prev[id] || { value: '', unit: 'mm' };
 
             const oldUnit = (currentVar.unit || 'mm').toLowerCase();
             if (oldUnit === targetUnit) return prev;
@@ -245,9 +247,15 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
             const fallbackKey = v.name;
             const productConfig = produto.formulaData?.[key] || produto.formulaData?.[fallbackKey];
 
+            // Se for uma variável de preço e estiver vazia, pré-preenchemos com o preço da regra/produto
+            let initialValue = v.defaultValue ?? '';
+            if (v.role === 'SALE_PRICE' && (!initialValue || initialValue === '0')) {
+                initialValue = (pricingRule?.salePrice ?? produto.salePrice ?? 0).toString().replace('.', ',');
+            }
+
             if (newVars[key] === undefined) {
                 newVars[key] = {
-                    value: productConfig?.value ?? v.defaultValue ?? '',
+                    value: productConfig?.value ?? initialValue,
                     unit: productConfig?.unit || v.unit || v.defaultUnit || 'mm',
                     locked: productConfig?.locked ?? false
                 } as any;
@@ -295,18 +303,24 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
 
     // ── Motor de Preço e Sugestões ────────────────────────────────────
     useEffect(() => {
-        // Se estiver carregando a composição ou for modo edição, não mexemos no preço automaticamente
-        if (compLoading || isEditing) return;
+        let larguraMM = 0;
+        let alturaMM = 0;
+
+        console.log(`[ArtPlim Debug] Motor acionado. globalUnit: ${globalUnit}, formulaResult: ${formulaResultValue}`);
+        
+        // Se o preço estiver 0, tentamos calcular mesmo com compLoading como fallback.
+        if (compLoading && Number(unitPrice) > 0) return;
 
         let suggested = 0;
         
         // 1. Prioridade Máxima: Fórmula Dinâmica (Cálculo Técnico)
-        // No modo Dinâmico ou Área, a fórmula (ou cálculo de área) é a lei.
         if (formulaResultValue > 0) {
             suggested = formulaResultValue;
         }
 
-        // 2. Fallback: Cálculo Manual de Área para SIMPLE_AREA caso a fórmula falhe/não exista
+        // 2. Fallback: Cálculo Manual de Área caso a fórmula técnica não retorne valor
+        const isAreaBased = produto.pricingMode === 'SIMPLE_AREA' || produto.pricingMode === 'DYNAMIC_ENGINEER';
+
         if (isAreaBased && suggested <= 0) {
             const fallbackVars = [
                 { id: 'LARGURA', name: 'Largura', type: 'INPUT', role: 'LENGTH', defaultUnit: globalUnit.toLowerCase() },
@@ -317,8 +331,13 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
             Object.entries(dynamicVariables).forEach(([id, data]: [string, any]) => {
                 const searchKey = id.toUpperCase();
                 scopeToNormalize[searchKey] = data.value;
-                // Importante: Passar a unidade individual de cada campo para a normalização
-                scopeToNormalize[`${searchKey}_UNIT`] = data.unit || 'mm';
+                
+                // Se NÃO for dinâmico, ignoramos a unidade salva e usamos a do seletor global (M/CM/MM)
+                const unitToUse = (produto.pricingMode === 'DYNAMIC_ENGINEER') 
+                    ? (data.unit || globalUnit.toLowerCase() || 'mm')
+                    : (globalUnit.toLowerCase() || 'mm');
+                
+                scopeToNormalize[`${searchKey}_UNIT`] = unitToUse;
             });
 
             const currentVariables = pricingRule?.variables || fallbackVars;
@@ -341,39 +360,52 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 return normalized[v.id] || normalized[v.id.toUpperCase()] || normalized[v.name] || normalized[v.name.toUpperCase()] || 0;
             };
 
-            const larguraMM = Number(getVal(varLargura));
-            const alturaMM = Number(getVal(varAltura));
-
-            console.log(`[ArtPlim Calc] Largura: ${larguraMM}mm, Altura: ${alturaMM}mm, Produto: ${produto.name}`);
+            larguraMM = Number(getVal(varLargura));
+            alturaMM = Number(getVal(varAltura));
 
             if (larguraMM > 0 && alturaMM > 0) {
                 const m2 = (larguraMM * alturaMM) / 1000000;
-                const basePrice = Number(produto.salePrice || 0);
+                
+                // Busca o preço base nas variáveis (ex: Valor do M²) ou no produto
+                const varPreco = currentVariables.find((v: any) => v.role === 'SALE_PRICE' || v.role === 'MONETARY');
+                
+                const rawPriceText = varPreco ? (dynamicVariables[varPreco.id]?.value || '0') : '0';
+                const precoBaseBruto = typeof rawPriceText === 'string' 
+                    ? parseFloat(rawPriceText.replace(',', '.')) 
+                    : Number(rawPriceText || 0);
+                
+                const baseSalePrice = precoBaseBruto > 0 ? precoBaseBruto : (pricingRule?.salePrice ?? produto.salePrice ?? 0);
+                const basePrice = Number(baseSalePrice || 0);
+                
                 suggested = basePrice * m2;
-                console.log(`[ArtPlim Calc] Área M2: ${m2}, Base: ${basePrice}, Sugerido: ${suggested}`);
+                console.log(`[ArtPlim Debug] Calc: L:${larguraMM} H:${alturaMM} M2:${m2} Base:${basePrice} Sug:${suggested}`);
             }
         }
 
         // 3. Fallback: Motor de Composição (Custo + Markup)
-        if (suggested <= 0 && composition) {
+        // Só aplicamos se sugerido continuar 0 e NÃO houver erro de medida em produtos de área
+        const hasValidDimensions = larguraMM > 0 && alturaMM > 0;
+        
+        if (suggested <= 0 && composition && (!isAreaBased || hasValidDimensions)) {
             suggested = (composition as any).unitSuggestedPrice || (Number(composition.suggestedPrice) || 0) / Math.max(1, quantity);
         }
 
         // 4. Fallback Final: Preço Base do Produto no Cadastro (Unitário)
-        // Só usamos o Preço Fixo do Cadastro se NÃO for um modo Dinâmico/Área baseado em fór mulas
+        // Só usamos o Preço Fixo do Cadastro se NÃO for um modo Dinâmico/Área e as medidas forem inválidas
         if (suggested <= 0 && !isDynamic && !isAreaBased) {
             suggested = Number(produto.salePrice || 0);
         }
 
-        // 5. Decisão de Aplicação: Só atualiza se o usuário NÃO tiver editado manualmente ou se for mudança técnica
+        // 5. Decisão de Aplicação
         if (suggested > 0) {
             const currentPrice = Number(unitPrice) || 0;
             const lastSuggested = Number(lastSuggestedRef.current) || 0;
             const isFirstTime = currentPrice === 0;
             const userHasNotTouchedManualPrice = Math.abs(currentPrice - lastSuggested) < 0.01;
 
+            console.log(`[ArtPlim Debug] Decisão Preço: Sug:${suggested}, Atual:${currentPrice}, LastSug:${lastSuggested}, Manual:${isPriceManualRef.current}`);
+
             // Se for Dinâmico ou Área, e houver mudança de valor sugerido devido a variáveis,
-            // nós atualizamos o preço a menos que o vendedor tenha feito um bloqueio manual explícito.
             if ((isFirstTime || userHasNotTouchedManualPrice) && !isPriceManualRef.current) {
                 const roundedSuggested = Number(suggested.toFixed(2));
                 
@@ -383,7 +415,7 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 }
             }
         }
-    }, [composition, formulaResultValue, quantity, isEditing, compLoading, produto.salePrice, produto.pricingMode, dynamicVariables]);
+    }, [composition, formulaResultValue, quantity, isEditing, compLoading, produto.salePrice, produto.pricingMode, dynamicVariables, globalUnit]);
 
     // ── Sincronização de Materiais de Acabamento ─────────────────────
     useEffect(() => {
@@ -444,7 +476,7 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
             {/* ── GRID DE CAMPOS UNIFICADO ─────────────────────────────────── */}
             <div className="p-4 border border-slate-200 bg-slate-50/50 rounded-xl space-y-4">
                 
-                {/* Cabeçalho de Dimensões (Sem Seletor Global para Dinâmico) */}
+                {/* Cabeçalho de Dimensões e Seletor Global */}
                 {inputVars.length > 0 && (
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/60 pb-3">
                         <div className="flex items-center gap-2">
@@ -453,10 +485,31 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                                 <Info className="w-3.5 h-3.5 text-slate-400 cursor-help" />
                                 <div className="absolute top-full left-0 mt-2 hidden group-hover:block w-64 p-3 bg-slate-800 text-white text-[11px] leading-relaxed rounded-lg shadow-xl z-[100] border border-slate-700">
                                     <div className="absolute -top-1 left-4 w-2 h-2 bg-slate-800 rotate-45"></div>
-                                    As unidades mostradas seguem a configuração da fórmula. Clique na sigla da unidade para alternar se permitido.
+                                    A unidade global define o padrão inicial, mas você pode alterar medidas individualmente nos campos.
                                 </div>
                             </div>
                         </div>
+
+                        {/* Seletor Global de Unidade: Apenas para produtos que não são DYNAMIC_ENGINEER */}
+                        {produto.pricingMode !== 'DYNAMIC_ENGINEER' && (
+                            <div className="flex bg-slate-100 p-1 rounded-md">
+                                {(['M', 'CM', 'MM'] as const).map((unit) => (
+                                    <button
+                                        key={unit}
+                                        type="button"
+                                        onClick={() => setGlobalUnit(unit)}
+                                        className={cn(
+                                            "px-3 py-1 text-[9px] font-black rounded transition-all uppercase",
+                                            globalUnit === unit 
+                                                ? "bg-white text-indigo-600 shadow-sm" 
+                                                : "text-slate-400 hover:text-slate-600"
+                                        )}
+                                    >
+                                        {unit}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -530,9 +583,9 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                                         )} 
                                     />
                                     
-                                    {/* Seletor Individual de Unidade via SELECT NATIVO FORÇADO */}
+                                    {/* Seletor Individual de Unidade */}
                                     <div className="flex border-l border-slate-200 bg-slate-50 min-w-[65px] relative items-center">
-                                        {allowedUnitsRaw.length > 1 ? (
+                                        {produto.pricingMode === 'DYNAMIC_ENGINEER' && allowedUnitsRaw.length > 1 ? (
                                             <div className="relative w-full h-full flex items-center">
                                                 <select
                                                     value={currentUnitRaw}
@@ -554,7 +607,7 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                                             </div>
                                         ) : (
                                             <span className="flex items-center px-3 text-[10px] font-black text-slate-400 uppercase">
-                                                {currentUnitDisplay}
+                                                {produto.pricingMode === 'DYNAMIC_ENGINEER' ? currentUnitDisplay : globalUnit}
                                             </span>
                                         )}
                                     </div>
@@ -566,19 +619,33 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                     {/* Preço Base (da Fórmula ou do Cadastro) */}
                     {(isAreaBased || isDynamic) && (
                         <>
+                            {/* Debug Renderização */}
+                            {(() => {
+                                console.log(`[ArtPlim Render] pricingRule:${!!pricingRule}, rulePrice:${pricingRule?.salePrice}, prodPrice:${produto.salePrice}, hiddenVars:${hiddenFormulaVars.length}`);
+                                return null;
+                            })()}
+
                             {/* Se for dinâmico, mostramos as variáveis de preço da fórmula (ex: VALOR_BASE) */}
-                            {hiddenFormulaVars.map((v: any) => (
-                                <div key={v.id} className="space-y-1 flex-1 min-w-[120px]">
-                                    <Label className="text-[10px] font-bold uppercase text-indigo-600 truncate">
-                                        {v.name || 'Valor Base'}
-                                    </Label>
-                                    <CurrencyInput
-                                        value={dynamicVariables[v.id]?.value ?? 0}
-                                        disabled={true}
-                                        className="h-9 bg-indigo-50/20 border-indigo-100 font-extrabold text-indigo-700 text-center text-sm rounded-md shadow-sm"
-                                    />
-                                </div>
-                            ))}
+                            {hiddenFormulaVars.map((v: any) => {
+                                const val = dynamicVariables[v.id]?.value;
+                                // Se a variável estiver vazia, usamos o preço da regra ou do produto
+                                const displayVal = (val === undefined || val === '' || Number(val) === 0) 
+                                    ? (pricingRule?.salePrice ?? produto.salePrice ?? 0) 
+                                    : val;
+                                
+                                return (
+                                    <div key={v.id} className="space-y-1 flex-1 min-w-[120px]">
+                                        <Label className="text-[10px] font-bold uppercase text-indigo-600 truncate">
+                                            {v.name || 'Valor Base'}
+                                        </Label>
+                                        <CurrencyInput
+                                            value={displayVal}
+                                            disabled={true}
+                                            className="h-9 bg-indigo-50/20 border-indigo-100 font-extrabold text-indigo-700 text-center text-sm rounded-md shadow-sm"
+                                        />
+                                    </div>
+                                );
+                            })}
                             
                             {/* Se for SIMPLE_AREA e não tiver variáveis de preço na regra, mostramos o salePrice do produto */}
                             {isAreaBased && hiddenFormulaVars.length === 0 && (
@@ -587,7 +654,7 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                                         Valor do M²
                                     </Label>
                                     <CurrencyInput
-                                        value={produto.salePrice || 0}
+                                        value={pricingRule?.salePrice ?? produto.salePrice ?? 0}
                                         disabled={true}
                                         className="h-9 bg-indigo-50/20 border-indigo-100 font-extrabold text-indigo-700 text-center text-sm rounded-md shadow-sm"
                                     />

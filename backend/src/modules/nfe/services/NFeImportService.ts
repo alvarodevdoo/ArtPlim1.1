@@ -178,7 +178,21 @@ export class NFeImportService {
           }
         });
 
-        // Lógica de Estoque e Custeio
+        const currentStock = Number(material.currentStock ?? 0);
+        const averageCost = Number(material.averageCost ?? 0);
+        
+        const multiplier = Number(material.multiplicador_padrao_entrada ?? 1);
+        const conversionFactor = Number(material.conversionFactor ?? 1);
+        const isMeasurementUnit = ['M2', 'M', 'ML'].includes(material.controlUnit || '');
+        
+        // Área Total de 1 Chapa (ex: 5.08m2)
+        const areaTotalDaChapa = multiplier * conversionFactor;
+
+        // Quantidade Efetiva para o Estoque:
+        // Agora confiamos no valor calculado e confirmado pelo usuário no frontend.
+        const stockQuantityToAdd = item.quantidade;
+
+        // Lógica de Preço e Custeio:
         let itemExtraCostFromSkip = 0;
         if (extraCostToRedistribute > 0 && totalImportedValue > 0) {
           itemExtraCostFromSkip = (item.valorTotal / totalImportedValue) * extraCostToRedistribute;
@@ -186,20 +200,18 @@ export class NFeImportService {
 
         const baseEffectiveCost = item.custoEfetivoUnitario ?? item.valorUnitario;
         const totalEffectiveCostForItem = (baseEffectiveCost * item.quantidade) + itemExtraCostFromSkip;
-        const finalEffectiveUnitCost = item.quantidade > 0 ? (totalEffectiveCostForItem / item.quantidade) : 0;
+        
+        const finalEffectiveUnitInternalCost = stockQuantityToAdd > 0 ? (totalEffectiveCostForItem / stockQuantityToAdd) : 0;
+        const totalStockAfterEntry = currentStock + stockQuantityToAdd;
 
-        const currentStock = Number(material.currentStock ?? 0);
-        const averageCost = Number(material.averageCost ?? 0);
-        const totalStockAfterEntry = currentStock + item.quantidade;
         let newCost = averageCost;
-
         if (valuationMethod === 'AVERAGE') {
           const currentTotalValue = currentStock * averageCost;
-          const newTotalValue = item.quantidade * finalEffectiveUnitCost;
+          const newTotalValue = totalEffectiveCostForItem; 
           newCost = totalStockAfterEntry > 0 ? (currentTotalValue + newTotalValue) / totalStockAfterEntry : 0;
         } else if (valuationMethod === 'PEPS') {
           if (currentStock <= 0) {
-            newCost = finalEffectiveUnitCost;
+            newCost = finalEffectiveUnitInternalCost;
           }
         }
 
@@ -208,8 +220,8 @@ export class NFeImportService {
             organizationId,
             materialId: material.id,
             type: 'ENTRY',
-            quantity: new Prisma.Decimal(item.quantidade),
-            unitCost: new Prisma.Decimal(finalEffectiveUnitCost),
+            quantity: new Prisma.Decimal(stockQuantityToAdd),
+            unitCost: new Prisma.Decimal(finalEffectiveUnitInternalCost),
             totalCost: new Prisma.Decimal(totalEffectiveCostForItem),
             notes: `NF-e Chave: ${payload.chaveAcesso}${itemExtraCostFromSkip > 0 ? ' | Inclui Rateio de Itens Ignorados' : ''}`,
             documentKey: payload.chaveAcesso,

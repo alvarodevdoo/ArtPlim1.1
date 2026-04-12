@@ -46,6 +46,7 @@ export interface Material {
   ncm?: string;
   ean?: string;
   currentStock?: number;
+  purchasePrice?: number;
 }
 
 interface MaterialDrawerProps {
@@ -71,8 +72,9 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
   const [activeTab, setActiveTab] = useState<'cadastro' | 'movimentar' | 'historico'>('cadastro');
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
+  const [batches, setBatches] = useState<any[]>([]);
 
-  const { control, handleSubmit, register, reset, watch } = useForm({
+  const { control, handleSubmit, register, reset, watch, setValue } = useForm({
     defaultValues: {
       name: '',
       categoryId: '',
@@ -85,18 +87,24 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
       trackStock: true,
       ncm: '',
       ean: '',
+      // Campos de Inteligência Integrados
+      purchaseUnit: 'UN',
+      multiplicador_padrao_entrada: 1,
+      largura_unitaria: 0,
+      altura_unitaria: 0,
+      purchasePrice: 0,
+      controlUnit: 'M2' as ControlUnit,
+      defaultConsumptionRule: 'PRODUCT_AREA' as ConsumptionRule,
+      conversionFactor: 1,
     }
   });
 
-  const [productiveData, setProductiveData] = useState<ProductiveIntelligenceData>({
-    controlUnit: 'M2',
-    defaultConsumptionRule: 'PRODUCT_AREA',
-    conversionFactor: 1,
-    largura_unitaria: 0,
-    altura_unitaria: 0,
-    purchaseUnit: 'UN',
-    multiplicador_padrao_entrada: 1,
-  });
+  const productiveData = watch(); // Agora a "inteligência" vem direto do formulário oficial
+  const setProductiveData = (data: Partial<ProductiveIntelligenceData>) => {
+    Object.entries(data).forEach(([key, val]) => {
+      setValue(key as any, val);
+    });
+  };
 
   const handleDiscardOffcut = async (quantity: number) => {
     if (!selectedMaterial) return;
@@ -104,7 +112,7 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
     try {
       const formData = new FormData();
       formData.append('materialId', selectedMaterial.id);
-      formData.append('type', 'INTERNAL_CONSUMPTION');
+      formData.append('type', 'CONSUMPTION');
       formData.append('quantity', quantity.toString());
       formData.append('unitCost', (Number(selectedMaterial.averageCost) || 0).toString());
       formData.append('justification', 'Descarte automático de retalhos via monitor de consumo');
@@ -149,31 +157,29 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
             trackStock: initialData.trackStock ?? true,
             ncm: initialData.ncm || '',
             ean: initialData.ean || '',
-          });
-          setProductiveData({
-            controlUnit: initialData.controlUnit || 'M2',
-            defaultConsumptionRule: initialData.defaultConsumptionRule || 'PRODUCT_AREA',
-            conversionFactor: initialData.conversionFactor ?? 1,
-            largura_unitaria: initialData.largura_unitaria || initialData.width || 0,
-            altura_unitaria: initialData.altura_unitaria || initialData.height || 0,
             purchaseUnit: initialData.purchaseUnit || 'UN',
             multiplicador_padrao_entrada: initialData.multiplicador_padrao_entrada || 1,
+            largura_unitaria: initialData.largura_unitaria || initialData.width || 0,
+            altura_unitaria: initialData.altura_unitaria || initialData.height || 0,
+            purchasePrice: initialData.purchasePrice || 0,
+            controlUnit: (initialData.controlUnit || 'M2') as ControlUnit,
+            defaultConsumptionRule: (initialData.defaultConsumptionRule || 'PRODUCT_AREA') as ConsumptionRule,
+            conversionFactor: initialData.conversionFactor ?? 1,
           });
         } else {
           reset({
             name: '', categoryId: '', description: '', format: 'SHEET',
             costPerUnit: '', unit: 'm²',
             minStockQuantity: '', sellWithoutStock: true, trackStock: true,
-            ncm: '', ean: ''
-          });
-          setProductiveData({ 
-            controlUnit: 'M2', 
-            defaultConsumptionRule: 'PRODUCT_AREA', 
-            conversionFactor: 1, 
-            largura_unitaria: 0, 
-            altura_unitaria: 0,
+            ncm: '', ean: '',
             purchaseUnit: 'UN',
-            multiplicador_padrao_entrada: 1
+            multiplicador_padrao_entrada: 1,
+            largura_unitaria: 0,
+            altura_unitaria: 0,
+            purchasePrice: 0,
+            controlUnit: 'M2' as ControlUnit,
+            defaultConsumptionRule: 'PRODUCT_AREA' as ConsumptionRule,
+            conversionFactor: 1,
           });
         }
         setSelectedMaterial(null);
@@ -181,9 +187,25 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
       }
 
       try {
-        const resp = await api.get(`/api/catalog/materials/${materialId}`);
-        const full = resp.data.data;
+        // Busca paralela para evitar flickering e resets duplos
+        const [matResp, batchesResp] = await Promise.all([
+          api.get(`/api/catalog/materials/${materialId}`),
+          api.get(`/api/insumos/${materialId}/batches`)
+        ]);
+
+        const full = matResp.data.data;
+        const currentBatches = batchesResp.data.data || [];
+        
+        setBatches(currentBatches);
         setSelectedMaterial(full);
+
+        // Lógica de Preço Sugerido: Prioriza o que está no banco, 
+        // se estiver zerado, usa o custo do lote PEPS atual.
+        let finalPurchasePrice = Number(full.purchasePrice) || 0;
+        if (finalPurchasePrice === 0 && currentBatches.length > 0) {
+          finalPurchasePrice = currentBatches[0].unitCost * (full.multiplicador_padrao_entrada || 1);
+        }
+
         reset({
           name: full.name,
           categoryId: full.categoryId,
@@ -196,15 +218,14 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
           trackStock: full.trackStock ?? true,
           ncm: full.ncm || '',
           ean: full.ean || '',
-        });
-        setProductiveData({
-          controlUnit: full.controlUnit || 'M2',
-          defaultConsumptionRule: full.defaultConsumptionRule || 'PRODUCT_AREA',
-          conversionFactor: full.conversionFactor ?? 1,
+          purchaseUnit: full.purchaseUnit || 'UN',
+          purchasePrice: Number(finalPurchasePrice.toFixed(2)),
+          multiplicador_padrao_entrada: full.multiplicador_padrao_entrada || 1,
           largura_unitaria: (full.largura_unitaria || full.width) ?? 0,
           altura_unitaria: (full.altura_unitaria || full.height) ?? 0,
-          purchaseUnit: full.purchaseUnit || 'UN',
-          multiplicador_padrao_entrada: full.multiplicador_padrao_entrada || 1,
+          controlUnit: (full.controlUnit || 'M2') as ControlUnit,
+          defaultConsumptionRule: (full.defaultConsumptionRule || 'PRODUCT_AREA') as ConsumptionRule,
+          conversionFactor: full.conversionFactor ?? 1,
         });
       } catch (err) {
         toast.error('Erro ao carregar detalhes.');
@@ -214,17 +235,25 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
     if (isOpen) loadMaterial();
   }, [isOpen, materialId, initialData, reset]);
 
+  // Sincronizar Custo Unitário (Interno) automaticamente baseado na Inteligência
+  useEffect(() => {
+    if (productiveData.purchasePrice && productiveData.purchasePrice > 0) {
+      const mult = productiveData.multiplicador_padrao_entrada || 1;
+      const calculatedInternalCost = productiveData.purchasePrice / mult;
+      
+      const currentCost = watch('costPerUnit');
+      if (Math.abs(calculatedInternalCost - (Number(currentCost) || 0)) > 0.0001) {
+        setValue('costPerUnit', Number(calculatedInternalCost.toFixed(4)).toString());
+      }
+    }
+  }, [productiveData.purchasePrice, productiveData.multiplicador_padrao_entrada, setValue, watch]);
+
   const onSubmit = async (formData: any, andNext = false) => {
     const payload = {
       ...formData,
       costPerUnit: parseFloat(formData.costPerUnit) || 0,
-      controlUnit: productiveData.controlUnit,
-      defaultConsumptionRule: productiveData.defaultConsumptionRule,
-      conversionFactor: productiveData.conversionFactor,
-      width: typeof productiveData.largura_unitaria === 'number' ? productiveData.largura_unitaria : undefined,
-      height: typeof productiveData.altura_unitaria === 'number' ? productiveData.altura_unitaria : undefined,
-      purchaseUnit: productiveData.purchaseUnit,
-      multiplicador_padrao_entrada: productiveData.multiplicador_padrao_entrada,
+      width: typeof formData.largura_unitaria === 'number' ? formData.largura_unitaria : undefined,
+      height: typeof formData.altura_unitaria === 'number' ? formData.altura_unitaria : undefined,
       minStockQuantity: formData.minStockQuantity ? parseFloat(formData.minStockQuantity) : null,
     };
 
@@ -294,9 +323,11 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {activeTab === 'cadastro' && (
             <form id="material-form" onSubmit={handleSubmit((d) => onSubmit(d))} className="space-y-6">
-              <div className="grid grid-cols-1 gap-6">
+                            
+
+
                 <section className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Nome Comercial</label>
+                  <label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Nome Comercial do Insumo</label>
                   <Input {...register('name', { required: true })} className="h-12 text-lg font-medium border-2 focus:border-primary/50" placeholder="Ex: Lona Brilho 440g" />
                 </section>
 
@@ -343,46 +374,68 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
                    />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+                <div className="pt-4 border-t grid grid-cols-2 gap-4 items-center">
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Custo Unitário (Interno)</label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <button type="button" className="text-muted-foreground hover:text-primary transition-colors">
-                            <Info size={12} />
-                          </button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-64 p-3 text-[11px] font-medium leading-relaxed bg-card shadow-xl border-2">
-                          <p className="font-bold mb-1 text-primary uppercase tracking-wider">Como preencher:</p>
-                          Insira o valor fracionado: <strong>(Preço de Compra ÷ Multiplicador)</strong>.
-                          <br/><br/>
-                          Este valor será a base real utilizada para o cálculo de custo nos orçamentos.
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">R$</span>
-                      <Input type="number" step="0.0001" {...register('costPerUnit')} className="h-11 pl-9 font-bold text-primary" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Estoque de Alerta (Mín)</label>
+                    <label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Estoque de Alerta (Mínimo)</label>
                     <Input type="number" {...register('minStockQuantity')} className="h-11 font-bold" />
+                    <p className="text-[9px] text-muted-foreground italic leading-tight">Avisos automáticos abaixo deste patamar.</p>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 bg-primary/5 rounded-2xl border border-primary/10 h-[76px] self-end mb-1">
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] font-black uppercase">Monitoramento Ativo</p>
+                      <p className="text-[9px] text-muted-foreground leading-tight">Gerir saldo no WMS e Financeiro.</p>
+                    </div>
+                    <Controller control={control} name="trackStock" render={({ field }) => (
+                      <input type="checkbox" className="w-5 h-5 rounded border-primary transition-all cursor-pointer" checked={field.value} onChange={e => field.onChange(e.target.checked)} />
+                    )} />
                   </div>
                 </div>
-
-                <div className="flex items-center justify-between p-4 bg-primary/5 rounded-2xl border border-primary/10">
-                  <div className="space-y-0.5">
-                    <p className="text-xs font-black uppercase">Monitoramento Ativo</p>
-                    <p className="text-[10px] text-muted-foreground">Gerir saldo no WMS e lançar no Plano de Contas.</p>
+                {/* Filas de Consumo PEPS (Informativo no Cadastro) - Movido para o final */}
+                {batches.length > 0 && (
+                  <div className="bg-blue-50/30 border border-blue-200/50 rounded-2xl p-4 mb-2 shadow-sm">
+                    <div className="flex items-center gap-2 mb-3">
+                      <History className="w-3.5 h-3.5 text-blue-600" />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-blue-600">Filas de Consumo Ativas (PEPS)</span>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      {batches.slice(0, 3).map((batch, idx) => (
+                        <div 
+                          key={batch.id} 
+                          className={`flex items-center justify-between p-2 rounded-xl border transition-all ${
+                            idx === 0 ? 'bg-white border-blue-200 shadow-sm' : 'bg-white/40 border-dashed opacity-70'
+                          }`}
+                        >
+                          <div className="flex flex-col">
+                            <span className="text-[10px] font-bold text-slate-600">
+                              {idx === 0 ? '✦ EM USO' : `LOTE #${batches.length - idx}`}
+                            </span>
+                            <span className="text-[9px] text-muted-foreground">Entrada: {new Date(batch.createdAt).toLocaleDateString()}</span>
+                          </div>
+                          
+                          <div className="flex items-center gap-4">
+                            <div className="flex flex-col items-end">
+                              <span className="text-[9px] uppercase font-black text-slate-400">Saldo</span>
+                              <span className="text-xs font-bold text-slate-700">
+                                {batch.quantityRemaining.toFixed(2)} {watch('unit')} 
+                              </span>
+                            </div>
+                            
+                            <div className="flex flex-col items-end border-l pl-3 border-slate-200">
+                              <span className="text-[9px] uppercase font-black text-slate-400">Custo</span>
+                              <span className="text-xs font-black text-blue-600">R$ {batch.unitCost.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {batches.length > 3 && (
+                        <p className="text-[9px] text-center text-muted-foreground font-medium pt-1 italic">+ {batches.length - 3} outros lotes na fila</p>
+                      )}
+                    </div>
                   </div>
-                  <Controller control={control} name="trackStock" render={({ field }) => (
-                    <input type="checkbox" className="w-5 h-5 rounded border-primary transition-all cursor-pointer" checked={field.value} onChange={e => field.onChange(e.target.checked)} />
-                  )} />
-                </div>
+                )}
 
-              </div>
             </form>
           )}
 

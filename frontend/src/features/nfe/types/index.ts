@@ -6,6 +6,9 @@ export interface NFeItem {
   ean?: string;
   unidade: string;
   quantidade: number;
+  quantidadeOriginal?: number;
+  unidadeTributavel?: string;
+  quantidadeTributavel?: number;
   valorUnitario: number;
   valorTotal: number;
   custoEfetivoUnitario?: number;

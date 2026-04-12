@@ -34,6 +34,11 @@ interface UpdateSettingsInput {
   defaultSalesUnit?: string;
   freightExpenseAccountId?: string | null;
   taxExpenseAccountId?: string | null;
+  nfeCertificate?: string | null;
+  nfeCertificatePassword?: string | null;
+  nfeCertificateExpiry?: Date | null;
+  nfeCertificateSubject?: string | null;
+  nfeCertificateFileName?: string | null;
 }
 
 export class OrganizationService {
@@ -64,10 +69,25 @@ export class OrganizationService {
   }
 
   async update(id: string, data: UpdateOrganizationInput) {
+    const updateData: any = { ...data };
+
+    // Limpar CNPJ de caracteres não numéricos
+    if (updateData.cnpj) {
+      updateData.cnpj = updateData.cnpj.replace(/\D/g, '');
+    }
+
+    // Converter strings vazias em null para evitar problemas com máscaras no banco
+    const fieldsToNullify = ['email', 'phone', 'zipCode', 'address', 'neighborhood', 'city', 'state', 'razaoSocial'];
+    fieldsToNullify.forEach(field => {
+      if (updateData[field] === '') {
+        updateData[field] = null;
+      }
+    });
+
     const organization = await this.prisma.organization.update({
       where: { id },
       data: {
-        ...data,
+        ...updateData,
         updatedAt: new Date()
       },
       include: {

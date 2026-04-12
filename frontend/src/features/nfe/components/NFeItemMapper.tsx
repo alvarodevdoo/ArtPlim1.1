@@ -20,6 +20,7 @@ interface NFeItemMapperProps {
   onToggleSkip: (index: number) => void;
   onToggleSelect: (index: number) => void;
   onSelectAll: (action: 'ALL' | 'NONE') => void;
+  onUpdateQuantity: (index: number, qty: number) => void;
   onBulkUpdate: (data: Partial<NFeItem>) => void;
   onSetDistributionMode: (mode: 'STRICT' | 'REDISTRIBUTE') => void;
   categories: any[];
@@ -36,6 +37,7 @@ export const NFeItemMapper: React.FC<NFeItemMapperProps> = ({
   onToggleSkip,
   onToggleSelect,
   onSelectAll,
+  onUpdateQuantity,
   onBulkUpdate,
   onSetDistributionMode,
   categories
@@ -165,11 +167,30 @@ export const NFeItemMapper: React.FC<NFeItemMapperProps> = ({
                   <td className={cn(
                     "px-4 py-4 border-y bg-white group-hover:bg-slate-50 text-center transition-colors",
                     isSelected ? "border-primary/50 bg-primary/5" : "border-slate-100"
-                  )}>
-                    <div className="flex flex-col items-center">
-                       <span className="text-sm font-black text-slate-700">{item.quantidade} <span className="text-[10px] font-normal text-slate-400 uppercase">{item.unidade}</span></span>
-                       <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full mt-1">
-                          R$ {(item.custoEfetivoUnitario || item.valorUnitario).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  )} onClick={(e) => e.stopPropagation()}>
+                    <div className="flex flex-col items-center gap-1 w-full max-w-[120px] mx-auto">
+                       <div className="flex items-center gap-1 border-b pb-1">
+                          <input 
+                            type="number" 
+                            min="0.01" 
+                            step="0.01" 
+                            className="w-16 font-black text-sm text-center text-slate-700 bg-transparent outline-none ring-0 p-0 border-none m-0" 
+                            value={item.quantidade} 
+                            onChange={(e) => onUpdateQuantity(idx, parseFloat(e.target.value) || 0)}
+                          />
+                          <span className="text-[10px] font-normal text-slate-400 uppercase">{item.unidade}</span>
+                       </div>
+                       
+                       <div className="flex flex-col items-center mt-0.5 space-y-0.5 bg-slate-50 border border-slate-100 rounded p-1 w-full">
+                         <span className="text-[8px] uppercase tracking-widest text-slate-400 font-bold">Lido do XML</span>
+                         <span className="text-[9px] text-slate-600 font-medium">Comercial: {item.quantidadeOriginal ?? item.quantidade} {item.unidade}</span>
+                         {item.quantidadeTributavel && item.unidadeTributavel && (item.quantidadeTributavel !== item.quantidadeOriginal || item.unidadeTributavel !== item.unidade) && (
+                           <span className="text-[9px] text-blue-600 font-bold bg-blue-50/50 px-1 rounded block">Tributável: {item.quantidadeTributavel} {item.unidadeTributavel}</span>
+                         )}
+                       </div>
+
+                       <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full mt-1" title="Custo Unitário Efetivo já com rateio de frete e impostos">
+                          R$ {(item.custoEfetivoUnitario || item.valorUnitario).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                        </span>
                     </div>
                   </td>
@@ -238,6 +259,7 @@ export const NFeItemMapper: React.FC<NFeItemMapperProps> = ({
         <MaterialDrawer 
           isOpen={drawerConfig.isOpen}
           onClose={() => setDrawerConfig({ isOpen: false, index: null })}
+          materialId={nfeData.items[drawerConfig.index].mappedMaterialId}
           initialData={getInitialData(nfeData.items[drawerConfig.index])}
           hasNext={drawerConfig.index < nfeData.items.length - 1}
           onSaveAndNext={(newMaterial) => {

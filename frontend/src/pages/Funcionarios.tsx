@@ -104,11 +104,11 @@ const Funcionarios: React.FC = () => {
       state: funcionario.state || '',
       zipCode: '',
       type: funcionario.type,
-      isCustomer: false,
-      isSupplier: false,
+      isCustomer: (funcionario as any).isCustomer || false,
+      isSupplier: (funcionario as any).isSupplier || false,
       isEmployee: funcionario.isEmployee,
-      position: '',
-      department: '',
+      position: (funcionario as any).position || '',
+      department: (funcionario as any).department || '',
       salary: '',
       hireDate: '',
       active: funcionario.active,
@@ -299,6 +299,48 @@ const Funcionarios: React.FC = () => {
                     />
                   </div>
 
+                  {/* Papéis no Sistema */}
+                  <div className="md:col-span-2 space-y-2 border-t pt-2 mt-2">
+                    <label className="text-sm font-medium block mb-2">Papéis no Sistema</label>
+                    <div className="flex flex-wrap gap-4">
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.isCustomer}
+                          onChange={(e) => setFormData(prev => ({ ...prev, isCustomer: e.target.checked }))}
+                          className="rounded border-input h-4 w-4"
+                        />
+                        <span className="text-sm">Cliente</span>
+                      </label>
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.isSupplier}
+                          onChange={(e) => setFormData(prev => ({ 
+                            ...prev, 
+                            isSupplier: e.target.checked,
+                            isEmployee: e.target.checked ? false : prev.isEmployee
+                          }))}
+                          className="rounded border-input h-4 w-4"
+                        />
+                        <span className="text-sm">Fornecedor</span>
+                      </label>
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.isEmployee}
+                          onChange={(e) => setFormData(prev => ({ 
+                            ...prev, 
+                            isEmployee: e.target.checked,
+                            isSupplier: e.target.checked ? false : prev.isSupplier
+                          }))}
+                          className="rounded border-input h-4 w-4"
+                        />
+                        <span className="text-sm">Colaborador</span>
+                      </label>
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Cargo</label>
                     <Input
@@ -456,7 +498,7 @@ const Funcionarios: React.FC = () => {
       )}
 
       {/* Funcionários List */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
         {filteredFuncionarios.map((funcionario) => (
           <Card key={funcionario.id} className={!funcionario.active ? 'opacity-60' : ''}>
             <CardHeader>
