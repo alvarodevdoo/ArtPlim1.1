@@ -100,11 +100,19 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
   });
 
   const productiveData = watch(); // Agora a "inteligência" vem direto do formulário oficial
+  const trackStock = watch('trackStock');
   const setProductiveData = (data: Partial<ProductiveIntelligenceData>) => {
     Object.entries(data).forEach(([key, val]) => {
       setValue(key as any, val);
     });
   };
+
+  // Quando o monitoramento de estoque é desligado, volta para a aba de cadastro
+  useEffect(() => {
+    if (!trackStock && (activeTab === 'movimentar' || activeTab === 'historico')) {
+      setActiveTab('cadastro');
+    }
+  }, [trackStock, activeTab]);
 
   const handleDiscardOffcut = async (quantity: number) => {
     if (!selectedMaterial) return;
@@ -248,6 +256,12 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
     }
   }, [productiveData.purchasePrice, productiveData.multiplicador_padrao_entrada, setValue, watch]);
 
+  const onError = (errors: any) => {
+    if (errors.name) toast.error('Nome do Insumo é obrigatório!');
+    else if (errors.categoryId) toast.error('A Categoria de Apropriação Financeira é obrigatória!');
+    else toast.error('Preencha todos os campos obrigatórios listados em vermelho.');
+  };
+
   const onSubmit = async (formData: any, andNext = false) => {
     const payload = {
       ...formData,
@@ -300,10 +314,10 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
 
         <div className="flex bg-muted/30 p-1 mx-6 mt-4 rounded-xl border">
           {[
-            { id: 'cadastro', label: 'Cadastro', icon: Save },
-            { id: 'movimentar', label: 'Ajuste Estoque', icon: ArrowUpCircle, disabled: !materialId && !selectedMaterial },
-            { id: 'historico', label: 'Logs / Histórico', icon: History, disabled: !materialId && !selectedMaterial }
-          ].map(t => (
+            { id: 'cadastro', label: 'Cadastro', icon: Save, hidden: false },
+            { id: 'movimentar', label: 'Ajuste Estoque', icon: ArrowUpCircle, hidden: !trackStock, disabled: !materialId && !selectedMaterial },
+            { id: 'historico', label: 'Logs / Histórico', icon: History, hidden: !trackStock, disabled: !materialId && !selectedMaterial }
+          ].filter(t => !t.hidden).map(t => (
             <button
               key={t.id}
               disabled={t.disabled}
@@ -322,7 +336,7 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {activeTab === 'cadastro' && (
-            <form id="material-form" onSubmit={handleSubmit((d) => onSubmit(d))} className="space-y-6">
+            <form id="material-form" onSubmit={handleSubmit((d) => onSubmit(d), onError)} className="space-y-6">
                             
 
 
@@ -484,7 +498,7 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
           {activeTab === 'cadastro' && (
             hasNext ? (
               <Button 
-                  onClick={handleSubmit((d) => onSubmit(d, true))} 
+                  onClick={handleSubmit((d) => onSubmit(d, true), onError)} 
                   className="flex-[2] h-12 bg-primary text-primary-foreground uppercase font-black text-xs shadow-lg shadow-primary/20 group"
               >
                   Salvar e Próximo

@@ -342,8 +342,8 @@ export const VariationsTab: React.FC<VariationsTabProps> = ({
                               onChange={(e) => setNewOptionPricingMode(e.target.value as 'ADJUST' | 'FIXED')}
                               className="h-10 px-3 bg-slate-50 border-r-2 border-slate-100 text-xs font-bold text-slate-600 focus:outline-none cursor-pointer"
                             >
-                              <option value="ADJUST">Ajuste (+ R$)</option>
-                              <option value="FIXED">Valor Fixo (R$)</option>
+                              <option value="ADJUST">Adicional (+ R$)</option>
+                              <option value="FIXED">Preço (R$)</option>
                             </select>
                             <input
                               type="number"
@@ -472,7 +472,7 @@ const OptionCard = ({
         <div className="flex flex-col items-end shrink-0 w-28">
           {!isGlobalEditing ? (
              <p className="text-[9px] font-black uppercase text-slate-400 mb-0.5">
-               {option.fixedValue !== null ? 'Valor Fixo' : 'Ajuste (+ R$)'}
+               {option.fixedValue !== null ? 'Preço Base' : 'Adicional (+ R$)'}
              </p>
           ) : (
             <select
@@ -486,8 +486,8 @@ const OptionCard = ({
               }}
               className="text-[9px] font-black uppercase text-amber-600 bg-amber-50 rounded px-1 py-0.5 mb-0.5 cursor-pointer border border-amber-200 focus:outline-none"
             >
-              <option value="ADJUST">Ajuste (+ R$)</option>
-              <option value="FIXED">Valor Fixo</option>
+              <option value="ADJUST">Adicional (+ R$)</option>
+              <option value="FIXED">Preço Base</option>
             </select>
           )}
 

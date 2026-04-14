@@ -18,6 +18,7 @@ interface UseCompositionParams {
   productId: string | null;
   selectedOptionIds: string[];
   quantity: number;
+  dynamicVariables?: Record<string, any>;
   /** Debounce em ms. Padrão: 400ms para UX responsiva sem sobrecarga. */
   debounceMs?: number;
 }
@@ -33,6 +34,7 @@ export function useComposition({
   productId,
   selectedOptionIds,
   quantity,
+  dynamicVariables,
   debounceMs = 400
 }: UseCompositionParams): UseCompositionReturn {
   const [composition, setComposition] = useState<CompositionResult | null>(null);
@@ -61,7 +63,8 @@ export function useComposition({
         const result = await simulateComposition({
           productId,
           selectedOptionIds,
-          quantity: Math.max(1, quantity)
+          quantity: Math.max(1, quantity),
+          dynamicVariables
         });
         setComposition(result);
       } catch (err: any) {
@@ -72,7 +75,7 @@ export function useComposition({
         setLoading(false);
       }
     }, debounceMs);
-  }, [productId, selectedOptionIds.join(','), quantity, debounceMs]);
+  }, [productId, selectedOptionIds.join(','), quantity, JSON.stringify(dynamicVariables || {}), debounceMs]);
 
   useEffect(() => {
     fetch();

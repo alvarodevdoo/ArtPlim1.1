@@ -100,6 +100,20 @@ export class FinancialReportService {
     const incomeByCategoryMap = new Map<string, { categoryId: string | null, categoryName: string, total: number }>();
     const expenseByCategoryMap = new Map<string, { categoryId: string | null, categoryName: string, total: number }>();
 
+    // Carrega todas as categorias cadastradas para garantir que apareçam no DRE, mesmo com saldo zerado
+    const allCategories = await this.prisma.category.findMany({
+      where: { organizationId },
+      select: { id: true, name: true, type: true }
+    });
+
+    allCategories.forEach(cat => {
+      if (cat.type === 'INCOME') {
+        incomeByCategoryMap.set(cat.id, { categoryId: cat.id, categoryName: cat.name, total: 0 });
+      } else if (cat.type === 'EXPENSE') {
+        expenseByCategoryMap.set(cat.id, { categoryId: cat.id, categoryName: cat.name, total: 0 });
+      }
+    });
+
     // Vendas de Pedidos (Receita Bruta Base)
     incomeByCategoryMap.set('vendas_pedidos', { 
       categoryId: null, 

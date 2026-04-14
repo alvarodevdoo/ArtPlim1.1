@@ -145,7 +145,7 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
             })),
           })
         );
-        console.log('[ProductModal] Variation groups loaded:', JSON.stringify(configs, null, 2));
+
         setVarGroups(configs);
 
         // 3. BOM items
@@ -179,7 +179,7 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
             configurationGroupId: item.configurationGroupId || null,
           };
         });
-        console.log('[ProductModal] BOM items loaded:', bom.filter(i => !i.isFixed));
+
         setBomItems(bom);
 
         // Init simulation defaults
@@ -360,7 +360,7 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
         configurationOptionId: i.configurationOptionId ?? null,
         configurationGroupId: i.configurationGroupId ?? null,
       }));
-      console.log('[ProductModal] Saving BOM payload:', JSON.stringify(bomPayload, null, 2));
+
       await api.post(`/api/catalog/products/${savedId}/ficha-tecnica`, { items: bomPayload });
 
       toast.success('Produto salvo com sucesso!');

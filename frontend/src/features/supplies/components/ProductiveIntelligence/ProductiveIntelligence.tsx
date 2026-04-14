@@ -166,7 +166,8 @@ export const ProductiveIntelligence: React.FC<Props> = ({
                     const val = parseFloat(e.target.value) || 0;
                     onChange({ ...value, purchasePrice: val });
                   }}
-                  className="pl-9 font-bold bg-primary/5 border-primary/20"
+                  className="font-bold bg-primary/5 border-primary/20"
+                  style={{ paddingLeft: '36px' }}
                   placeholder="0,00"
                 />
               </div>

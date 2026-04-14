@@ -631,7 +631,7 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
                       onChange={(e) => setOptionFormData(prev => ({ ...prev, priceModifierType: e.target.value as any }))}
                       className="w-full h-10 px-3 py-2 border border-input rounded-md bg-background"
                     >
-                      <option value="FIXED">Valor Fixo (R$)</option>
+                      <option value="FIXED">Preço (R$)</option>
                       <option value="PERCENTAGE">Percentual (%)</option>
                     </select>
                   </div>

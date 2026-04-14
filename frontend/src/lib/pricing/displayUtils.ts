@@ -81,8 +81,16 @@ export const getProductDisplayInfo = (produto: any): DisplayInfo => {
       const variables = formula.variables || [];
       const referenceValues = formula.referenceValues || {};
 
-      // 2. Mesclar com overrides do produto e garantir quantidade padrão 1
+      // 2. Mesclar com overrides do produto e variáveis fixas da regra
       const activeValues: Record<string, any> = { QTDE: 1, QUANTIDADE: 1, ...referenceValues };
+      
+      variables.forEach((v: any) => {
+        if (v.fixedValue !== undefined && v.fixedValue !== null && v.fixedValue !== 0) {
+          activeValues[v.id] = Number(v.fixedValue);
+          activeValues[v.id.toUpperCase()] = Number(v.fixedValue);
+        }
+      });
+
       let hasProductOverride = false;
       if (produto.formulaData) {
         const formulaData = typeof produto.formulaData === 'string' ? JSON.parse(produto.formulaData) : produto.formulaData;
@@ -90,80 +98,67 @@ export const getProductDisplayInfo = (produto: any): DisplayInfo => {
           const val = formulaData[k];
           if (val !== '' && val !== null && val !== undefined) {
             activeValues[k.toUpperCase()] = val;
-            activeValues[k] = val;  // Mapeia tanto normal quanto uppercase
-          }
-        });
-        hasProductOverride = true;
-      }
-
-      // 🔑 INJEÇÃO DO SALE PRICE via role (agnóstico ao nome da variável)
-      // Para produtos com salePrice > 0, injeta no slot da variável marcada com role='SALE_PRICE'
-      if (produto.salePrice && Number(produto.salePrice) > 0) {
-        variables.forEach((v: any) => {
-          if (v.role === 'SALE_PRICE') {
-            const currentVal = activeValues[v.id];
-            if (currentVal === undefined || currentVal === null || currentVal === '' || currentVal === 0) {
-              activeValues[v.id] = Number(produto.salePrice);
-              hasProductOverride = true;
-            }
+            activeValues[k] = val;
+            hasProductOverride = true;
           }
         });
       }
 
       // Calcula Preço de Venda
       let res = calculatePricingResult(formulaString, variables, activeValues);
-
       let usedFallback = false;
-
-      // 🛡️ NOVO: Inteligência de Vitrine para Dimensões Zeradas
-      if (res.value === 0) {
-        const dimensionKeywords = ['LARGURA', 'ALTURA', 'COMPRIMENTO', 'DIAMETRO', 'AREA', 'PROFUNDIDADE', 'ESPESSURA', 'VALOR', 'PRECO', 'BASE', 'L', 'A', 'W', 'H', 'Q'];
-        const fallbackValues = { ...activeValues };
-        let hasFixedZeros = false;
-
-        variables.forEach((v: any) => {
-          const vid = v.id.toUpperCase();
-          const isTarget = dimensionKeywords.some(k => vid === k || vid.includes(k));
-          const currentVal = fallbackValues[v.id];
-
-          if (isTarget && (currentVal === 0 || !currentVal)) {
-            fallbackValues[v.id] = 1000;
-            fallbackValues[vid] = 1000;
-            fallbackValues[`${v.id}_unit`] = 'mm';
-            fallbackValues[`${v.id}_UNIT`] = 'mm';
-            hasFixedZeros = true;
+ 
+      // 🛡️ Inteligência de Vitrine
+      if (res.value < 0.01) {
+        const priceKeywords = ['VALOR', 'PRECO', 'BASE', 'M2', 'UNIT'];
+        Object.keys(activeValues).forEach(key => {
+          const rawVal = activeValues[key];
+          const val = typeof rawVal === 'object' && rawVal !== null && 'value' in rawVal ? Number(rawVal.value) : Number(rawVal || 0);
+          
+          if (val > 0 && !usedFallback) {
+            const upperKey = key.toUpperCase();
+            if (priceKeywords.some(k => upperKey.includes(k))) {
+              res.value = val;
+              usedFallback = true;
+            }
           }
         });
-
-        if (hasFixedZeros) {
-          const fallbackRes = calculatePricingResult(formulaString, variables, fallbackValues);
-          if (fallbackRes.value > 0) {
-            res = fallbackRes;
-            usedFallback = true;
-          }
-        }
-
-        if (res.value === 0) {
-          const basePriceVar = variables.find((v: any) => 
-            ['VALOR_BASE', 'PRECO_BASE', 'VALOR', 'PRECO'].some(k => v.id.toUpperCase().includes(k))
-          );
-          if (basePriceVar && activeValues[basePriceVar.id] > 0) {
-            res.value = Number(activeValues[basePriceVar.id]);
-            usedFallback = true;
+ 
+        if (!usedFallback) {
+          const dimensionKeywords = ['L', 'A', 'W', 'H', 'LARG', 'ALT', 'DIM'];
+          const fallbackValues = { ...activeValues };
+          let hasFixedZeros = false;
+ 
+          variables.forEach((v: any) => {
+            const vid = v.id.toUpperCase();
+            const isDim = dimensionKeywords.some(k => vid === k || vid.startsWith(k));
+            if (isDim && (Number(fallbackValues[v.id]) === 0)) {
+              fallbackValues[v.id] = 1000;
+              fallbackValues[`${v.id}_unit`] = 'mm';
+              hasFixedZeros = true;
+            }
+          });
+ 
+          if (hasFixedZeros) {
+            const fallbackRes = calculatePricingResult(formulaString, variables, fallbackValues);
+            if (fallbackRes.value > 0) {
+              res = fallbackRes;
+              usedFallback = true;
+            }
           }
         }
       }
-      
+ 
       // Calcula Preço de Custo (se houver costFormulaString)
       let calculatedCost: string | null = null;
       if (formula.costFormulaString) {
-        const costRes = calculatePricingResult(formula.costFormulaString, formula.variables, activeValues);
+        const costRes = calculatePricingResult(formula.costFormulaString, variables, activeValues);
         if (costRes.value > 0) {
           calculatedCost = formatCurrency(costRes.value);
         }
       }
-
-      // Prepara a nota informativa (ex: "Base 100x100cm")
+ 
+      // Prepara a nota informativa
       const inputVars = variables.filter((v: any) => v.type === 'INPUT');
       const noteParts = inputVars
         .map((v: any) => {
@@ -172,11 +167,11 @@ export const getProductDisplayInfo = (produto: any): DisplayInfo => {
           return val ? `${val}${unit}` : null;
         })
         .filter(Boolean);
-
+ 
       return {
         price: formatCurrency(res.value),
         cost: calculatedCost,
-        isStarting: !hasProductOverride || usedFallback || res.value === 0,
+        isStarting: false,
         note: noteParts.length > 0 ? noteParts.join(' x ') : null
       };
     } catch (error) {

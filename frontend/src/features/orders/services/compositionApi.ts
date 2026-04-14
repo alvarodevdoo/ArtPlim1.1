@@ -14,6 +14,7 @@ export async function simulateComposition(params: {
   productId: string;
   selectedOptionIds: string[];
   quantity: number;
+  dynamicVariables?: Record<string, any>;
 }): Promise<CompositionResult> {
   const res = await api.post('/api/sales/simulate-composition', params);
   if (!res.data?.success) throw new Error(res.data?.message || 'Erro ao simular composição');
