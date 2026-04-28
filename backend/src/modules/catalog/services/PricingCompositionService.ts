@@ -2,17 +2,25 @@
  * PricingCompositionService
  *
  * Responsabilidade única: calcular em tempo real o custo total e o preço sugerido
- * de um produto com as opções selecionadas, lendo `averageCost` do estoque.
+ * de um produto com as opções selecionadas.
+ *
+ * Hierarquia de custo (ordem de prioridade):
+ *   1. averageCost  — custo médio ponderado do estoque (mais preciso, atualizado por entradas)
+ *   2. costPerUnit  — custo unitário cadastrado manualmente (já convertido para a unidade de uso)
+ *   3. purchasePrice derivado — purchasePrice / (purchaseWidth × purchaseHeight) para materiais de área
+ *   4. purchasePrice direto — apenas para formato UNIT (carimbo, etc.)
+ *   5. 0            — material sem custo configurado
  *
  * Matemática do Snapshot:
- *   unitCostAtSale = Σ (material.averageCost × quantidade)
+ *   unitCostAtSale = Σ (resolvedCost × quantidade)
  *   profit         = unitPriceAtSale − unitCostAtSale
  */
 
 export interface CompositionLineItem {
   materialId: string;
   materialName: string;
-  materialCategory?: string; // Categoria do material para filtragem visual
+  materialCategory?: string;   // Nome da categoria (visual)
+  materialCategoryId?: string; // ID da categoria (apropriação financeira)
   quantity: number;
   costPerUnit: number;   // averageCost do estoque
   subtotal: number;
@@ -25,6 +33,7 @@ export interface CompositionResult {
   variableMaterialCost: number;  // Custo das opções selecionadas
   totalCost: number;             // baseMaterialCost + variableMaterialCost
   suggestedPrice: number;        // totalCost × targetMarkup
+  unitSuggestedPrice: number;    // suggestedPrice / quantity
   suggestedMarkup: number;       // targetMarkup configurado (ou 2.0 padrão)
   currentMargin: number;         // (suggestedPrice - totalCost) / suggestedPrice
   breakdown: CompositionLineItem[];
@@ -39,8 +48,15 @@ export interface InsufficientStockItem {
   deficit: number;
 }
 
+
+import { InventoryValuationService } from '../../../shared/services/InventoryValuationService';
+
 export class PricingCompositionService {
-  constructor(private readonly prisma: any) {}
+  private readonly valuationSvc: InventoryValuationService;
+
+  constructor(private readonly prisma: any) {
+    this.valuationSvc = new InventoryValuationService(prisma);
+  }
 
   /**
    * Calcula o custo de composição de um produto para as opções selecionadas.
@@ -50,9 +66,31 @@ export class PricingCompositionService {
     productId: string;
     selectedOptionIds: string[];
     quantity: number;
+    width?: number;
+    height?: number;
+    dynamicVariables?: any;
     organizationId: string;
   }): Promise<CompositionResult> {
-    const { productId, selectedOptionIds, quantity, organizationId } = params;
+    let { productId, selectedOptionIds, quantity, width, height, dynamicVariables, organizationId } = params;
+
+    // Fallback de segurança para pedidos legados ou com divergência de formulário:
+    // Tenta resgatar largura e altura dos Atributos Dinâmicos se não foram enviados explícitos
+    if ((!width || !height) && dynamicVariables) {
+      const vars = Object.keys(dynamicVariables);
+      const widthKey = vars.find(k => k.toUpperCase() === 'LARGURA');
+      const heightKey = vars.find(k => k.toUpperCase() === 'ALTURA');
+
+      if (!width && widthKey) {
+        width = Number(dynamicVariables[widthKey]?.value) || width;
+        if (dynamicVariables[widthKey]?.unit?.toLowerCase() === 'cm') width = (width || 0) * 10;
+        if (dynamicVariables[widthKey]?.unit?.toLowerCase() === 'm') width = (width || 0) * 1000;
+      }
+      if (!height && heightKey) {
+        height = Number(dynamicVariables[heightKey]?.value) || height;
+        if (dynamicVariables[heightKey]?.unit?.toLowerCase() === 'cm') height = (height || 0) * 10;
+        if (dynamicVariables[heightKey]?.unit?.toLowerCase() === 'm') height = (height || 0) * 1000;
+      }
+    }
 
     // 1. Buscar produto com markup alvo e fichas técnicas fixas
     const product = await this.prisma.product.findFirst({
@@ -62,7 +100,7 @@ export class PricingCompositionService {
           include: {
             material: {
               include: {
-                category: { select: { name: true } }
+                category: { select: { id: true, name: true } }
               }
             }
           }
@@ -88,8 +126,14 @@ export class PricingCompositionService {
       const mat = ficha.material;
       if (!mat) continue;
 
-      const qtd = Number(ficha.quantidade || 1) * quantity;
-      const costPerUnit = Number(mat.averageCost || 0);
+      let consumptionMultiplier = 1;
+      if (mat.defaultConsumptionRule === 'PRODUCT_AREA' && width && height) {
+        consumptionMultiplier = (width * height) / 1000000;
+      }
+
+      const qtd = Number(ficha.quantidade || 1) * quantity * consumptionMultiplier;
+      // Custo unitário resolvido com hierarquia: averageCost → costPerUnit → purchasePrice derivado
+      const costPerUnit = this.valuationSvc.resolveAverageCost(mat);
       const subtotal = qtd * costPerUnit;
       baseMaterialCost += subtotal;
 
@@ -97,6 +141,7 @@ export class PricingCompositionService {
         materialId: mat.id,
         materialName: mat.name,
         materialCategory: (mat as any).category?.name,
+        materialCategoryId: (mat as any).category?.id,
         quantity: qtd,
         costPerUnit,
         subtotal,
@@ -125,14 +170,14 @@ export class PricingCompositionService {
         include: {
           material: {
             include: {
-              category: { select: { name: true } }
+              category: { select: { id: true, name: true } }
             }
           },
           fichasTecnicas: {
             include: {
               material: {
                 include: {
-                  category: { select: { name: true } }
+                  category: { select: { id: true, name: true } }
                 }
               }
             }
@@ -158,8 +203,15 @@ export class PricingCompositionService {
         // 3a. Slot direto (materialId na própria option)
         if (opt.materialId && opt.material) {
           const mat = opt.material;
-          const qtd = Number(opt.slotQuantity || 1) * quantity;
-          const costPerUnit = Number(mat.averageCost || 0);
+
+          let consumptionMultiplier = 1;
+          if (mat.defaultConsumptionRule === 'PRODUCT_AREA' && width && height) {
+            consumptionMultiplier = (width * height) / 1000000;
+          }
+
+          const qtd = Number(opt.slotQuantity || 1) * quantity * consumptionMultiplier;
+          // Custo unitário resolvido com hierarquia: averageCost → costPerUnit → purchasePrice derivado
+          const costPerUnit = this.valuationSvc.resolveAverageCost(mat);
           const subtotal = qtd * costPerUnit;
           variableMaterialCost += subtotal;
 
@@ -167,6 +219,7 @@ export class PricingCompositionService {
             materialId: mat.id,
             materialName: mat.name,
             materialCategory: (mat as any).category?.name,
+            materialCategoryId: (mat as any).category?.id,
             quantity: qtd,
             costPerUnit,
             subtotal,
@@ -191,8 +244,14 @@ export class PricingCompositionService {
           const mat = ficha.material;
           if (!mat) continue;
 
-          const qtd = Number(ficha.quantidade || 1) * quantity;
-          const costPerUnit = Number(mat.averageCost || 0);
+          let consumptionMultiplier = 1;
+          if (mat.defaultConsumptionRule === 'PRODUCT_AREA' && width && height) {
+            consumptionMultiplier = (width * height) / 1000000;
+          }
+
+          const qtd = Number(ficha.quantidade || 1) * quantity * consumptionMultiplier;
+          // Custo unitário resolvido com hierarquia: averageCost → costPerUnit → purchasePrice derivado
+          const costPerUnit = this.valuationSvc.resolveAverageCost(mat);
           const subtotal = qtd * costPerUnit;
           variableMaterialCost += subtotal;
 
@@ -200,6 +259,7 @@ export class PricingCompositionService {
             materialId: mat.id,
             materialName: mat.name,
             materialCategory: (mat as any).category?.name,
+            materialCategoryId: (mat as any).category?.id,
             quantity: qtd,
             costPerUnit,
             subtotal,

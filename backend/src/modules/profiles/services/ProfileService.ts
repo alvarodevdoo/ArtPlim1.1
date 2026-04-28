@@ -22,6 +22,7 @@ interface CreateProfileInput {
   password?: string;
   role?: 'ADMIN' | 'MANAGER' | 'OPERATOR' | 'USER' | 'CUSTOMER';
   roleId?: string;
+  exemptFromDeposit?: boolean;
 }
 
 interface ListFilters {
@@ -156,7 +157,8 @@ export class ProfileService {
           addressNumber: normalizedData.addressNumber,
           creditLimit: normalizedData.creditLimit,
           paymentTerms: normalizedData.paymentTerms,
-          userId: userId
+          userId: userId,
+          exemptFromDeposit: normalizedData.exemptFromDeposit
         }
       });
 
@@ -260,7 +262,8 @@ export class ProfileService {
       addressNumber: data.addressNumber?.trim() || null,
       city: data.city?.trim() || null,
       state: data.state?.trim() || null,
-      zipCode: data.zipCode?.trim() || null
+      zipCode: data.zipCode?.trim() || null,
+      exemptFromDeposit: data.exemptFromDeposit
     };
 
     // Buscar configurações se organizationId estiver presente

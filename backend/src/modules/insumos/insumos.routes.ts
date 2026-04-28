@@ -262,6 +262,49 @@ export async function insumosRoutes(fastify: FastifyInstance) {
     return reply.send({ success: true, data: pendingReceipts });
   });
 
+  // GET /api/insumos/receipts/summary
+  // Agrupa recibos PENDING por fornecedor para exibir saldo acumulado em "A Pagar"
+  fastify.get('/receipts/summary', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const prisma = getTenantClient(request.user!.organizationId);
+
+    const receipts = await prisma.materialReceipt.findMany({
+      where: { organizationId: request.user!.organizationId, status: 'PENDING' },
+      include: {
+        supplier: { select: { id: true, name: true, document: true } }
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    // Agrupa por fornecedor
+    const grouped = new Map<string, {
+      supplierId: string;
+      supplierName: string;
+      supplierDocument: string | null;
+      count: number;
+      total: number;
+      receiptIds: string[];
+      oldestDate: string;
+    }>();
+
+    for (const r of receipts) {
+      const existing = grouped.get(r.supplierId) || {
+        supplierId: r.supplierId,
+        supplierName: r.supplier.name,
+        supplierDocument: r.supplier.document,
+        count: 0,
+        total: 0,
+        receiptIds: [],
+        oldestDate: r.issueDate.toISOString()
+      };
+      existing.count += 1;
+      existing.total += Number(r.totalAmount);
+      existing.receiptIds.push(r.id);
+      grouped.set(r.supplierId, existing);
+    }
+
+    return reply.send({ success: true, data: Array.from(grouped.values()) });
+  });
+
   // POST /api/insumos/receipts/close
   fastify.post('/receipts/close', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const body = closeReceiptsSchema.parse(request.body);

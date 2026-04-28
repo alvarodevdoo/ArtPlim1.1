@@ -234,7 +234,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({ draft, setDraft, pricing
               </div>
            </div>
 
-           <div className="space-y-4 p-6 bg-slate-50 rounded-2xl border border-dashed">
+            <div className="space-y-4 p-6 bg-slate-50 rounded-2xl border border-dashed">
               <h4 className="font-black text-slate-600 uppercase text-xs tracking-widest flex items-center gap-2">
                 <Info className="w-4 h-4" /> Controle de Inventário
               </h4>
@@ -271,6 +271,61 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({ draft, setDraft, pricing
                     </div>
                  </div>
               )}
+           </div>
+
+           {/* Comissão e Descontos */}
+           <div className="space-y-4 p-6 bg-emerald-50/30 rounded-2xl border border-emerald-100/50">
+              <h4 className="font-black text-emerald-700 uppercase text-xs tracking-widest flex items-center gap-2">
+                <TrendingUp className="w-4 h-4" /> Comissão e Descontos
+              </h4>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-bold text-slate-800">Gera Comissão?</p>
+                    <p className="text-[10px] text-slate-400 uppercase font-bold">Inclui este item no cálculo do vendedor</p>
+                  </div>
+                  <Switch 
+                    checked={draft.isCommissionable ?? true}
+                    onCheckedChange={(val) => handleChange('isCommissionable', val)}
+                  />
+                </div>
+
+                {draft.isCommissionable !== false && (
+                  <div className="space-y-2 pt-2 border-t border-emerald-100">
+                    <Label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Taxa de Comissão Diferenciada (%)</Label>
+                    <div className="relative">
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">%</span>
+                      <Input 
+                        type="number"
+                        step="0.1"
+                        value={draft.specificCommissionRate !== undefined ? (draft.specificCommissionRate * 100) : ''}
+                        onChange={(e) => handleChange('specificCommissionRate', e.target.value === '' ? null : (parseFloat(e.target.value) / 100))}
+                        placeholder="Deixe vazio para usar a taxa padrão da empresa"
+                        className="bg-white font-bold h-10 pr-8"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2 pt-4 border-t border-emerald-100">
+                  <Label className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Teto de Desconto Máximo (%)</Label>
+                  <div className="relative">
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">%</span>
+                    <Input 
+                      type="number"
+                      step="1"
+                      value={draft.maxDiscountThreshold !== undefined ? (draft.maxDiscountThreshold * 100) : ''}
+                      onChange={(e) => handleChange('maxDiscountThreshold', e.target.value === '' ? null : (parseFloat(e.target.value) / 100))}
+                      placeholder="Ex: 15 (Deixe vazio para usar o padrão da empresa)"
+                      className="bg-white font-bold h-10 pr-8 border-amber-100 focus:border-amber-500"
+                    />
+                  </div>
+                  <p className="text-[9px] text-slate-500 italic">
+                    Limite máximo que o vendedor pode conceder de desconto para este produto específico.
+                  </p>
+                </div>
+              </div>
            </div>
         </div>
       </div>

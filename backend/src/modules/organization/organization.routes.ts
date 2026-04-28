@@ -48,6 +48,11 @@ const updateSettingsSchema = z.object({
   nfeCertificateFileName: z.string().nullable().optional(),
   nfeCertificateSubject: z.string().nullable().optional(),
   nfeCertificateExpiry: z.string().nullable().or(z.date()).optional(),
+  inventoryValuationMethod: z.string().optional(),
+  requireOrderDeposit: z.boolean().optional(),
+  minDepositPercent: z.number().min(0).max(100).optional(),
+  allowDeliveryWithBalance: z.boolean().optional(),
+  defaultDueDateDays: z.number().int().min(0).optional(),
 });
 
 const createUserSchema = z.object({

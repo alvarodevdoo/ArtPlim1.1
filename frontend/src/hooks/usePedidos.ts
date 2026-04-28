@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -27,6 +28,7 @@ export function usePedidos() {
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
   const [selectedPedidos, setSelectedPedidos] = useState<string[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   // --- Estados dos Modais ---
   const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null);
@@ -35,6 +37,12 @@ export function usePedidos() {
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [showAutomation, setShowAutomation] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [autoOpenPaymentPedidoId, setAutoOpenPaymentPedidoId] = useState<string | null>(null);
+  const [pendingStatusUpdate, setPendingStatusUpdate] = useState<{ 
+    pedidoId: string, 
+    status: string, 
+    processStatusId?: string 
+  } | null>(null);
 
   // --- DnD Sensors ---
   const sensors = useSensors(
@@ -185,11 +193,11 @@ export function usePedidos() {
   }, [loadPedidos, debouncedSearch]);
 
   const handleStatusChange = useCallback(async (pedidoId: string, newStatus: string, details?: any) => {
+    const targetProcessStatus = processStatuses.find(s => s.id === newStatus);
+    const isProcessStatus = !!targetProcessStatus;
+    const mappedBehavior = targetProcessStatus?.mappedBehavior || (newStatus as any);
+
     try {
-      const targetProcessStatus = processStatuses.find(s => s.id === newStatus);
-      const isProcessStatus = !!targetProcessStatus;
-      const mappedBehavior = targetProcessStatus?.mappedBehavior || (newStatus as any);
-      
       const payload: any = { ...details };
       let response;
 
@@ -225,9 +233,67 @@ export function usePedidos() {
       toast.success(mappedBehavior === 'APPROVED' ? 'Pedido confirmado e estoque atualizado!' : 'Status atualizado com sucesso!');
       loadPedidos(debouncedSearch);
     } catch (error: any) {
-      toast.error(error.response?.data?.message || error.response?.data?.error?.message || 'Erro ao atualizar status');
+      // Diagnóstico para o desenvolvedor
+      console.warn('[StatusChange Error Debug]:', {
+        status: error.response?.status,
+        data: JSON.stringify(error.response?.data),
+        message: error.message
+      });
+
+      const errorData = error.response?.data;
+      const errorMessage = (typeof errorData === 'string' ? errorData : (errorData?.message || errorData?.error?.message)) || error.message || '';
+      
+      // Busca insensível a caixa por qualquer indício de bloqueio financeiro
+      const isPaymentRequired = errorMessage && /PAYMENT_REQUIRED/i.test(errorMessage);
+
+      if (isPaymentRequired) {
+        const parts = errorMessage.split('|');
+        const friendlyMessage = parts.length > 1 ? parts[1] : (parts[0].includes(':') ? parts[0].split(':')[1] : parts[0]);
+        
+        toast.error(friendlyMessage || 'Pagamento necessário para prosseguir');
+        
+        // Tenta encontrar o pedido no estado global
+        const pedido = pedidos.find(p => p.id === pedidoId) || (selectedPedido?.id === pedidoId ? selectedPedido : null);
+        
+        if (pedido) {
+          console.log('[StatusChange] Redirecionando para edição com autoPay:', pedidoId);
+          
+          // Memoriza o status desejado para tentar novamente após o pagamento
+          setPendingStatusUpdate({ 
+            pedidoId, 
+            status: mappedBehavior, 
+            processStatusId: isProcessStatus ? newStatus : undefined 
+          });
+
+          // Redireciona para a página de EDIÇÃO com TODAS as instruções de destino
+          navigate(`/pedidos/criar?edit=${pedidoId}&autoPay=true&targetStatus=${mappedBehavior}&targetProcessStatusId=${isProcessStatus ? newStatus : ''}`);
+        } else {
+          console.error('[StatusChange] Falha ao localizar pedido para abrir modal:', pedidoId);
+          toast.error('Realize o pagamento para prosseguir (não foi possível abrir o modal automaticamente).');
+        }
+      } else {
+        toast.error(errorMessage || 'Erro ao atualizar status');
+      }
     }
-  }, [processStatuses, settings?.enableAutomation, loadPedidos, debouncedSearch]);
+  }, [processStatuses, settings?.enableAutomation, loadPedidos, debouncedSearch, pedidos, selectedPedido?.id]);
+
+  const handlePaymentSuccess = useCallback(async (pedidoId: string) => {
+    // 1. Recarregar a lista para atualizar saldos e transações
+    await loadPedidos(debouncedSearch);
+    
+    // 2. Se temos uma mudança pendente para esse pedido, vamos executá-la
+    if (pendingStatusUpdate && pendingStatusUpdate.pedidoId === pedidoId) {
+      console.log('[PaymentSuccess] Executando mudança de status pendente:', pendingStatusUpdate.status);
+      
+      const { status, processStatusId } = pendingStatusUpdate;
+      setPendingStatusUpdate(null); // Limpamos antes para evitar loops
+      
+      // Pequeno delay para garantir que o backend processou a transação e o loadPedidos refletiu no estado
+      setTimeout(() => {
+        handleStatusChange(pedidoId, processStatusId || status);
+      }, 500);
+    }
+  }, [loadPedidos, debouncedSearch, pendingStatusUpdate, handleStatusChange]);
 
   const handleBulkStatusChange = useCallback(async (newStatus: string) => {
     if (selectedPedidos.length === 0) return toast.error('Selecione pelo menos um pedido');
@@ -360,6 +426,7 @@ export function usePedidos() {
     showWhatsAppModal, setShowWhatsAppModal,
     showAutomation, setShowAutomation,
     showCancelModal, setShowCancelModal,
+    autoOpenPaymentPedidoId, setAutoOpenPaymentPedidoId,
     // Derivações
     filteredPedidos, kanbanItems, itemsByStatus, overduePedidos, pendingValue,
     // Sensors DnD
@@ -370,6 +437,7 @@ export function usePedidos() {
     loadPedidos,
     handleItemOrderStatusChange,
     handleStatusChange,
+    handlePaymentSuccess,
     handleBulkStatusChange,
     handleDragEnd,
     handleSelectAll,

@@ -53,30 +53,41 @@ export class PrismaOrderRepository implements OrderRepository {
             cancellationReason: data.cancellationReason,
             cancellationPaymentAction: data.cancellationPaymentAction,
             cancellationRefundAmount: data.cancellationRefundAmount,
+            discountStatus: data.discountStatus,
+            authorizationRequestId: data.authorizationRequestId,
             items: {
               create: data.items.map((item: any) => ({
                 productId: item.productId,
-                  width: item.width,
-                  height: item.height,
-                  quantity: item.quantity,
-                  costPrice: item.costPrice,
-                  calculatedPrice: item.calculatedPrice,
-                  unitPrice: item.unitPrice,
-                  totalPrice: item.totalPrice,
-                  notes: item.notes,
-                  area: item.area,
-                  paperSize: item.paperSize,
-                  paperType: item.paperType,
-                  printColors: item.printColors,
-                  finishing: item.finishing,
-                  machineTime: item.machineTime,
-                  setupTime: item.setupTime,
-                  complexity: item.complexity,
-                  customSizeName: item.customSizeName,
-                  isCustomSize: item.isCustomSize,
-                  attributes: item.attributes,
-                  status: item.status,
-                pricingRuleId: item.pricingRuleId
+                width: item.width,
+                height: item.height,
+                quantity: item.quantity,
+                costPrice: item.costPrice,
+                calculatedPrice: item.calculatedPrice,
+                unitPrice: item.unitPrice,
+                totalPrice: item.totalPrice,
+                notes: item.notes,
+                area: item.area,
+                paperSize: item.paperSize,
+                paperType: item.paperType,
+                printColors: item.printColors,
+                finishing: item.finishing,
+                machineTime: item.machineTime,
+                setupTime: item.setupTime,
+                complexity: item.complexity,
+                customSizeName: item.customSizeName,
+                isCustomSize: item.isCustomSize,
+                attributes: item.attributes,
+                status: item.status,
+                pricingRuleId: item.pricingRuleId,
+                unitCostAtSale: item.unitCostAtSale,
+                unitPriceAtSale: item.unitPriceAtSale,
+                profitAtSale: item.profitAtSale,
+                compositionSnapshot: item.compositionSnapshot,
+                confirmedAt: item.confirmedAt,
+                discountStatus: item.discountStatus,
+                discountItem: item.discountItem,
+                discountGlobal: item.discountGlobal,
+                authorizationRequestId: item.authorizationRequestId
               }))
             }
           },
@@ -119,32 +130,43 @@ export class PrismaOrderRepository implements OrderRepository {
           cancellationReason: data.cancellationReason,
           cancellationPaymentAction: data.cancellationPaymentAction,
           cancellationRefundAmount: data.cancellationRefundAmount,
+          discountStatus: data.discountStatus,
+          authorizationRequestId: data.authorizationRequestId,
           items: {
             create: data.items.map((item: any) => ({
               productId: item.productId,
-                width: item.width,
-                height: item.height,
-                quantity: item.quantity,
-                costPrice: item.costPrice,
-                calculatedPrice: item.calculatedPrice,
-                unitPrice: item.unitPrice,
-                totalPrice: item.totalPrice,
-                notes: item.notes,
-                area: item.area,
-                paperSize: item.paperSize,
-                paperType: item.paperType,
-                printColors: item.printColors,
-                finishing: item.finishing,
-                machineTime: item.machineTime,
-                setupTime: item.setupTime,
-                complexity: item.complexity,
-                customSizeName: item.customSizeName,
-                isCustomSize: item.isCustomSize,
-                attributes: item.attributes,
-                status: item.status,
-                pricingRuleId: item.pricingRuleId
-              }))
-            }
+              width: item.width,
+              height: item.height,
+              quantity: item.quantity,
+              costPrice: item.costPrice,
+              calculatedPrice: item.calculatedPrice,
+              unitPrice: item.unitPrice,
+              totalPrice: item.totalPrice,
+              notes: item.notes,
+              area: item.area,
+              paperSize: item.paperSize,
+              paperType: item.paperType,
+              printColors: item.printColors,
+              finishing: item.finishing,
+              machineTime: item.machineTime,
+              setupTime: item.setupTime,
+              complexity: item.complexity,
+              customSizeName: item.customSizeName,
+              isCustomSize: item.isCustomSize,
+              attributes: item.attributes,
+              status: item.status,
+              pricingRuleId: item.pricingRuleId,
+              unitCostAtSale: item.unitCostAtSale,
+              unitPriceAtSale: item.unitPriceAtSale,
+              profitAtSale: item.profitAtSale,
+              compositionSnapshot: item.compositionSnapshot,
+              confirmedAt: item.confirmedAt,
+              discountStatus: item.discountStatus,
+              discountItem: item.discountItem,
+              discountGlobal: item.discountGlobal,
+              authorizationRequestId: item.authorizationRequestId
+            }))
+          }
         },
         include: {
           items: true
@@ -407,7 +429,7 @@ export class PrismaOrderRepository implements OrderRepository {
     const items = prismaOrder.items.map((item: any) => new OrderItem({
       id: item.id,
       productId: item.productId,
-      dimensions: new Dimensions(item.width, item.height),
+      dimensions: new Dimensions(Number(item.width || 0), Number(item.height || 0)),
       quantity: item.quantity,
       costPrice: new Money(Number(item.costPrice)),
       calculatedPrice: new Money(Number(item.calculatedPrice)),
@@ -425,7 +447,17 @@ export class PrismaOrderRepository implements OrderRepository {
       isCustomSize: item.isCustomSize,
       attributes: item.attributes ? (item.attributes as any) : undefined,
       status: item.status as OrderStatusEnum,
-      pricingRuleId: item.pricingRuleId
+      pricingRuleId: item.pricingRuleId,
+      // Motor de composição
+      unitCostAtSale: item.unitCostAtSale ? Number(item.unitCostAtSale) : undefined,
+      unitPriceAtSale: item.unitPriceAtSale ? Number(item.unitPriceAtSale) : undefined,
+      profitAtSale: item.profitAtSale ? Number(item.profitAtSale) : undefined,
+      compositionSnapshot: item.compositionSnapshot,
+      confirmedAt: item.confirmedAt,
+      discountStatus: item.discountStatus as any,
+      discountItem: new Money(Number(item.discountItem || 0)),
+      discountGlobal: new Money(Number(item.discountGlobal || 0)),
+      authorizationRequestId: item.authorizationRequestId
     }));
 
     return new Order({
@@ -453,7 +485,9 @@ export class PrismaOrderRepository implements OrderRepository {
       cancellationReason: prismaOrder.cancellationReason,
       cancellationPaymentAction: prismaOrder.cancellationPaymentAction,
       cancellationRefundAmount: prismaOrder.cancellationRefundAmount ? Number(prismaOrder.cancellationRefundAmount) : undefined,
-      processStatusId: prismaOrder.processStatusId
+      processStatusId: prismaOrder.processStatusId,
+      discountStatus: prismaOrder.discountStatus as any,
+      authorizationRequestId: prismaOrder.authorizationRequestId
     });
   }
 }

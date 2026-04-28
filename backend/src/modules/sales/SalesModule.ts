@@ -9,11 +9,23 @@ import { GetOrderStatsUseCase } from './application/use-cases/GetOrderStatsUseCa
 import { CancelOrderItemsUseCase } from './application/use-cases/CancelOrderItemsUseCase';
 import { CreateDeliveryUseCase } from './application/use-cases/CreateDeliveryUseCase';
 import { OrderController } from './presentation/http/OrderController';
+import { AuthorizationController } from './presentation/http/AuthorizationController';
 import { orderRoutes } from './presentation/http/routes';
 import { PricingEngine } from '../../shared/application/pricing/PricingEngine';
 import { ProcessStatusService } from '../organization/services/ProcessStatusService';
 
-// Interfaces para serviços externos (implementados em outros módulos)
+// Novos Serviços para Migração
+import { ApproveOrderService } from './application/ApproveOrderService';
+import { FinishOrderService } from './application/FinishOrderService';
+import { ReopenOrderService } from './application/ReopenOrderService';
+import { RegenerateProductionService } from './application/RegenerateProductionService';
+import { ReportWasteService } from './application/ReportWasteService';
+import { PricingCompositionService } from '../catalog/services/PricingCompositionService';
+import { IncompatibilityService } from '../catalog/services/IncompatibilityService';
+import { InventoryValuationService } from '../../shared/services/InventoryValuationService';
+import { AuthorizationService } from './services/AuthorizationService';
+
+// Interfaces para serviços externos
 export interface CustomerService {
   findById(id: string): Promise<{ id: string; organizationId: string } | null>;
 }
@@ -39,6 +51,17 @@ export class SalesModule {
   private orderController!: OrderController;
   private pricingEngine!: PricingEngine;
   private processStatusService!: ProcessStatusService;
+  private authorizationService!: AuthorizationService;
+  private authorizationController!: AuthorizationController;
+
+  // Serviços Adicionais
+  private approveOrderService!: ApproveOrderService;
+  private finishOrderService!: FinishOrderService;
+  private reopenOrderService!: ReopenOrderService;
+  private regenerateProductionService!: RegenerateProductionService;
+  private reportWasteService!: ReportWasteService;
+  private pricingCompositionService!: PricingCompositionService;
+  private incompatibilityService!: IncompatibilityService;
 
   constructor(
     private prisma: any,
@@ -55,7 +78,9 @@ export class SalesModule {
     this.pricingEngine = new PricingEngine();
     this.processStatusService = new ProcessStatusService();
 
-    // Use Cases
+    const valuationService = new InventoryValuationService(this.prisma);
+
+    // Use Cases & Services
     this.createOrderUseCase = new CreateOrderUseCase(
       this.orderRepository,
       this.customerService,
@@ -71,7 +96,7 @@ export class SalesModule {
       this.productService,
       this.organizationService,
       this.pricingEngine,
-      undefined, // PendingChangesService (not available here yet)
+      undefined, // PendingChangesService
       this.prisma
     );
 
@@ -86,7 +111,16 @@ export class SalesModule {
     this.cancelOrderItemsUseCase = new CancelOrderItemsUseCase(this.prisma);
     this.createDeliveryUseCase = new CreateDeliveryUseCase(this.prisma);
 
-    // Controllers
+    // Serviços de Transição
+    this.approveOrderService = new ApproveOrderService(this.prisma);
+    this.finishOrderService = new FinishOrderService(this.prisma);
+    this.reopenOrderService = new ReopenOrderService(this.prisma);
+    this.regenerateProductionService = new RegenerateProductionService(this.prisma);
+    this.reportWasteService = new ReportWasteService(this.prisma, valuationService);
+    this.pricingCompositionService = new PricingCompositionService(this.prisma);
+    this.incompatibilityService = new IncompatibilityService(this.prisma);
+
+    // Controller
     this.orderController = new OrderController(
       this.createOrderUseCase,
       this.updateOrderUseCase,
@@ -95,15 +129,24 @@ export class SalesModule {
       this.updateOrderStatusUseCase,
       this.getOrderStatsUseCase,
       this.cancelOrderItemsUseCase,
-      this.createDeliveryUseCase
+      this.createDeliveryUseCase,
+      this.approveOrderService,
+      this.finishOrderService,
+      this.reopenOrderService,
+      this.regenerateProductionService,
+      this.reportWasteService,
+      this.pricingCompositionService,
+      this.incompatibilityService
     );
+
+    this.authorizationService = new AuthorizationService();
+    this.authorizationController = new AuthorizationController(this.authorizationService);
   }
 
   async registerRoutes(fastify: FastifyInstance): Promise<void> {
-    await orderRoutes(fastify, this.orderController);
+    await orderRoutes(fastify, this.orderController, this.authorizationController);
   }
 
-  // Getters para acesso aos use cases (se necessário para outros módulos)
   getCreateOrderUseCase(): CreateOrderUseCase {
     return this.createOrderUseCase;
   }
@@ -111,4 +154,4 @@ export class SalesModule {
   getOrderRepository(): PrismaOrderRepository {
     return this.orderRepository;
   }
-}
+}

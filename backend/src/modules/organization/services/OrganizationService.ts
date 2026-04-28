@@ -39,6 +39,11 @@ interface UpdateSettingsInput {
   nfeCertificateExpiry?: Date | null;
   nfeCertificateSubject?: string | null;
   nfeCertificateFileName?: string | null;
+  inventoryValuationMethod?: string;
+  requireOrderDeposit?: boolean;
+  minDepositPercent?: number;
+  allowDeliveryWithBalance?: boolean;
+  defaultDueDateDays?: number;
 }
 
 export class OrganizationService {
@@ -118,7 +123,11 @@ export class OrganizationService {
           validadeOrcamento: 7,
           allowDuplicatePhones: true,
           requireDocumentKeyForEntry: false,
-          defaultSalesUnit: 'MM'
+          defaultSalesUnit: 'MM',
+          requireOrderDeposit: false,
+          minDepositPercent: 0.0,
+          allowDeliveryWithBalance: true,
+          defaultDueDateDays: 0
         }
       });
     }

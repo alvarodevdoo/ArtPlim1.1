@@ -2,12 +2,12 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Eye, Edit, Package, Phone, Plus, Printer, RotateCcw, Clock, CheckCircle2, AlertCircle, User as UserIcon, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Eye, Edit, Package, Phone, Plus, Printer, RotateCcw, Clock, CheckCircle2, AlertCircle, User as UserIcon, X, ChevronDown, ChevronUp, RefreshCcw, Wrench, Copy } from 'lucide-react';
 import { DatasOrcamento } from '@/components/ui/DatasOrcamento';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import { Pedido, ProcessStatus, statusConfig, shouldShowDimensions } from '@/types/pedidos';
-
-import { api } from '@/lib/api';
+import api from '@/lib/api';
+import { toast } from 'sonner';
 
 interface PedidosListProps {
   filteredPedidos: Pedido[];
@@ -21,19 +21,71 @@ interface PedidosListProps {
   setShowCancelModal: (v: boolean) => void;
   debouncedSearch: string;
   statusFilter: string;
+  onOrderUpdated?: (updatedOrder: Pedido) => void;
 }
 
 const PedidosList: React.FC<PedidosListProps> = React.memo(({
   filteredPedidos, selectedPedidos, processStatuses,
   handleSelectAll, handleSelectPedido, getStatusDisplay,
   handleStatusChange, setSelectedPedido, setShowCancelModal,
-  debouncedSearch, statusFilter,
+  debouncedSearch, statusFilter, onOrderUpdated
 }) => {
   const navigate = useNavigate();
   const [historyPedidoId, setHistoryPedidoId] = React.useState<string | null>(null);
   const [historyData, setHistoryData] = React.useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = React.useState(false);
   const [expandedPedidos, setExpandedPedidos] = React.useState<Record<string, boolean>>({});
+  const [loadingAction, setLoadingAction] = React.useState<string | null>(null);
+
+  // Reabre o pedido para o status anterior (sem impacto financeiro)
+  const handleReopen = async (pedido: Pedido) => {
+    const reason = window.prompt(
+      `Reabrir pedido ${pedido.orderNumber}?\nInforme o motivo (ex: "Clique acidental"):`
+    );
+    if (!reason) return;
+    setLoadingAction(pedido.id + '_reopen');
+    try {
+      const res = await api.post(`/api/sales/orders/${pedido.id}/reopen`, { reason });
+      if (res.data.success) {
+        toast.success('Pedido reaberto com sucesso!');
+        onOrderUpdated?.(res.data.data);
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Erro ao reabrir pedido.');
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  // Regenera a produção para itens com defeito (baixa estoque novamente)
+  const handleRegenerate = async (pedido: Pedido) => {
+    const reason = window.prompt(
+      `Regerar produção do pedido ${pedido.orderNumber}?\nDescreva o problema (obrigatório):`
+    );
+    if (!reason || reason.trim().length < 3) {
+      toast.error('É necessário informar o motivo com ao menos 3 caracteres.');
+      return;
+    }
+    if (!window.confirm(
+      `Confirma a regeneração de produção?\n\n` +
+      `• As OPs atuais serão canceladas.\n` +
+      `• O estoque será baixado novamente (custo de retrabalho).\n` +
+      `• O pedido voltará para APROVADO.\n\nContinuar?`
+    )) return;
+
+    setLoadingAction(pedido.id + '_regenerate');
+    try {
+      const res = await api.post(`/api/sales/orders/${pedido.id}/regenerate`, { reason });
+      if (res.data.success) {
+        toast.success('Produção regenerada! Novas OPs geradas com sucesso.');
+        onOrderUpdated?.(res.data.data);
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Erro ao regenerar produção.');
+    } finally {
+      setLoadingAction(null);
+    }
+  };
 
   const toggleExpand = (id: string) => {
     setExpandedPedidos(prev => ({ ...prev, [id]: !prev[id] }));
@@ -224,8 +276,6 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
                       const isCancelled = pedido?.status === 'CANCELLED';
                       if (isCancelled) return null;
 
-                      // Se tem processStatus dinâmico, respeitar allowEdition do Fluxo de Status
-                      // Caso contrário, comportamento legado: apenas DRAFT permite edição
                       const canEdit = pedido?.processStatus
                         ? pedido.processStatus.allowEdition
                         : pedido?.status === 'DRAFT';
@@ -238,35 +288,53 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
                         );
                       }
 
-                      // Pedido bloqueado → botão Reabrir
-                      // Prioridade: Volta para o status de 'Produção' (Na Bancada)
-                      const sortedStatuses = [...processStatuses].sort((a, b) => (a.displayOrder ?? 99) - (b.displayOrder ?? 99));
-                      const reopenStatus = sortedStatuses.find(s => s.mappedBehavior === 'IN_PRODUCTION')
-                        ?? sortedStatuses.find(s => s.mappedBehavior === 'APPROVED')
-                        ?? sortedStatuses.find(s => s.mappedBehavior === 'DRAFT')
-                        ?? sortedStatuses[0];
-
-                      if (!reopenStatus) return null;
-
-                      return (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const reason = window.prompt("Justificativa para reabrir o pedido:");
-                            if (reason) {
-                              handleStatusChange(pedido.id, reopenStatus.id, { notes: reason });
-                            }
-                          }}
-                          title="Reabrir pedido"
-                        >
-                          <RotateCcw className="w-4 h-4" />
-                        </Button>
-                      );
+                      // Pedidos FINISHED/DELIVERED são tratados pelos botões Reabrir/Regerar abaixo.
+                      // Pedidos em produção (APPROVED, IN_PRODUCTION) não têm botão de reabrir aqui.
+                      return null;
                     })()}
                     <Button size="icon" variant="ghost" title="Imprimir"><Printer className="w-4 h-4" /></Button>
+
+                    {/* Botão Clonar — para copiar pedidos (especialmente útil para cancelados) */}
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
+                      title="Copiar / Duplicar Pedido"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/pedidos/criar?clone=${pedido.id}`);
+                      }}
+                    >
+                      <Copy className="w-4 h-4" />
+                    </Button>
+
+                    {/* Botão Reabrir — para pedidos FINISHED ou DELIVERED */}
+                    {(pedido?.status === 'FINISHED' || pedido?.status === 'DELIVERED') && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                        title="Reabrir pedido (corrigir clique acidental)"
+                        disabled={loadingAction === pedido.id + '_reopen'}
+                        onClick={(e) => { e.stopPropagation(); handleReopen(pedido); }}
+                      >
+                        <RefreshCcw className={`w-4 h-4 ${loadingAction === pedido.id + '_reopen' ? 'animate-spin' : ''}`} />
+                      </Button>
+                    )}
+
+                    {/* Botão Regerar Produção — para pedidos que precisam ser refeitos */}
+                    {(pedido?.status === 'FINISHED' || pedido?.status === 'DELIVERED') && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                        title="Regerar produção (produto com defeito)"
+                        disabled={loadingAction === pedido.id + '_regenerate'}
+                        onClick={(e) => { e.stopPropagation(); handleRegenerate(pedido); }}
+                      >
+                        <Wrench className={`w-4 h-4 ${loadingAction === pedido.id + '_regenerate' ? 'animate-spin' : ''}`} />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>

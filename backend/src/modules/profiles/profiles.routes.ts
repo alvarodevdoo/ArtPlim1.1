@@ -29,7 +29,8 @@ const createProfileSchema = z.object({
   paymentTerms: z.number().int().positive().optional(),
   password: z.string().min(6).optional(),
   role: z.enum(['ADMIN', 'MANAGER', 'OPERATOR', 'USER', 'CUSTOMER']).optional(),
-  roleId: z.string().uuid().optional()
+  roleId: z.string().uuid().optional(),
+  exemptFromDeposit: z.boolean().optional()
 });
 
 const updateProfileSchema = z.object({
@@ -49,7 +50,8 @@ const updateProfileSchema = z.object({
   paymentTerms: z.number().int().positive().optional(),
   password: z.string().min(6).optional(),
   role: z.enum(['ADMIN', 'MANAGER', 'OPERATOR', 'USER', 'CUSTOMER']).optional(),
-  roleId: z.string().uuid().optional()
+  roleId: z.string().uuid().optional(),
+  exemptFromDeposit: z.boolean().optional()
 });
 
 export async function profilesRoutes(fastify: FastifyInstance) {
@@ -65,24 +67,26 @@ export async function profilesRoutes(fastify: FastifyInstance) {
     const prisma = getTenantClient(request.user!.organizationId);
     const queryOptimizer = new QueryOptimizer(prisma);
     
-    // Usar query otimizada baseada no tipo solicitado
+    // Usar query otimizada baseada no tipo solicitado (apenas se não houver busca)
     let profiles;
     
-    if (query.isCustomer) {
+    if (query.isCustomer && !query.search) {
       profiles = await queryOptimizer.getOptimizedCustomers(
         request.user!.organizationId,
         query.limit || 50
       );
-    } else if (query.isEmployee) {
+    } else if (query.isEmployee && !query.search) {
       profiles = await queryOptimizer.getOptimizedEmployees(
         request.user!.organizationId,
         query.limit || 50
       );
     } else {
-      // Query genérica para todos os perfis
+      // Query genérica para todos os perfis ou busca filtrada
       profiles = await prisma.profile.findMany({
         where: {
           organizationId: request.user!.organizationId,
+          ...(query.isCustomer !== undefined && { isCustomer: query.isCustomer }),
+          ...(query.isEmployee !== undefined && { isEmployee: query.isEmployee }),
           ...(query.isSupplier !== undefined && { isSupplier: query.isSupplier }),
           ...(query.search && {
             OR: [
@@ -102,6 +106,8 @@ export async function profilesRoutes(fastify: FastifyInstance) {
           isCustomer: true,
           isSupplier: true,
           isEmployee: true,
+          exemptFromDeposit: true,
+          balance: true,
           createdAt: true,
           _count: {
             select: {
@@ -166,19 +172,67 @@ export async function profilesRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // Buscar perfil por ID
   fastify.get('/:id', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const prisma = getTenantClient(request.user!.organizationId);
-    const profileService = new ProfileService(prisma);
     
-    const profile = await profileService.findById(id);
+    const profile = await prisma.profile.findUnique({
+      where: { id },
+      include: {
+        orders: {
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            total: true,
+            createdAt: true
+          },
+          orderBy: {
+            createdAt: 'desc'
+          },
+          take: 10
+        },
+        balanceMovements: {
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          include: {
+            order: {
+              select: { id: true, orderNumber: true }
+            }
+          }
+        },
+        _count: {
+          select: {
+            orders: true
+          }
+        }
+      }
+    });
+
+    if (!profile) {
+      return reply.code(404).send({ success: false, message: 'Perfil não encontrado' });
+    }
+
+    // Calcular estatísticas de saldo (créditos e débitos totais)
+    const balanceStats = await prisma.profileBalanceMovement.groupBy({
+      by: ['type'],
+      where: { profileId: id, organizationId: request.user!.organizationId },
+      _sum: { amount: true }
+    });
+
+    const stats = {
+      totalCredits: Number(balanceStats.find(s => s.type === 'CREDIT')?._sum.amount || 0),
+      totalDebits: Math.abs(Number(balanceStats.find(s => s.type === 'DEBIT')?._sum.amount || 0))
+    };
     
     return reply.send({
       success: true,
-      data: profile
+      data: {
+        ...profile,
+        balanceStats: stats
+      }
     });
   });
 

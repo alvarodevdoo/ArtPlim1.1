@@ -3,11 +3,11 @@ export class Dimensions {
   private readonly _height: number;
 
   constructor(width: number, height: number) {
-    if (width <= 0 || height <= 0) {
-      throw new Error('Dimensions must be positive numbers');
+    if (width < 0 || height < 0) {
+      throw new Error('Dimensions cannot be negative');
     }
-    this._width = width;
-    this._height = height;
+    this._width = width || 0;
+    this._height = height || 0;
   }
 
   get width(): number {

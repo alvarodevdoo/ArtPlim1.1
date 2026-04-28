@@ -58,12 +58,18 @@ model Organization {
   profiles               Profile[]
   standardSizes          StandardSize[]
   transactions           Transaction[]
+  balanceMovements       ProfileBalanceMovement[]
   users                  User[]
   roles                  Role[]
   stockMovements         StockMovement[]
   spedAccountMappings    SpedAccountMapping[]
   materialTypes          MaterialType[]
   productionOrders       ProductionOrder[]
+  recurringBills         RecurringBill[]
+  authorizationRequests  AuthorizationRequest[]
+
+  defaultCommissionRate  Decimal @default(0) @db.Decimal(10, 2)
+  maxDiscountThreshold   Decimal @default(0) @db.Decimal(10, 2)
 
   @@map("organizations")
 }
@@ -99,6 +105,12 @@ model OrganizationSettings {
   nfeCertificateSubject  String?
   nfeCertificateFileName String?
   nfeCertificateExpiry   DateTime? // Data de expiração capturada no upload
+  
+  // Regras de Pedidos e Faturamento
+  requireOrderDeposit        Boolean @default(false)
+  minDepositPercent          Float   @default(0.0)
+  allowDeliveryWithBalance   Boolean @default(true)
+  defaultDueDateDays         Int     @default(0)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -128,6 +140,8 @@ model User {
   transactions       Transaction[]
   stockMovements     StockMovement[]      @relation("UserMovements")
   cancelledMovements StockMovement[]      @relation("CancelledMovements")
+  requestedAuths     AuthorizationRequest[] @relation("RequestedAuths")
+  approvedAuths      AuthorizationRequest[] @relation("ApprovedAuths")
   organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, email])
@@ -209,6 +223,7 @@ model Profile {
   addressNumber      String?
   balance            Decimal             @default(0) @db.Decimal(15, 2)
   userId             String?             @unique
+  exemptFromDeposit  Boolean             @default(false) // Cliente isento do sinal obrigatório
   AccountPayable     AccountPayable[]
   AccountReceivable  AccountReceivable[] @relation("CustomerReceivables")
   budgets            Budget[]
@@ -220,10 +235,28 @@ model Profile {
   user               User?               @relation(fields: [userId], references: [id])
   transactions       Transaction[]
   stockMovements     StockMovement[]     @relation("SupplierMovements")
+  balanceMovements   ProfileBalanceMovement[]
 
   @@unique([organizationId, name], name: "organizationId_name")
   @@unique([organizationId, document], name: "organizationId_document")
   @@map("profiles")
+}
+
+model ProfileBalanceMovement {
+  id             String   @id @default(uuid())
+  organizationId String
+  profileId      String
+  amount         Decimal  @db.Decimal(15, 2)
+  type           String   // 'CREDIT' ou 'DEBIT'
+  description    String
+  orderId        String?  // Referência ao pedido que gerou ou consumiu o crédito
+  createdAt      DateTime @default(now())
+
+  profile        Profile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  order          Order?       @relation(fields: [orderId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("profile_balance_movements")
 }
 
 model Material {
@@ -343,6 +376,9 @@ model Product {
   category         Category?              @relation(fields: [categoryId], references: [id])
   revenueAccountId String?
   revenueAccount   ChartOfAccount?        @relation("ProductRevenueAccount", fields: [revenueAccountId], references: [id])
+  isCommissionable       Boolean                @default(true)
+  specificCommissionRate Decimal?               @db.Decimal(10, 2)
+  maxDiscountThreshold   Decimal?               @db.Decimal(10, 2)
 
   @@unique([organizationId, name], name: "organizationId_name")
   @@map("products")
@@ -452,14 +488,14 @@ model ProductionWaste {
   orderId         String
   productId       String
   materialId      String
-  componentId     String
+  componentId     String?
   plannedQuantity Float
   actualQuantity  Float
   wasteQuantity   Float
   wasteReason     String
   reportedBy      String
   reportedAt      DateTime         @default(now())
-  component       ProductComponent @relation(fields: [componentId], references: [id])
+  component       ProductComponent? @relation(fields: [componentId], references: [id])
   material        Material         @relation(fields: [materialId], references: [id])
   order           Order            @relation(fields: [orderId], references: [id])
   product         Product          @relation(fields: [productId], references: [id])
@@ -510,48 +546,57 @@ model ProductOperation {
   costPerMinute Decimal @db.Decimal(10, 4)
   setupTime     Int     @default(0)
   product       Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
 
-  @@map("product_operations")
+enum DiscountStatus {
+  NONE
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 model Order {
-  id                        String               @id @default(uuid())
+  id                        String                 @id @default(uuid())
   organizationId            String
   customerId                String
   orderNumber               String
-  status                    OrderStatus          @default(DRAFT)
-  subtotal                  Decimal              @db.Decimal(10, 2)
-  discount                  Decimal              @default(0) @db.Decimal(10, 2)
-  tax                       Decimal              @default(0) @db.Decimal(10, 2)
-  total                     Decimal              @db.Decimal(10, 2)
+  status                    OrderStatus            @default(DRAFT)
+  subtotal                  Decimal                @db.Decimal(10, 2)
+  discount                  Decimal                @default(0) @db.Decimal(10, 2)
+  tax                       Decimal                @default(0) @db.Decimal(10, 2)
+  total                     Decimal                @db.Decimal(10, 2)
   deliveryDate              DateTime?
-  createdAt                 DateTime             @default(now())
+  createdAt                 DateTime               @default(now())
   validUntil                DateTime?
-  updatedAt                 DateTime             @updatedAt
+  updatedAt                 DateTime               @updatedAt
   notes                     String?
   approvedAt                DateTime?
   cancellationPaymentAction String?
   cancellationReason        String?
-  cancellationRefundAmount  Decimal?             @db.Decimal(10, 2)
+  cancellationRefundAmount  Decimal?               @db.Decimal(10, 2)
   cancelledAt               DateTime?
   cancelledById             String?
   deliveredAt               DateTime?
   finishedAt                DateTime?
   inProductionAt            DateTime?
   processStatusId           String?
+  discountStatus            DiscountStatus         @default(NONE)
+  authorizationRequestId    String?
+  authorizationRequest      AuthorizationRequest?  @relation(fields: [authorizationRequestId], references: [id])
   accountsReceivable        AccountReceivable[]
   inventoryMovements        InventoryMovement[]
   items                     OrderItem[]
   statusHistory             OrderStatusHistory[]
-  cancelledBy               User?                @relation("OrderCancelledBy", fields: [cancelledById], references: [id])
-  customer                  Profile              @relation(fields: [customerId], references: [id])
-  organization              Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  processStatus             ProcessStatus?       @relation(fields: [processStatusId], references: [id])
+  cancelledBy               User?                  @relation("OrderCancelledBy", fields: [cancelledById], references: [id])
+  customer                  Profile                @relation(fields: [customerId], references: [id])
+  organization              Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  processStatus             ProcessStatus?         @relation(fields: [processStatusId], references: [id])
   pendingChanges            PendingChanges[]
   productionQueue           ProductionQueue[]
   productionWastes          ProductionWaste[]
   transactions              Transaction[]
   deliveries                Delivery[]
+  balanceMovements          ProfileBalanceMovement[]
 
   @@unique([organizationId, orderNumber])
   @@map("orders")
@@ -609,6 +654,15 @@ model OrderItem {
   profitAtSale         Decimal?                 @db.Decimal(10, 4) // Lucro líquido: unitPriceAtSale – unitCostAtSale
   compositionSnapshot  Json?                    // BOM completa congelada: [{materialId, quantity, costPerUnit, subtotal}]
   confirmedAt          DateTime?                // Timestamp da confirmação (APPROVED)
+  
+  discountStatus         DiscountStatus           @default(NONE)
+  discountItem           Decimal                  @default(0) @db.Decimal(10, 2)
+  discountGlobal         Decimal                  @default(0) @db.Decimal(10, 2)
+  commissionRateApplied  Decimal                  @default(0) @db.Decimal(10, 2)
+  commissionAmount       Decimal                  @default(0) @db.Decimal(10, 2)
+  authorizationRequestId String?
+  authorizationRequest   AuthorizationRequest?    @relation(fields: [authorizationRequestId], references: [id])
+
   configurations       OrderItemConfiguration[]
   order                Order                    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   pricingRule          PricingRule?             @relation(fields: [pricingRuleId], references: [id])
@@ -619,7 +673,6 @@ model OrderItem {
 
   @@map("order_items")
 }
-
 model Delivery {
   id             String         @id @default(uuid())
   organizationId String
@@ -829,6 +882,7 @@ model Transaction {
   dueDate         DateTime?
   paidAt          DateTime?
   status          TransactionStatus  @default(PENDING)
+  isVirtual       Boolean            @default(false)
   createdAt       DateTime           @default(now())
   auditNotes      String?
   paymentMethodId String?
@@ -951,6 +1005,29 @@ model Notifications {
   @@map("notifications")
 }
 
+model AuthorizationRequest {
+  id              String           @id @default(uuid())
+  organizationId  String
+  requesterId     String
+  type            String           // 'DISCOUNT'
+  status          PendingChangeStatus @default(PENDING)
+  data            Json             // { productId, discount, unitPrice, etc }
+  authorizerId    String?
+  reviewedAt      DateTime?
+  notes           String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  orders          Order[]
+  orderItems      OrderItem[]
+
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+  requester       User             @relation("RequestedAuths", fields: [requesterId], references: [id])
+  authorizer      User?            @relation("ApprovedAuths", fields: [authorizerId], references: [id])
+
+  @@map("authorization_requests")
+}
+
 model StandardSize {
   id             String       @id @default(uuid())
   organizationId String
@@ -1036,6 +1113,8 @@ model ProcessStatus {
   parentId       String?
   mappedBehavior OrderStatus
   allowEdition   Boolean              @default(true)
+  requirePayment Boolean              @default(false)
+  requireDeposit Boolean              @default(false)
   displayOrder   Int                  @default(1)
   active         Boolean              @default(true)
   createdAt      DateTime             @default(now())
@@ -1131,12 +1210,33 @@ model MaterialReceipt {
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
   payableId      String?
+  orderId        String?               // Rastreabilidade: pedido que gerou este recibo
+  notes          String?               // Detalhamento dos materiais consumidos
   items          MaterialReceiptItem[]
   organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   payable        AccountPayable?       @relation(fields: [payableId], references: [id])
   supplier       Profile               @relation(fields: [supplierId], references: [id])
 
   @@map("material_receipts")
+}
+
+/// Contas Recorrentes: despesas fixas mensais (aluguel, telefone, internet, etc.)
+model RecurringBill {
+  id             String       @id @default(uuid())
+  organizationId String
+  name           String       // Ex: "Aluguel", "Internet", "Telefone"
+  description    String?
+  amount         Decimal      @db.Decimal(15, 2)
+  dueDay         Int          // Dia do vencimento no mês (1–31)
+  categoryId     String?      // Categoria financeira para o DRE
+  supplierId     String?      // Fornecedor/Credor (opcional)
+  active         Boolean      @default(true)
+  lastGeneratedAt DateTime?   // Último mês em que foi gerado AccountPayable
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("recurring_bills")
 }
 
 model MaterialSupplier {
@@ -1429,6 +1529,7 @@ enum PaymentMethodType {
   TRANSFER
   BOLETO
   OTHER
+  CUSTOMER_BALANCE
 }
 
 enum PendingChangeStatus {
@@ -1447,6 +1548,7 @@ enum NotificationType {
   CHANGE_REQUEST
   CHANGE_APPROVED
   CHANGE_REJECTED
+  DISCOUNT_AUTH_REQUEST
 }
 
 enum StatusScope {

@@ -26,6 +26,7 @@ import Financeiro from '@/pages/Financeiro';
 import EntradaNota from '@/pages/EntradaNota';
 import Lucratividade from '@/pages/Lucratividade';
 import TerminalProducao from '@/pages/TerminalProducao';
+import Pendencias from '@/pages/Pendencias';
 
 // Criar QueryClient
 const queryClient = new QueryClient({
@@ -127,6 +128,14 @@ function App() {
                 <ProtectedRoute>
                   <Layout>
                     <CriarPedido />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/pendencias" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Pendencias />
                   </Layout>
                 </ProtectedRoute>
               } />

@@ -1,42 +1,59 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/badge';
-import { CreditCard, DollarSign, Wallet, ArrowRight, History, Trash, Pencil } from 'lucide-react';
+import { CreditCard, DollarSign, Wallet, History, Trash, Pencil, Sparkles, Check, ArrowRight } from 'lucide-react';
 
 interface OrderFinancialStatusProps {
     totalOrder: number;
     paidAmount: number;
     payments?: any[];
-    clientBalance?: number;
-    balanceSourceOrder?: string;
-    onViewOrigin?: (orderId: string) => void;
     onAddPayment: () => void;
     onRemovePayment: (index: number) => void;
     onEditPayment?: (index: number, payment: any) => void;
+    /** Saldo disponível do cliente */
+    customerBalance?: number;
+    /** Último movimento de saldo (para exibir origem) */
+    lastBalanceMovement?: {
+        order?: { orderNumber: string };
+        description?: string;
+    } | null;
+    /** Callback para usar o saldo do cliente como pagamento */
+    onUseBalance?: (amount: number) => void;
 }
 
 export const OrderFinancialStatus: React.FC<OrderFinancialStatusProps> = ({
     totalOrder,
     paidAmount,
     payments = [],
-    clientBalance = 0,
-    balanceSourceOrder,
-    onViewOrigin,
     onAddPayment,
     onRemovePayment,
-    onEditPayment
+    onEditPayment,
+    customerBalance = 0,
+    lastBalanceMovement,
+    onUseBalance
 }) => {
-    // ... (rest of the code unchanged until payments list)
     const pendingAmount = totalOrder - paidAmount;
     const isPaid = pendingAmount <= 0;
     const overPaid = pendingAmount < 0;
+    const hasBalance = customerBalance > 0;
+    // Quanto do saldo pode ser usado (limitado ao pendente)
+    const usableBalance = Math.min(customerBalance, Math.max(pendingAmount, 0));
+    const [applyingBalance, setApplyingBalance] = useState(false);
 
     const formatCurrency = (value: number) => {
         return new Intl.NumberFormat('pt-BR', {
             style: 'currency',
             currency: 'BRL',
         }).format(Math.abs(value));
+    };
+
+    const handleUseBalance = () => {
+        if (!onUseBalance || usableBalance <= 0) return;
+        setApplyingBalance(true);
+        onUseBalance(usableBalance);
+        // O estado será resetado pelo re-render após o pagamento ser processado
+        setTimeout(() => setApplyingBalance(false), 2000);
     };
 
     return (
@@ -69,7 +86,6 @@ export const OrderFinancialStatus: React.FC<OrderFinancialStatusProps> = ({
                             {formatCurrency(paidAmount)}
                         </span>
                     </div>
-
                     <div className="flex justify-between items-center">
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                             <Wallet className="w-3 h-3" /> Saldo Pendente
@@ -78,30 +94,75 @@ export const OrderFinancialStatus: React.FC<OrderFinancialStatusProps> = ({
                             {overPaid ? `(Sobressalente: ${formatCurrency(pendingAmount)})` : formatCurrency(pendingAmount)}
                         </span>
                     </div>
-
-                    {clientBalance > 0 && (
-                        <div className="mt-2 p-2 bg-blue-50 rounded-md border border-blue-100 flex justify-between items-center">
-                            <div className="flex flex-col">
-                                <span className="text-[10px] uppercase font-bold text-blue-600">Saldo do Cliente</span>
-                                <div className="flex items-center gap-1.5">
-                                    <span className="text-xs font-semibold text-blue-800">{formatCurrency(clientBalance)}</span>
-                                    {balanceSourceOrder && (
-                                        <button
-                                            onClick={() => onViewOrigin?.(balanceSourceOrder)}
-                                            className="text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded border border-blue-200 hover:bg-blue-200 transition-colors cursor-pointer flex items-center gap-1 font-bold"
-                                        >
-                                            Origem: {balanceSourceOrder}
-                                            <ArrowRight className="w-2 h-2" />
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                            <Button variant="ghost" size="sm" className="h-7 text-[10px] text-blue-700 hover:bg-blue-100 p-1">
-                                Usar Saldo <ArrowRight className="w-3 h-3 ml-1" />
-                            </Button>
-                        </div>
-                    )}
                 </div>
+
+                {/* ─── SALDO DO CLIENTE (Integrado) ─── */}
+                {hasBalance && !isPaid && (
+                    <div className="relative rounded-xl border-2 border-emerald-200 bg-gradient-to-r from-emerald-50 via-green-50 to-teal-50 p-4 overflow-hidden">
+                        {/* Decoração de fundo */}
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-100/50 rounded-full -translate-y-1/2 translate-x-1/2" />
+                        <div className="absolute bottom-0 left-0 w-12 h-12 bg-teal-100/40 rounded-full translate-y-1/2 -translate-x-1/2" />
+                        
+                        <div className="relative">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-7 h-7 rounded-lg bg-emerald-500 flex items-center justify-center shadow-sm">
+                                        <Wallet className="w-4 h-4 text-white" />
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                                            Crédito do Cliente
+                                        </span>
+                                        {lastBalanceMovement?.order && (
+                                            <span className="ml-2 text-[10px] text-emerald-500 font-medium">
+                                                via {lastBalanceMovement.order.orderNumber}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <span className="text-xl font-black text-emerald-700 tabular-nums">
+                                    {formatCurrency(customerBalance)}
+                                </span>
+                            </div>
+
+                            {/* Botão de Usar Saldo */}
+                            <Button
+                                onClick={handleUseBalance}
+                                disabled={applyingBalance || usableBalance <= 0}
+                                className="w-full h-10 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md hover:shadow-lg transition-all duration-200 gap-2 rounded-lg"
+                            >
+                                {applyingBalance ? (
+                                    <>
+                                        <Check className="w-4 h-4 animate-bounce" />
+                                        Aplicando...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Sparkles className="w-4 h-4" />
+                                        Usar {formatCurrency(usableBalance)} do Saldo
+                                        <ArrowRight className="w-4 h-4" />
+                                    </>
+                                )}
+                            </Button>
+
+                            {usableBalance < customerBalance && (
+                                <p className="text-[10px] text-emerald-600/70 mt-2 text-center italic">
+                                    Será aplicado apenas {formatCurrency(usableBalance)} (valor pendente). Restante de {formatCurrency(customerBalance - usableBalance)} ficará disponível.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* Saldo já quitado - confirmação visual */}
+                {hasBalance && isPaid && (
+                    <div className="flex items-center gap-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
+                        <Check className="w-4 h-4 text-emerald-600" />
+                        <span className="text-xs text-emerald-700 font-medium">
+                            Cliente possui {formatCurrency(customerBalance)} em crédito disponível para outros pedidos.
+                        </span>
+                    </div>
+                )}
 
                 {/* Histórico de Pagamentos */}
                 {payments.length > 0 && (
@@ -154,7 +215,7 @@ export const OrderFinancialStatus: React.FC<OrderFinancialStatusProps> = ({
                     </div>
                 )}
 
-                {/* Botão de Ação */}
+                {/* Botão de Ação - Registrar Pagamento */}
                 {!isPaid && (
                     <Button
                         onClick={onAddPayment}

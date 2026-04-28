@@ -23,6 +23,8 @@ interface OrganizationSettings {
   defaultMarkup: number;
   taxRate: number;
   validadeOrcamento: number;
+  requireOrderDeposit: boolean;
+  minDepositPercent: number;
 }
 
 interface AuthContextType {
@@ -69,7 +71,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         enableCategoryAppropriation: true,
         defaultMarkup: 2.0,
         taxRate: 0.0,
-        validadeOrcamento: 7
+        validadeOrcamento: 7,
+        requireOrderDeposit: false,
+        minDepositPercent: 0
       });
     }
   };
@@ -107,7 +111,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             enableCategoryAppropriation: true,
             defaultMarkup: 2.0,
             taxRate: 0.0,
-            validadeOrcamento: 7
+            validadeOrcamento: 7,
+            requireOrderDeposit: false,
+            minDepositPercent: 0
           });
           }
         } catch (error) {
@@ -153,7 +159,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           enableCategoryAppropriation: true,
           defaultMarkup: 2.0,
           taxRate: 0.0,
-          validadeOrcamento: 7
+          validadeOrcamento: 7,
+          requireOrderDeposit: false,
+          minDepositPercent: 0
         });
       }
     } catch (error: any) {

@@ -36,7 +36,8 @@
     "test:full": "pnpm test:performance && pnpm test:phase5 && pnpm test:analytics && pnpm test:endpoints && pnpm test:database",
     "optimize:database": "cd backend && npx ts-node scripts/optimize-database.ts",
     "clear:financeiro": "cd backend && npx tsx scripts/limpar-financeiro.ts",
-    "clear:pedidos": "cd backend && pnpm exec tsx scripts/clear-orders.ts"
+    "clear:pedidos": "cd backend && pnpm exec tsx scripts/clear-orders.ts",
+    "clear:vendas": "cd backend && node scripts/clear_vendas.js"
   },
   "dependencies": {
     "axios": "^1.13.2"

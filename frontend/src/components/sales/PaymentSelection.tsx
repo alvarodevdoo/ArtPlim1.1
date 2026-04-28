@@ -8,7 +8,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { Calculator, AlertCircle, Info, X } from 'lucide-react';
+import { Calculator, AlertCircle, Info, X, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 
 import api from '@/lib/api';
@@ -42,6 +42,8 @@ interface PaymentSelectionProps {
     receivableId?: string;
     receivableAccountId?: string;
     onSuccess?: () => void;
+    availableBalance?: number;
+    defaultMethodId?: string;
 }
 
 export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
@@ -53,7 +55,9 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
     onUpdatePayment,
     receivableId,
     receivableAccountId,
-    onSuccess
+    onSuccess,
+    availableBalance = 0,
+    defaultMethodId
 }) => {
     const [selectedMethod, setSelectedMethod] = useState<string>('');
     const [amount, setAmount] = useState<number>(remainingAmount);
@@ -71,7 +75,21 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
                 setIsLoading(true);
                 const response = await api.get('/api/payment-methods');
                 if (response.data?.data) {
-                    setMethods(response.data.data.filter((m: PaymentMethod) => m.active));
+                    const fetchedMethods = response.data.data.filter((m: PaymentMethod) => m.active);
+                    
+                    // Adicionar opção virtual de saldo se houver saldo disponível
+                    if (availableBalance > 0) {
+                        const balanceMethod: any = {
+                            id: 'BALANCE',
+                            name: 'Saldo do Cliente',
+                            type: 'CUSTOMER_BALANCE',
+                            feePercentage: 0,
+                            active: true
+                        };
+                        setMethods([balanceMethod, ...fetchedMethods]);
+                    } else {
+                        setMethods(fetchedMethods);
+                    }
                 }
             } catch (error) {
                 console.error('Erro ao carregar métodos de pagamento:', error);
@@ -92,15 +110,15 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
                 setJustification(initialPayment.justification || '');
                 setShowJustification(!!initialPayment.justification);
             } else {
-                setAmount(remainingAmount);
-                setSelectedMethod('');
+                setAmount(Number(remainingAmount.toFixed(2)));
+                setSelectedMethod(defaultMethodId || '');
                 setInstallments(1);
                 setSelectedBrand('');
                 setJustification('');
                 setShowJustification(false);
             }
         }
-    }, [isOpen, remainingAmount, initialPayment]);
+    }, [isOpen, remainingAmount, initialPayment, defaultMethodId]);
 
     const method = methods.find(m => m.id === selectedMethod);
     
@@ -229,8 +247,8 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
                     </Button>
                 </div>
 
+
                 <div className="p-6 space-y-5">
-                    {/* Método de Pagamento */}
                     <div className="space-y-2">
                         <label className="text-sm font-medium">Forma de Pagamento</label>
                         <Select value={selectedMethod} onValueChange={setSelectedMethod}>
@@ -273,10 +291,13 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
                             <div className="relative">
                                 <span className="absolute left-3 top-2.5 text-muted-foreground text-sm font-medium">R$</span>
                                 <Input
-                                    type="number"
+                                    type="text"
                                     className="pl-9"
-                                    value={amount}
-                                    onChange={handleAmountChange}
+                                    value={amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    onChange={(e) => {
+                                      const val = e.target.value.replace(/\D/g, '');
+                                      setAmount(Number(val) / 100);
+                                    }}
                                 />
                             </div>
                         </div>

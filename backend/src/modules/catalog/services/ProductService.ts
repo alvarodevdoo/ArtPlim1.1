@@ -23,6 +23,9 @@ interface CreateProductInput {
   priceLocked?: boolean;
   targetMarkup?: number | null;
   targetMargin?: number | null;
+  isCommissionable?: boolean;
+  specificCommissionRate?: number | null;
+  maxDiscountThreshold?: number | null;
 }
 
 interface UpdateProductInput extends Partial<CreateProductInput> {
@@ -56,7 +59,10 @@ export class ProductService {
         stockUnit: data.trackStock ? (data.stockUnit ?? null) : null,
         // Usar relação para evitar problemas com campos escalares no cliente Prisma
         ...(data.categoryId ? { category: { connect: { id: data.categoryId } } } : {}),
-        ...(targetAccountId ? { revenueAccount: { connect: { id: targetAccountId } } } : {})
+        ...(targetAccountId ? { revenueAccount: { connect: { id: targetAccountId } } } : {}),
+        isCommissionable: data.isCommissionable ?? true,
+        specificCommissionRate: data.specificCommissionRate,
+        maxDiscountThreshold: data.maxDiscountThreshold
       } as any
     });
 

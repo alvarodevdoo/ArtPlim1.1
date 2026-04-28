@@ -1,7 +1,7 @@
 import { Money } from '../../../../shared/domain/value-objects/Money';
 import { OrderNumber } from '../value-objects/OrderNumber';
 import { OrderStatus, OrderStatusEnum } from '../value-objects/OrderStatus';
-import { OrderItem } from './OrderItem';
+import { OrderItem, DiscountStatus } from './OrderItem';
 
 export interface OrderProps {
   id?: string;
@@ -29,6 +29,8 @@ export interface OrderProps {
   cancellationPaymentAction?: string;
   cancellationRefundAmount?: number;
   processStatusId?: string;
+  discountStatus?: DiscountStatus;
+  authorizationRequestId?: string;
 }
 
 export class Order {
@@ -57,6 +59,8 @@ export class Order {
   private _cancellationPaymentAction?: string;
   private _cancellationRefundAmount?: Money;
   private _processStatusId?: string;
+  private _discountStatus: DiscountStatus;
+  private _authorizationRequestId?: string;
 
   constructor(props: OrderProps) {
     this._id = props.id;
@@ -84,7 +88,10 @@ export class Order {
     this._cancellationPaymentAction = props.cancellationPaymentAction;
     this._cancellationRefundAmount = props.cancellationRefundAmount ? new Money(Number(props.cancellationRefundAmount)) : undefined;
     this._processStatusId = props.processStatusId;
+    this._discountStatus = props.discountStatus || DiscountStatus.NONE;
+    this._authorizationRequestId = props.authorizationRequestId;
 
+    this.recalculateTotals();
     this.validate();
   }
 
@@ -212,6 +219,10 @@ export class Order {
     return this._processStatusId;
   }
 
+  get authorizationRequestId(): string | undefined {
+    return this._authorizationRequestId;
+  }
+
   // Métodos de negócio
   addItem(item: OrderItem): void {
     this._items.push(item);
@@ -310,6 +321,7 @@ export class Order {
     deliveryDate?: Date;
     validUntil?: Date;
     notes?: string;
+    discountStatus?: DiscountStatus;
   }): void {
     if (!this.canBeModified()) {
       throw new Error('Order cannot be modified in current status');
@@ -343,7 +355,12 @@ export class Order {
       this._notes = details.notes;
     }
 
+    if (details.discountStatus !== undefined) {
+      this._discountStatus = details.discountStatus;
+    }
+
     this._updatedAt = new Date();
+    this.recalculateTotals();
     this.validate();
   }
 
@@ -358,11 +375,36 @@ export class Order {
   }
 
   private recalculateTotals(): void {
+    // Subtotal: soma do valor bruto
     this._subtotal = this._items.reduce(
-      (sum, item) => sum.add(item.totalPrice),
+      (sum, item) => sum.add(item.unitPrice.multiply(item.quantity)),
       Money.zero()
     );
 
+    // Sincronizar o status do desconto global com os itens para que o totalPrice de cada item reflita a realidade
+    this._items.forEach(item => {
+      item.updateGlobalDiscountStatus(this._discountStatus);
+    });
+
+    // Discount: soma dos descontos distribuídos e individuais (apenas os aprovados ou efetivados)
+    this._discount = this._items.reduce((sum, item) => {
+      let itemSum = Money.zero();
+
+      // Desconto específico do item
+      if (item.discountStatus !== DiscountStatus.PENDING && item.discountStatus !== DiscountStatus.REJECTED) {
+        itemSum = itemSum.add(item.discountItem);
+      }
+
+      // Desconto global (pro-rata) aplicado ao item
+      // Só aplica se o status global do pedido NÃO for PENDING ou REJECTED
+      if (this._discountStatus !== DiscountStatus.PENDING && this._discountStatus !== DiscountStatus.REJECTED) {
+        itemSum = itemSum.add(item.discountGlobal);
+      }
+
+      return sum.add(itemSum);
+    }, Money.zero());
+
+    // Total líquido: deve ser Subtotal - Desconto Efetivo
     this._total = this._subtotal
       .subtract(this._discount)
       .add(this._tax);
@@ -414,7 +456,9 @@ export class Order {
       cancellationReason: this._cancellationReason,
       cancellationPaymentAction: this._cancellationPaymentAction,
       cancellationRefundAmount: this._cancellationRefundAmount?.value,
-      processStatusId: this._processStatusId
+      processStatusId: this._processStatusId,
+      discountStatus: this._discountStatus,
+      authorizationRequestId: this._authorizationRequestId
     };
   }
 

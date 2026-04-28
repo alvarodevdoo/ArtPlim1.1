@@ -10,6 +10,16 @@ import { CreateDeliveryUseCase } from '../../application/use-cases/CreateDeliver
 import { CreateOrderDTO } from '../../application/dto/CreateOrderDTO';
 import { getTenantClient } from '../../../../shared/infrastructure/database/tenant';
 import { PrismaClient } from '@prisma/client';
+import { z } from 'zod';
+
+// Serviços de Transição
+import { ApproveOrderService } from '../../application/ApproveOrderService';
+import { FinishOrderService } from '../../application/FinishOrderService';
+import { ReopenOrderService } from '../../application/ReopenOrderService';
+import { RegenerateProductionService } from '../../application/RegenerateProductionService';
+import { ReportWasteService } from '../../application/ReportWasteService';
+import { PricingCompositionService } from '../../../catalog/services/PricingCompositionService';
+import { IncompatibilityService } from '../../../catalog/services/IncompatibilityService';
 
 export class OrderController {
   constructor(
@@ -20,7 +30,14 @@ export class OrderController {
     private updateOrderStatusUseCase: UpdateOrderStatusUseCase,
     private getOrderStatsUseCase: GetOrderStatsUseCase,
     private cancelOrderItemsUseCase: CancelOrderItemsUseCase,
-    private createDeliveryUseCase: CreateDeliveryUseCase
+    private createDeliveryUseCase: CreateDeliveryUseCase,
+    private approveOrderService: ApproveOrderService,
+    private finishOrderService: FinishOrderService,
+    private reopenOrderService: ReopenOrderService,
+    private regenerateProductionService: RegenerateProductionService,
+    private reportWasteService: ReportWasteService,
+    private pricingCompositionService: PricingCompositionService,
+    private incompatibilityService: IncompatibilityService
   ) { }
 
   async create(request: FastifyRequest, reply: FastifyReply) {
@@ -157,6 +174,167 @@ export class OrderController {
         data: ordersWithDetails
       });
     } catch (error: any) {
+      console.error('[OrderController] Erro na listagem de pedidos:', error);
+      return reply.status(500).send({
+        success: false,
+        message: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+    }
+  }
+
+  async getHistory(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const { id } = request.params as { id: string };
+      const prisma = getTenantClient(request.user!.organizationId);
+
+      const history = await (prisma as any).orderStatusHistory.findMany({
+        where: { orderId: id },
+        include: {
+          user: { select: { name: true } },
+          toProcessStatus: true,
+          fromProcessStatus: true
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      return reply.send({ success: true, data: history });
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
+  async simulateComposition(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const body = z.object({
+        productId: z.string().min(1),
+        selectedOptionIds: z.array(z.string()).default([]),
+        quantity: z.number().positive().default(1),
+        width: z.number().optional(),
+        height: z.number().optional()
+      }).parse(request.body);
+
+      const result = await this.pricingCompositionService.calculate({
+        productId: body.productId,
+        selectedOptionIds: body.selectedOptionIds,
+        quantity: body.quantity,
+        width: body.width,
+        height: body.height,
+        organizationId: request.user!.organizationId
+      });
+
+      return reply.send({ success: true, data: result });
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
+  async confirm(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const { id } = request.params as { id: string };
+      const { processStatusId } = request.body as { processStatusId?: string };
+      
+      const result = await this.approveOrderService.execute({
+        orderId: id,
+        organizationId: request.user!.organizationId,
+        userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub,
+        processStatusId
+      });
+
+      return reply.send({ success: true, data: result });
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
+  async finish(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const { id } = request.params as { id: string };
+      const { processStatusId } = request.body as { processStatusId?: string };
+      
+      const result = await this.finishOrderService.execute({
+        orderId: id,
+        organizationId: request.user!.organizationId,
+        userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub,
+        processStatusId
+      });
+
+      return reply.send({ success: true, data: result });
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
+  async reopen(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const { id } = request.params as { id: string };
+      const { reason } = request.body as { reason?: string };
+      
+      const result = await this.reopenOrderService.execute({
+        orderId: id,
+        organizationId: request.user!.organizationId,
+        userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub,
+        reason
+      });
+      return reply.send({ success: true, data: result });
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
+  async regenerate(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const { id } = request.params as { id: string };
+      const body = request.body as { reason: string; itemIds?: string[] };
+      
+      const result = await this.regenerateProductionService.execute({
+        orderId: id,
+        organizationId: request.user!.organizationId,
+        userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub,
+        reason: body.reason,
+        itemIds: body.itemIds
+      });
+      return reply.send({ success: true, data: result });
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
+  async getIncompatibilities(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const query = z.object({
+        selectedOptionIds: z.string().transform(v => v.split(',').filter(Boolean))
+      }).parse(request.query);
+
+      const result = await this.incompatibilityService.getIncompatibleOptionIds(query.selectedOptionIds);
+      return reply.send({ success: true, data: result });
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
+  async reportWaste(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const { id: orderId, itemId } = request.params as { id: string, itemId: string };
+      const body = z.object({
+        materialId: z.string(),
+        quantity: z.number().positive(),
+        reason: z.string().min(3),
+        unitCost: z.number().optional()
+      }).parse(request.body);
+      
+      const result = await this.reportWasteService.execute({
+        orderId,
+        itemId,
+        materialId: body.materialId,
+        wasteQuantity: body.quantity,
+        reason: body.reason,
+        organizationId: request.user!.organizationId,
+        userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub,
+        overrideUnitCost: body.unitCost
+      });
+      return reply.code(201).send({ success: true, data: result });
+    } catch (error: any) {
       throw error;
     }
   }
@@ -188,6 +366,62 @@ export class OrderController {
           pricingMode: true,
           salePrice: true,
           pricingRuleId: true,
+          isCommissionable: true,
+          specificCommissionRate: true,
+          maxDiscountThreshold: true,
+          fichasTecnicas: {
+            select: {
+              id: true,
+              insumoId: true,
+              quantidade: true,
+              material: {
+                select: {
+                  id: true,
+                  name: true,
+                  category: true,
+                  averageCost: true,
+                  costPerUnit: true
+                }
+              }
+            }
+          },
+          components: {
+            select: {
+              id: true,
+              materialId: true,
+              material: {
+                select: {
+                  id: true,
+                  name: true,
+                  category: true,
+                  averageCost: true,
+                  costPerUnit: true
+                }
+              }
+            }
+          },
+          configurations: {
+            select: {
+              id: true,
+              name: true,
+              options: {
+                select: {
+                  id: true,
+                  label: true,
+                  materialId: true,
+                  material: {
+                    select: {
+                      id: true,
+                      name: true,
+                      category: true,
+                      averageCost: true,
+                      costPerUnit: true
+                    }
+                  }
+                }
+              }
+            }
+          },
           pricingRule: {
             select: {
               id: true,
@@ -218,8 +452,12 @@ export class OrderController {
         }
       }
 
-      return product;
+      return {
+        ...product,
+        _debug: "V6"
+      };
     } catch (error) {
+      console.error('Erro ao buscar dados do produto:', error);
       return null;
     }
   }

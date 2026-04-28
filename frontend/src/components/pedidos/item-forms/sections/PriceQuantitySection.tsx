@@ -1,7 +1,7 @@
 import React from 'react';
 import { Input } from '@/components/ui/Input';
 import CurrencyInput from '@/components/ui/CurrencyInput';
-import { Unlock, Edit3 } from 'lucide-react';
+import { Unlock, Edit3, AlertCircle } from 'lucide-react';
 
 interface PriceQuantitySectionProps {
     quantity: number;
@@ -14,6 +14,10 @@ interface PriceQuantitySectionProps {
     setShowAuthModal: (s: boolean) => void;
     isPriceManualRef: React.MutableRefObject<boolean>;
     compLoading: boolean;
+    discountItem?: number | string;
+    setDiscountItem?: (d: number | string) => void;
+    discountValidation?: { ok: boolean; percent: number; exceedsGross: boolean; exceedsThreshold: boolean };
+    maxDiscountThreshold?: number;
 }
 
 export const PriceQuantitySection: React.FC<PriceQuantitySectionProps> = ({
@@ -26,7 +30,11 @@ export const PriceQuantitySection: React.FC<PriceQuantitySectionProps> = ({
     setIsPriceUnlocked,
     setShowAuthModal,
     isPriceManualRef,
-    compLoading
+    compLoading,
+    discountItem,
+    setDiscountItem,
+    discountValidation,
+    maxDiscountThreshold = 0.15
 }) => {
     return (
         <>
@@ -87,6 +95,47 @@ export const PriceQuantitySection: React.FC<PriceQuantitySectionProps> = ({
                     )}
                 </div>
             </div>
+
+            {/* Discount */}
+            {setDiscountItem && (
+                <div className="space-y-1 flex-1 min-w-[120px] relative">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center justify-between">
+                        <span>Desconto (R$)</span>
+                    </label>
+                    <div className="relative flex items-center gap-1">
+                        <div className="relative flex-1">
+                            <CurrencyInput 
+                                value={Number(discountItem) === 0 ? '' : discountItem} 
+                                onValueChange={(val) => setDiscountItem(val || 0)}
+                                className={`h-9 border-slate-300 bg-white text-center font-black text-sm rounded-md shadow-sm focus:ring-2 focus:ring-indigo-500 w-full transition-all ${discountValidation && !discountValidation.ok ? 'border-red-500 ring-1 ring-red-500 text-red-600' : 'text-slate-900'}`} 
+                            />
+                        </div>
+                        {discountValidation && !discountValidation.ok && !isPriceUnlocked && (
+                            <button 
+                                type="button"
+                                onClick={() => setShowAuthModal(true)}
+                                className="shrink-0 h-9 w-9 flex justify-center items-center rounded-md border bg-red-50 border-red-200 text-red-600 hover:bg-red-100 animate-pulse"
+                                title="Solicitar autorização para este desconto"
+                            >
+                                <Edit3 className="w-4 h-4" />
+                            </button>
+                        )}
+                        {discountValidation && !discountValidation.ok && isPriceUnlocked && (
+                            <div className="shrink-0 h-9 w-9 flex justify-center items-center rounded-md border bg-green-50 border-green-200 text-green-600">
+                                <Unlock className="w-4 h-4" />
+                            </div>
+                        )}
+                    </div>
+                    {discountValidation && !discountValidation.ok && (
+                        <div className="absolute left-0 top-full mt-1 z-10 w-full animate-in fade-in slide-in-from-top-1">
+                            <div className="bg-red-600 text-white text-[9px] font-bold py-1 px-2 rounded shadow-lg flex items-center gap-1 leading-tight">
+                                <AlertCircle className="w-3 h-3 shrink-0" />
+                                {discountValidation.exceedsGross ? 'Excede valor do item!' : `Teto de ${(maxDiscountThreshold * 100).toFixed(2)}%`}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
         </>
     );
 };

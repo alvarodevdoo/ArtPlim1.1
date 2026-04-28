@@ -2,7 +2,7 @@ import React from 'react';
 import { statusConfig } from '@/types/pedidos';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Plus, Edit, Trash2 } from 'lucide-react';
+import { Plus, Edit, Trash2, AlertCircle } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { ItemPedido, Produto } from '@/types/sales';
 import { ITEM_TYPE_CONFIGS } from '@/types/item-types';
@@ -18,6 +18,7 @@ interface OrderItemsListProps {
     produtos: Produto[]; // To resolve product details if missing in item
     onItemStatusChange?: (itemId: string, status: string) => void;
     processStatuses?: any[];
+    onRegisterWaste?: (item: ItemPedido) => void;
 }
 
 export const OrderItemsList: React.FC<OrderItemsListProps> = ({
@@ -28,7 +29,8 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({
     editingItemId,
     produtos,
     onItemStatusChange,
-    processStatuses = []
+    processStatuses = [],
+    onRegisterWaste
 }) => {
     const formatarUnidadePreco = (produto?: Produto) => {
         if (!produto) return '/un';
@@ -66,6 +68,100 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({
             );
         }
         return null;
+    };
+
+    const renderVariations = (item: ItemPedido, product?: Produto) => {
+        const attributes = item.attributes || {};
+        const selectedOptions = attributes.selectedOptions;
+        const variationDetails: string[] = [];
+
+        // 1. Variações Dinâmicas (Sistema novo/Carimbos)
+        if (selectedOptions && product?.configurations) {
+            Object.entries(selectedOptions).forEach(([configId, optionId]) => {
+                const config = product.configurations?.find(c => c.id === configId);
+                if (config) {
+                    const option = config.options?.find(o => o.id === optionId);
+                    if (option) {
+                        variationDetails.push(`${config.name}: ${option.label}`);
+                    }
+                }
+            });
+        }
+
+        // 2. Atributos Clássicos (Vinil, Lonas, etc - Lidos das colunas dedicadas ou atributos)
+        const paperType = item.paperType || attributes.paperType;
+        const printColors = item.printColors || attributes.printColors;
+        const finishing = item.finishing || attributes.finishing;
+        const paperSize = item.paperSize || attributes.paperSize;
+
+        if (paperType) variationDetails.push(`Mídia: ${paperType}`);
+        if (printColors) variationDetails.push(`Cores: ${printColors}`);
+        if (finishing) variationDetails.push(`Acabamento: ${finishing}`);
+        if (paperSize && paperSize !== 'Personalizado') {
+            variationDetails.push(`Tamanho: ${paperSize}`);
+        }
+
+        // 3. Materiais da Composição (Snapshot) - Ex: Vinil Branco, Lona 440g, etc.
+        if (item.compositionSnapshot) {
+            try {
+                let snap = item.compositionSnapshot;
+                if (typeof snap === 'string') {
+                    snap = JSON.parse(snap);
+                }
+                
+                if (Array.isArray(snap)) {
+                    snap.forEach((s: any) => {
+                        const matName = s.materialName || s.name;
+                        // Mostrar se for diferente do nome do produto e não for um insumo genérico/serviço
+                        if (matName && 
+                            matName !== product?.name && 
+                            !variationDetails.includes(matName) &&
+                            !matName.toLowerCase().includes('mão de obra') &&
+                            !matName.toLowerCase().includes('frete')
+                        ) {
+                            variationDetails.push(matName);
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error("Erro ao processar snapshot do item:", e);
+            }
+        }
+
+        // 4. Fallback: Materiais da Ficha Técnica/Componentes do Produto (Caso o snapshot ainda não exista)
+        if (variationDetails.length === 0 && product) {
+            // Tentar Fichas Técnicas
+            if (product.fichasTecnicas && Array.isArray(product.fichasTecnicas)) {
+                product.fichasTecnicas.forEach((ft: any) => {
+                    const matName = ft.material?.name;
+                    if (matName && matName !== product.name && !variationDetails.includes(matName)) {
+                        variationDetails.push(matName);
+                    }
+                });
+            }
+            
+            // Tentar Componentes
+            if (variationDetails.length === 0 && product.components && Array.isArray(product.components)) {
+                product.components.forEach((c: any) => {
+                    const matName = c.material?.name;
+                    if (matName && matName !== product.name && !variationDetails.includes(matName)) {
+                        variationDetails.push(matName);
+                    }
+                });
+            }
+        }
+
+        if (variationDetails.length === 0) return null;
+
+        return (
+            <div className="flex flex-wrap gap-2 mt-1">
+                {variationDetails.map((detail, i) => (
+                    <span key={i} className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md text-[11px] font-bold border border-indigo-100 uppercase tracking-tight">
+                        {detail}
+                    </span>
+                ))}
+            </div>
+        );
     };
 
     if (items.length === 0) {
@@ -145,7 +241,16 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({
                                                     Editando
                                                 </span>
                                             )}
+                                            {(item as any).discountStatus === 'PENDING' && (
+                                                <span className="bg-amber-100 text-amber-800 border border-amber-200 px-2 py-1 rounded-full text-xs font-bold flex items-center gap-1 animate-pulse">
+                                                    <AlertCircle className="w-3 h-3" />
+                                                    Autorização Pendente
+                                                </span>
+                                            )}
                                         </div>
+                                        
+                                        {/* Variations (Cor, Modelo, etc) */}
+                                        {renderVariations(item, itemProduct as Produto)}
 
                                         {/* Basic item information */}
                                         <div className="mt-2 grid grid-cols-2 gap-4 text-sm">
@@ -216,7 +321,16 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({
                                     </div>
                                     <div className="text-right ml-4">
                                         <p className="font-medium">{formatCurrency(item.unitPrice)}{formatarUnidadePreco(itemProduct as Produto | undefined)}</p>
-                                        <p className="text-lg font-bold">{formatCurrency(item.totalPrice)}</p>
+                                        <div className="flex flex-col items-end">
+                                            <p className="text-lg font-bold">
+                                                {formatCurrency(item.totalPrice)}
+                                            </p>
+                                            {(item as any).discountStatus === 'PENDING' && (
+                                                <p className="text-[10px] text-amber-600 font-medium italic">
+                                                    * Valor integral (aguardando liberação)
+                                                </p>
+                                            )}
+                                        </div>
                                         <div className="flex space-x-2 mt-2">
                                             <Button
                                                 variant="outline"
@@ -236,6 +350,17 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({
                                                 Remover
                                             </Button>
                                         </div>
+                                        {item.id && onRegisterWaste && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="mt-2 w-full text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-100 shadow-none"
+                                                onClick={() => onRegisterWaste(item)}
+                                            >
+                                                <AlertCircle className="w-3 h-3 mr-1" />
+                                                Registrar Perda
+                                            </Button>
+                                        )}
                                     </div>
                                 </div>
                             </div>

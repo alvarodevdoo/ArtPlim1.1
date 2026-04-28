@@ -19,6 +19,9 @@ export class QueryOptimizer {
         salePrice: true,
         active: true,
         formulaData: true,
+        isCommissionable: true,
+        specificCommissionRate: true,
+        maxDiscountThreshold: true,
         pricingRule: true,
         configurations: {
           select: {
@@ -138,7 +141,23 @@ export class QueryOptimizer {
               select: {
                 id: true,
                 name: true,
-                pricingMode: true
+                pricingMode: true,
+                isCommissionable: true,
+                specificCommissionRate: true,
+                maxDiscountThreshold: true,
+                fichasTecnicas: {
+                  include: { material: true }
+                },
+                components: {
+                  include: { material: true }
+                },
+                configurations: {
+                  include: {
+                    options: {
+                      include: { material: true }
+                    }
+                  }
+                }
               }
             },
             status: true,
@@ -150,7 +169,11 @@ export class QueryOptimizer {
                 color: true,
                 mappedBehavior: true
               }
-            }
+            },
+            unitCostAtSale: true,
+            unitPriceAtSale: true,
+            profitAtSale: true,
+            compositionSnapshot: true
           }
         },
         statusHistory: {
@@ -246,6 +269,9 @@ export class QueryOptimizer {
         minPrice: true,
         markup: true,
         formulaData: true,
+        isCommissionable: true,
+        specificCommissionRate: true,
+        maxDiscountThreshold: true,
         pricingRule: true,
         components: {
           select: {
@@ -295,6 +321,8 @@ export class QueryOptimizer {
         state: true,
         zipCode: true,
         createdAt: true,
+        balance: true,
+        exemptFromDeposit: true,
         _count: {
           select: {
             orders: {

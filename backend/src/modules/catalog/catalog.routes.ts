@@ -38,6 +38,9 @@ const createProductSchema = z.object({
   formulaData: z.any().optional(),
   categoryId: z.preprocess((val) => val === '' ? null : val, z.string().uuid().optional().nullable()),
   revenueAccountId: z.preprocess((val) => val === '' ? null : val, z.string().uuid().optional().nullable()),
+  isCommissionable: z.boolean().optional().default(true),
+  specificCommissionRate: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional().nullable()),
+  maxDiscountThreshold: z.preprocess((val) => (val === '' || val === null || val === undefined) ? undefined : isNaN(Number(val)) ? undefined : Number(val), z.number().min(0).optional().nullable()),
 });
 
 const updateProductSchema = createProductSchema.partial();
@@ -62,7 +65,9 @@ const createMaterialSchema = z.object({
   inventoryAccountId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   expenseAccountId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   minStockQuantity: z.preprocess((val) => (val === '' || val === null || val === undefined) ? null : isNaN(Number(val)) ? null : Number(val), z.number().min(0).nullable().optional()),
+  purchasePrice: z.preprocess((val) => (val === '' || val === null || val === undefined) ? null : isNaN(Number(val)) ? null : Number(val), z.number().min(0).nullable().optional()),
   trackStock: z.boolean().optional().default(true),
+  sellWithoutStock: z.boolean().optional().default(true),
   ncm: z.coerce.string().optional().nullable(),
   ean: z.coerce.string().optional().nullable(),
   spedType: z.coerce.string().optional().nullable(),
@@ -298,15 +303,7 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
-
-    // ====== [LOG 1] RAW BODY RECEBIDO ======
-    console.log('[MAT-UPDATE] RAW BODY:', JSON.stringify(request.body, null, 2));
-
     const body = createMaterialSchema.partial().parse(request.body);
-
-    // ====== [LOG 2] BODY APOS ZOD PARSE ======
-    console.log('[MAT-UPDATE] PARSED BODY:', JSON.stringify(body, null, 2));
-    console.log('[MAT-UPDATE] trackStock:', (body as any).trackStock, '| spedType:', (body as any).spedType, '| costPerUnit:', (body as any).costPerUnit);
 
     const prisma = getTenantClient(request.user!.organizationId);
     const materialService = new MaterialService(prisma);
@@ -317,9 +314,6 @@ export async function catalogRoutes(fastify: FastifyInstance) {
       id, 
       body
     );
-
-    // ====== [LOG 3] RESULTADO DO BANCO ======
-    console.log('[MAT-UPDATE] RESULTADO DB:', JSON.stringify({ id: (material as any).id, trackStock: (material as any).trackStock, spedType: (material as any).spedType, costPerUnit: (material as any).costPerUnit }, null, 2));
 
     return reply.send({
       success: true,

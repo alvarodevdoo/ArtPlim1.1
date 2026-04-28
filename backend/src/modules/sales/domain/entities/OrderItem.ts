@@ -2,6 +2,13 @@ import { Money } from '../../../../shared/domain/value-objects/Money';
 import { Dimensions } from '../../../../shared/domain/value-objects/Dimensions';
 import { OrderStatusEnum } from '../value-objects/OrderStatus';
 
+export enum DiscountStatus {
+  NONE = 'NONE',
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED'
+}
+
 export interface OrderItemProps {
   id?: string;
   productId: string;
@@ -29,6 +36,20 @@ export interface OrderItemProps {
   pricingRuleId?: string;
   processStatusId?: string;
   status?: OrderStatusEnum;
+  
+  // Motor de Composição: campos de snapshot (imutáveis após APPROVED)
+  unitCostAtSale?: number;
+  unitPriceAtSale?: number;
+  profitAtSale?: number;
+  compositionSnapshot?: any;
+  confirmedAt?: Date;
+
+  discountStatus?: DiscountStatus;
+  discountItem?: Money;
+  discountGlobal?: Money;
+  commissionRateApplied?: number;
+  commissionAmount?: Money;
+  authorizationRequestId?: string;
 }
 
 export class OrderItem {
@@ -56,6 +77,21 @@ export class OrderItem {
   private _pricingRuleId?: string;
   private _processStatusId?: string;
   private _status: OrderStatusEnum;
+  
+  // Novos campos do motor de composição
+  private _unitCostAtSale?: number;
+  private _unitPriceAtSale?: number;
+  private _profitAtSale?: number;
+  private _compositionSnapshot?: any;
+  private _confirmedAt?: Date;
+
+  private _discountStatus: DiscountStatus;
+  private _discountItem: Money;
+  private _discountGlobal: Money;
+  private _commissionRateApplied: number;
+  private _commissionAmount: Money;
+  private _authorizationRequestId?: string;
+  private _globalDiscountStatus: DiscountStatus;
 
   constructor(props: OrderItemProps) {
     this._id = props.id;
@@ -82,6 +118,21 @@ export class OrderItem {
     this._pricingRuleId = props.pricingRuleId;
     this._processStatusId = props.processStatusId;
     this._status = props.status || OrderStatusEnum.DRAFT;
+    
+    // Motor de composição
+    this._unitCostAtSale = props.unitCostAtSale;
+    this._unitPriceAtSale = props.unitPriceAtSale;
+    this._profitAtSale = props.profitAtSale;
+    this._compositionSnapshot = props.compositionSnapshot;
+    this._confirmedAt = props.confirmedAt;
+
+    this._discountStatus = props.discountStatus || DiscountStatus.NONE;
+    this._discountItem = props.discountItem || Money.zero();
+    this._discountGlobal = props.discountGlobal || Money.zero();
+    this._commissionRateApplied = props.commissionRateApplied || 0;
+    this._commissionAmount = props.commissionAmount || Money.zero();
+    this._authorizationRequestId = props.authorizationRequestId;
+    this._globalDiscountStatus = DiscountStatus.NONE;
 
     this.validate();
   }
@@ -126,7 +177,45 @@ export class OrderItem {
   }
 
   get totalPrice(): Money {
-    return this._unitPrice.multiply(this._quantity);
+    const gross = this._unitPrice.multiply(this._quantity);
+    
+    // Se o desconto do item estiver pendente ou rejeitado, o total do item é o valor bruto (gross)
+    if (this._discountStatus === DiscountStatus.PENDING || this._discountStatus === DiscountStatus.REJECTED) {
+      return gross;
+    }
+
+    let discount = this._discountItem;
+    
+    // Se o desconto global estiver pendente ou rejeitado em relação ao pedido, não subtrai da visão do item
+    if (this._globalDiscountStatus !== DiscountStatus.PENDING && this._globalDiscountStatus !== DiscountStatus.REJECTED) {
+      discount = discount.add(this._discountGlobal);
+    }
+
+    return gross.subtract(discount);
+  }
+
+  get discountStatus(): DiscountStatus {
+    return this._discountStatus;
+  }
+
+  get discountItem(): Money {
+    return this._discountItem;
+  }
+
+  get discountGlobal(): Money {
+    return this._discountGlobal;
+  }
+
+  get commissionRateApplied(): number {
+    return this._commissionRateApplied;
+  }
+
+  get commissionAmount(): Money {
+    return this._commissionAmount;
+  }
+
+  get authorizationRequestId(): string | undefined {
+    return this._authorizationRequestId;
   }
 
   get notes(): string | undefined {
@@ -194,6 +283,27 @@ export class OrderItem {
     return this._status;
   }
 
+  // Getters para motor de composição
+  get unitCostAtSale(): number | undefined {
+    return this._unitCostAtSale;
+  }
+
+  get unitPriceAtSale(): number | undefined {
+    return this._unitPriceAtSale;
+  }
+
+  get profitAtSale(): number | undefined {
+    return this._profitAtSale;
+  }
+
+  get compositionSnapshot(): any {
+    return this._compositionSnapshot;
+  }
+
+  get confirmedAt(): Date | undefined {
+    return this._confirmedAt;
+  }
+
   // Métodos de negócio
   updateQuantity(newQuantity: number): void {
     if (newQuantity <= 0) {
@@ -204,6 +314,20 @@ export class OrderItem {
 
   updateUnitPrice(newPrice: Money): void {
     this._unitPrice = newPrice;
+  }
+
+  applyDiscount(discountItem: Money, discountGlobal: Money): void {
+    this._discountItem = discountItem;
+    this._discountGlobal = discountGlobal;
+  }
+
+  applyCommission(rate: number, amount: Money): void {
+    this._commissionRateApplied = rate;
+    this._commissionAmount = amount;
+  }
+
+  updateGlobalDiscountStatus(status: DiscountStatus): void {
+    this._globalDiscountStatus = status;
   }
 
   updateNotes(notes: string): void {
@@ -243,7 +367,22 @@ export class OrderItem {
       customSizeName: this._customSizeName,
       isCustomSize: this._isCustomSize,
       attributes: this._attributes,
-      pricingRuleId: this._pricingRuleId
+      pricingRuleId: this._pricingRuleId,
+      status: this._status,
+      
+      // Motor de composição
+      unitCostAtSale: this._unitCostAtSale,
+      unitPriceAtSale: this._unitPriceAtSale,
+      profitAtSale: this._profitAtSale,
+      compositionSnapshot: this._compositionSnapshot,
+      confirmedAt: this._confirmedAt,
+
+      discountStatus: this._discountStatus,
+      discountItem: this._discountItem.value,
+      discountGlobal: this._discountGlobal.value,
+      commissionRateApplied: this._commissionRateApplied,
+      commissionAmount: this._commissionAmount.value,
+      authorizationRequestId: this._authorizationRequestId
     };
   }
 }

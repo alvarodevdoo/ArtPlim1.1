@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { User, Search, CheckCircle, UserX, Receipt } from 'lucide-react';
 import { Cliente } from '@/types/sales';
+import { CustomerBalancePopover } from './CustomerBalancePopover';
 
 interface CustomerSelectionProps {
     selectedCustomer: Cliente | null;
@@ -98,7 +99,16 @@ export const CustomerSelection: React.FC<CustomerSelectionProps> = ({
                                                     setShowDropdown(false);
                                                 }}
                                             >
-                                                <div className="font-medium">{customer.name}</div>
+                                                <div className="flex justify-between items-start">
+                                                    <div className="font-medium">{customer.name}</div>
+                                                    {Number(customer.balance) > 0 && (
+                                                        <CustomerBalancePopover 
+                                                            customerId={customer.id} 
+                                                            customerName={customer.name} 
+                                                            balance={Number(customer.balance)} 
+                                                        />
+                                                    )}
+                                                </div>
                                                 {customer.document && (
                                                     <div className="text-sm text-gray-500">{customer.document}</div>
                                                 )}
@@ -133,7 +143,21 @@ export const CustomerSelection: React.FC<CustomerSelectionProps> = ({
                                 <div className="flex items-center space-x-2">
                                     <CheckCircle className="w-5 h-5 text-green-600" />
                                     <div>
-                                        <p className="font-medium text-green-800">{selectedCustomer.name}</p>
+                                        <div className="flex items-center space-x-2">
+                                            <p className="font-medium text-green-800">{selectedCustomer.name}</p>
+                                            {Number(selectedCustomer.balance) > 0 && (
+                                                <CustomerBalancePopover 
+                                                    customerId={selectedCustomer.id} 
+                                                    customerName={selectedCustomer.name} 
+                                                    balance={Number(selectedCustomer.balance)} 
+                                                />
+                                            )}
+                                            {selectedCustomer.exemptFromDeposit && (
+                                                <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-700 rounded-full border border-blue-200">
+                                                    ISENTO DE SINAL
+                                                </span>
+                                            )}
+                                        </div>
                                         <p className="text-sm text-green-600">
                                             {selectedCustomer.email ? `${selectedCustomer.email} • ` : ''}{selectedCustomer.phone}
                                         </p>

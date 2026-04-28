@@ -1,4 +1,5 @@
 import { PrismaClient, OrderStatus } from '@prisma/client';
+import { OrderFinanceHelper } from '../../../../shared/utils/OrderFinanceHelper';
 
 export class StatusEngine {
   constructor(private prisma: PrismaClient) {}
@@ -43,6 +44,19 @@ export class StatusEngine {
       }
     } else if (newStatus) {
       updateData.status = newStatus;
+      // Garante que o ProcessStatus da UI rastreie o comportamento modificado (ex: Cancelado)
+      const matchingProcessStatus = await this.prisma.processStatus.findFirst({
+        where: { organizationId, mappedBehavior: newStatus, active: true },
+        orderBy: { displayOrder: 'asc' }
+      });
+      updateData.processStatusId = matchingProcessStatus ? matchingProcessStatus.id : null;
+    }
+
+    // ── Validação de Regras de Negócio (Blindagem) ──
+    // Só validamos se houver mudança REAL de status e se não for a criação inicial (fromStatus != undefined)
+    if (updateData.status && fromStatus && updateData.status !== order.status) {
+      console.log(`[StatusEngine] Vai disparar validação financeira -> orderId: ${orderId}, newStatus: ${updateData.status}, processStatusId: ${updateData.processStatusId}`);
+      await this.validateFinanceRules(orderId, organizationId, updateData.status, updateData.processStatusId);
     }
 
     // 2. Datas de controle
@@ -195,7 +209,6 @@ export class StatusEngine {
       if (targetStatus === 'DELIVERED' && !order.deliveredAt) updateData.deliveredAt = new Date();
 
       // Tentar encontrar um ProcessStatus da organização que mapeie para esse targetStatus
-      // com o menor displayOrder primeiro. Se for DRAFT e não achar nada mapeado, pega a PRIMEIRA etapa de todas.
       let matchingProcessStatus = await this.prisma.processStatus.findFirst({
         where: { 
           organizationId: order.organizationId,
@@ -215,6 +228,11 @@ export class StatusEngine {
 
       updateData.processStatusId = matchingProcessStatus?.id || null;
 
+      // ── Validação de Regras de Negócio Dinâmicas ──
+      if (order.status) {
+        await this.validateFinanceRules(orderId, order.organizationId, targetStatus, updateData.processStatusId);
+      }
+
       await this.prisma.order.update({
         where: { id: orderId },
         data: updateData
@@ -233,6 +251,77 @@ export class StatusEngine {
           notes: `Pedido avançou para a etapa: ${friendlyStatusName}`
         }
       });
+    }
+  }
+
+   /**
+   * Valida se um pedido atende às exigências financeiras da organização
+   * para avançar para um determinado status.
+   */
+  public async validateFinanceRules(orderId: string, organizationId: string, targetStatus: OrderStatus, targetProcessStatusId?: string | null) {
+    const settings = await this.prisma.organizationSettings.findUnique({
+      where: { organizationId },
+      select: { requireOrderDeposit: true, minDepositPercent: true, allowDeliveryWithBalance: true }
+    });
+
+    if (!settings) return;
+
+    // Buscar as configurações da ETAPA (ProcessStatus) de destino
+    let targetPS = null;
+    if (targetProcessStatusId) {
+      targetPS = await this.prisma.processStatus.findUnique({ where: { id: targetProcessStatusId } });
+      console.log(`[StatusEngine/Finance] PS ID Fornecido: ${targetProcessStatusId}. Encontrado: ${targetPS?.name} | R.Pay: ${targetPS?.requirePayment} | R.Dep: ${targetPS?.requireDeposit}`);
+    } else {
+      // Fallback: busca o primeiro status que mapeia para esse comportamento
+      targetPS = await this.prisma.processStatus.findFirst({
+        where: { organizationId, mappedBehavior: targetStatus, active: true },
+        orderBy: { displayOrder: 'asc' }
+      });
+      console.log(`[StatusEngine/Finance] PS ID não fornecido. Buscando fallback por status ${targetStatus}. Encontrado: ${targetPS?.name} | R.Pay: ${targetPS?.requirePayment} | R.Dep: ${targetPS?.requireDeposit}`);
+    }
+
+    // Se a etapa não exige nada, liberamos o caminho
+    if (!targetPS || (!targetPS.requireDeposit && !targetPS.requirePayment)) {
+      console.log(`[StatusEngine/Finance] Status livre de validação financeira. PS encontrado? ${!!targetPS}`);
+      return;
+    }
+
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { transactions: true }
+    });
+
+    if (!order) return;
+
+    const totalOrder = Number(order.total || 0);
+    const remainingBalance = OrderFinanceHelper.calculateRemainingBalance(order);
+    const paidTotal = totalOrder - remainingBalance;
+
+    // 1. Regra de Sinal (Entrada) baseada na Etapa
+    if (targetPS.requireDeposit && settings.requireOrderDeposit) {
+      const minPercent = Number(settings.minDepositPercent || 0);
+      
+      // EXCEÇÃO: Se o pedido não tiver nenhuma transação ainda mas a regra global permitir aprovação sem depósito 
+      // (ajuda no fluxo de criação), mas aqui respeitamos a flag da ETAPA.
+      if (order.transactions && order.transactions.length === 0) {
+        console.log(`[StatusEngine] Validando aprovação inicial sem transações para a etapa ${targetPS.name}`);
+      }
+
+      const paidPercent = (paidTotal / totalOrder) * 100;
+
+      if (paidPercent < minPercent) {
+        const requiredValue = totalOrder * (minPercent / 100);
+        console.error(`[StatusEngine/Finance] 🚫 BLOQUEADO POR SINAL! Exige: ${minPercent}%, Pago: ${paidPercent}%`);
+        throw new Error(`PAYMENT_REQUIRED:SINAL|A etapa "${targetPS.name}" exige um sinal mínimo de ${minPercent}% (${OrderFinanceHelper.formatCurrency(requiredValue)}). Pago: ${paidPercent.toFixed(1)}%`);
+      }
+    }
+
+    // 2. Regra de Quitação baseada na Etapa
+    if (targetPS.requirePayment && !settings.allowDeliveryWithBalance) {
+      if (remainingBalance >= 0.01) {
+        console.error(`[StatusEngine/Finance] 🚫 BLOQUEADO POR QUITAÇÃO TOTAL! Saldo devedor: ${remainingBalance}`);
+        throw new Error(`PAYMENT_REQUIRED:TOTAL|A etapa "${targetPS.name}" não permite avanço com saldo em aberto. Realize a quitação total de ${OrderFinanceHelper.formatCurrency(remainingBalance)} para prosseguir.`);
+      }
     }
   }
 }

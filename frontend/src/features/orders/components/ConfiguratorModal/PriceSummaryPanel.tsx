@@ -7,6 +7,7 @@ interface PriceSummaryPanelProps {
   loading: boolean;
   negotiatedPrice: number;
   quantity: number;
+  discountItem?: number;
 }
 
 export const PriceSummaryPanel: React.FC<PriceSummaryPanelProps> = ({
@@ -14,8 +15,9 @@ export const PriceSummaryPanel: React.FC<PriceSummaryPanelProps> = ({
   loading,
   negotiatedPrice,
   quantity,
+  discountItem = 0,
 }) => {
-  const totalNegotiated = negotiatedPrice * quantity;
+  const totalNegotiated = (negotiatedPrice * quantity) - discountItem;
   const totalCost = composition?.totalCost || 0;
 
   return (

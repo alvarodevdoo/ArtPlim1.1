@@ -1,5 +1,5 @@
-import { PrismaClient, PayableStatus, TransactionType, TransactionStatus } from '@prisma/client';
 import { AppError } from '../../../shared/infrastructure/errors/AppError';
+import { ProfileBalanceService } from '../../profiles/services/ProfileBalanceService';
 
 export interface PayBillInput {
   organizationId: string;
@@ -14,7 +14,10 @@ export interface PayBillInput {
 }
 
 export class PaymentService {
-  constructor(private prisma: PrismaClient) {}
+  private balanceService: ProfileBalanceService;
+  constructor(private prisma: PrismaClient) {
+    this.balanceService = new ProfileBalanceService(this.prisma);
+  }
 
   /**
    * Paga uma conta a pagar (AccountPayable), realizando o lançamento
@@ -176,6 +179,15 @@ export class PaymentService {
       throw new AppError('O valor recebido deve ser maior que zero.', 400);
     }
 
+    // Se não informou conta (ex: pagamento via Saldo), tenta pegar a conta padrão
+    let finalAccountId = paymentAccountId;
+    if (!finalAccountId) {
+      const defaultAccount = await this.prisma.account.findFirst({
+        where: { organizationId, active: true }
+      });
+      finalAccountId = defaultAccount?.id || '';
+    }
+
     return await this.prisma.$transaction(async (tx) => {
       // 1. Validar recebível
       const receivable = await (tx as any).accountReceivable.findFirst({
@@ -189,13 +201,45 @@ export class PaymentService {
       const today = new Date();
       const netAmount = amountPaid - feeAmount;
 
-      // 2. Atualizar Recebível
+      // 1.1 Verificar tipo do método de pagamento
+      let isInternalBalance = paymentMethodId === 'BALANCE';
+      let paymentMethod = null;
+
+      if (!isInternalBalance) {
+        paymentMethod = await tx.paymentMethod.findUnique({
+          where: { id: paymentMethodId }
+        });
+        isInternalBalance = paymentMethod?.type === 'CUSTOMER_BALANCE';
+      }
+
+      if (isInternalBalance) {
+        // Se for saldo interno, usar o serviço de saldo
+        await this.balanceService.useCredit({
+          profileId: receivable.customerId,
+          organizationId,
+          amount: amountPaid,
+          description: `Pagamento de Recebível #${receivable.id.slice(-8)} via Saldo Interno`,
+          orderId: receivable.orderId || '',
+          userId
+        });
+      }
+
+      // 2. Calcular total já pago (incluindo transações CREDIT vinculadas)
+      const existingPayments = await tx.transaction.aggregate({
+        where: { receivableId, type: TransactionType.CREDIT, status: TransactionStatus.PAID },
+        _sum: { amount: true }
+      });
+      
+      const totalPaidSoFar = Number(existingPayments._sum.amount || 0) + amountPaid;
+      const isFullyPaid = totalPaidSoFar >= Number(receivable.amount) - 0.01; // Tolerância de centavos
+
+      // 3. Atualizar Recebível
       await (tx as any).accountReceivable.update({
         where: { id: receivableId },
         data: {
-          status: 'PAID',
-          paidAt: today,
-          notes: notes ? `${receivable.notes ?? ''}\nLIQ: ${notes}` : receivable.notes
+          status: isFullyPaid ? 'PAID' : 'PENDING',
+          paidAt: isFullyPaid ? today : null,
+          notes: notes ? `${receivable.notes ?? ''}\nPGTO (${today.toLocaleDateString()}): ${notes}` : receivable.notes
         }
       });
 
@@ -205,24 +249,27 @@ export class PaymentService {
       await tx.transaction.create({
         data: {
           organizationId,
-          accountId: paymentAccountId,
+          accountId: finalAccountId,
           type: TransactionType.DEBIT,
           amount: netAmount,
-          description: `Recebimento Pedido #${receivable.orderId?.slice(-8)}`,
+          description: isInternalBalance ? `[VIRTUAL] Recebimento Pedido #${receivable.orderId?.slice(-8)}` : `Recebimento Pedido #${receivable.orderId?.slice(-8)}`,
           status: TransactionStatus.PAID,
           paidAt: today,
-          paymentMethodId,
+          paymentMethodId: isInternalBalance ? null : paymentMethodId,
           receivableId: receivable.id,
           orderId: receivable.orderId,
+          isVirtual: isInternalBalance, // Se for saldo, é virtual
           userId,
           profileId: receivable.customerId
         }
       });
-
-      await tx.account.update({
-        where: { id: paymentAccountId, organizationId },
-        data: { balance: { increment: netAmount } }
-      });
+      
+      if (!isInternalBalance) {
+        await tx.account.update({
+          where: { id: finalAccountId, organizationId },
+          data: { balance: { increment: netAmount } }
+        });
+      }
 
       // 3b. CRÉDITO – Ativo: Contas a Receber (Baixa Bruta)
       await tx.transaction.create({
@@ -237,15 +284,18 @@ export class PaymentService {
           paymentMethodId,
           receivableId: receivable.id,
           orderId: receivable.orderId,
+          isVirtual: isInternalBalance, // Se for saldo, é virtual
           userId,
           profileId: receivable.customerId
         }
       });
 
-      await tx.account.update({
-        where: { id: receivableAccountId, organizationId },
-        data: { balance: { decrement: amountPaid } }
-      });
+      if (!isInternalBalance) {
+        await tx.account.update({
+          where: { id: receivableAccountId, organizationId },
+          data: { balance: { decrement: amountPaid } }
+        });
+      }
 
       // 3c. DESPESA – Resultado: Taxas de Pagamento (Se houver)
       if (feeAmount > 0 && feeCategoryId) {

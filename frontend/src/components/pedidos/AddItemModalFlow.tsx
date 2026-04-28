@@ -32,6 +32,8 @@ interface AddItemModalFlowProps {
     editingItem?: ItemPedido | null;
     isOpen: boolean;
     onClose: () => void;
+    maxDiscountThreshold?: number;
+    isPriceUnlocked?: boolean;
 }
 
 type ModalStep = 'selection' | 'configuration';
@@ -42,7 +44,9 @@ const AddItemModalFlow: React.FC<AddItemModalFlowProps> = ({
     onUpdateItem,
     editingItem,
     isOpen,
-    onClose
+    onClose,
+    maxDiscountThreshold = 0.15,
+    isPriceUnlocked = false
 }) => {
     const [currentStep, setCurrentStep] = useState<ModalStep>('selection');
     const [selectedProduct, setSelectedProduct] = useState<SelectableProduct | null>(null);
@@ -156,6 +160,8 @@ const AddItemModalFlow: React.FC<AddItemModalFlowProps> = ({
                     onCancel={handleCancel}
                     editingItem={editingItem}
                     isOpen={isOpen && currentStep === 'configuration'}
+                    maxDiscountThreshold={maxDiscountThreshold}
+                    isPriceUnlocked={isPriceUnlocked}
                 />
             )}
         </>

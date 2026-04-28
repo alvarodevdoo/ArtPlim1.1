@@ -37,6 +37,7 @@ const Pedidos: React.FC = () => {
     showWhatsAppModal, setShowWhatsAppModal,
     showAutomation, setShowAutomation,
     showCancelModal, setShowCancelModal,
+    autoOpenPaymentPedidoId, setAutoOpenPaymentPedidoId,
     // Derivações
     filteredPedidos, kanbanItems, itemsByStatus, overduePedidos, pendingValue,
     // Callbacks
@@ -45,6 +46,7 @@ const Pedidos: React.FC = () => {
     loadPedidos,
     handleItemOrderStatusChange,
     handleStatusChange,
+    handlePaymentSuccess,
     handleBulkStatusChange,
     handleDragEnd,
     handleSelectAll,
@@ -159,7 +161,7 @@ const Pedidos: React.FC = () => {
 
       {/* List View */}
       {viewMode === 'list' && (
-        <PedidosList
+      <PedidosList
           filteredPedidos={filteredPedidos}
           selectedPedidos={selectedPedidos}
           processStatuses={processStatuses}
@@ -171,6 +173,7 @@ const Pedidos: React.FC = () => {
           setShowCancelModal={setShowCancelModal}
           debouncedSearch={debouncedSearch}
           statusFilter={statusFilter}
+          onOrderUpdated={(updated) => loadPedidos(debouncedSearch)}
         />
       )}
 
@@ -178,8 +181,13 @@ const Pedidos: React.FC = () => {
       <OrderDetailsModal
         pedido={selectedPedido}
         isOpen={!!selectedPedido && !showCancelModal && !showWhatsAppModal && !showMaterialCalculator}
-        onClose={() => setSelectedPedido(null)}
+        onClose={() => {
+          setSelectedPedido(null);
+          setAutoOpenPaymentPedidoId(null);
+        }}
         onStatusChange={handleStatusChange}
+        onPaymentSuccess={handlePaymentSuccess}
+        autoOpenPayment={!!selectedPedido && selectedPedido.id === autoOpenPaymentPedidoId}
         onCancelRequest={() => setShowCancelModal(true)}
         onWhatsAppRequest={() => setShowWhatsAppModal(true)}
         onMaterialRequest={(item) => {

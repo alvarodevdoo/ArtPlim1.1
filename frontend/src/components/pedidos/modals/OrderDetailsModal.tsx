@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { DatasOrcamento } from '@/components/ui/DatasOrcamento';
 import { 
   Printer, FileText, User, MessageSquare, Send, Calendar, 
-  Package, Activity, XCircle, Calculator, ChevronRight
+  Package, Activity, XCircle, Calculator, ChevronRight, AlertCircle
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { sendOrderWhatsApp } from '@/lib/whatsapp';
@@ -12,8 +12,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Pedido, ProcessStatus, statusConfig } from '@/types/pedidos';
 import { OrderFinancialStatus } from '../../sales/OrderFinancialStatus';
 import { PaymentSelection } from '../../sales/PaymentSelection';
+import { CustomerBalanceAlert } from '../../sales/CustomerBalanceAlert';
 import PartialCancelModal from './PartialCancelModal';
 import PartialDeliveryModal from './PartialDeliveryModal';
+import { WasteModal } from './WasteModal';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 
@@ -26,6 +28,8 @@ interface OrderDetailsModalProps {
   onWhatsAppRequest: () => void;
   onMaterialRequest?: (item: any) => void;
   processStatuses?: ProcessStatus[];
+  autoOpenPayment?: boolean;
+  onPaymentSuccess?: (pedidoId: string) => void;
 }
 
 const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
@@ -36,15 +40,20 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   onCancelRequest,
   onWhatsAppRequest,
   onMaterialRequest,
-  processStatuses = []
+  processStatuses = [],
+  autoOpenPayment = false,
+  onPaymentSuccess
 }) => {
   const { hasPermission } = useAuth();
   const [receivable, setReceivable] = React.useState<any>(null);
   const [loadingFinancial, setLoadingFinancial] = React.useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = React.useState(false);
+  const [paymentDefaultMethod, setPaymentDefaultMethod] = React.useState<string | undefined>(undefined);
+  const [selectedWasteItem, setSelectedWasteItem] = React.useState<any>(null);
   
   // Parciais (Cancelamento e Entregas)
   const [selectedItemIds, setSelectedItemIds] = React.useState<string[]>([]);
+  const [customerDetails, setCustomerDetails] = React.useState<any>(null);
   const [showPartialCancelModal, setShowPartialCancelModal] = React.useState(false);
   const [showPartialDeliveryModal, setShowPartialDeliveryModal] = React.useState(false);
 
@@ -78,13 +87,41 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
     }
   }, [pedido?.id, hasPermission]);
 
+  const fetchCustomerDetails = React.useCallback(async () => {
+    if (!pedido?.customerId) return;
+    try {
+      const response = await api.get(`/api/profiles/${pedido.customerId}`);
+      setCustomerDetails(response.data.data);
+    } catch (error) {
+      console.error('Erro ao carregar saldo do cliente:', error);
+    }
+  }, [pedido?.customerId]);
+
   React.useEffect(() => {
     if (isOpen) {
       fetchFinancialData();
+      fetchCustomerDetails();
     } else {
       setReceivable(null);
+      setCustomerDetails(null);
     }
-  }, [isOpen, fetchFinancialData]);
+  }, [isOpen, fetchFinancialData, fetchCustomerDetails]);
+
+  React.useEffect(() => {
+    if (isOpen && autoOpenPayment) {
+      console.log('[OrderDetailsModal] Tentativa de abertura automática de pagamento...', { 
+        hasReceivable: !!receivable, 
+        loading: loadingFinancial 
+      });
+      
+      if (receivable && !loadingFinancial) {
+        setIsPaymentModalOpen(true);
+      } else if (!loadingFinancial && !receivable) {
+        // Se já terminou de carregar e não achou nada, avisa o usuário
+        toast.error('Este pedido não possui apropriação financeira vinculada para registro de pagamento.');
+      }
+    }
+  }, [isOpen, autoOpenPayment, receivable, loadingFinancial]);
 
   if (!isOpen || !pedido) return null;
 
@@ -135,7 +172,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex-1 overflow-y-auto">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
               {/* Informações do Cliente */}
@@ -238,6 +275,9 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                       const area = (w * h) / 1000000;
                       const isSelected = selectedItemIds.includes(item.id);
                       const isCancelledOrDelivered = item.status === 'CANCELLED' || item.status === 'DELIVERED';
+                      
+                      const marginCostRatio = (item.unitCostAtSale && item.unitPriceAtSale) ? (Number(item.unitCostAtSale) / Number(item.unitPriceAtSale)) : 0;
+                      const isCriticalMargin = marginCostRatio >= 0.70;
 
                       return (
                         <div key={item.id} className={`border rounded-lg p-4 transition-colors ${isSelected ? 'border-primary bg-primary/5' : 'border-border'} ${isCancelledOrDelivered ? 'opacity-60 saturate-50' : ''}`}>
@@ -259,6 +299,11 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                                   {isCancelledOrDelivered && (
                                     <span className={`px-2 py-0.5 text-xs font-bold rounded ${item.status === 'CANCELLED' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
                                       {item.status === 'CANCELLED' ? 'CANCELADO' : 'ENTREGUE'}
+                                    </span>
+                                  )}
+                                  {isCriticalMargin && item.status !== 'CANCELLED' && (
+                                    <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-rose-100 text-rose-700 border border-rose-200 flex items-center shadow-sm">
+                                      <AlertCircle className="w-3 h-3 mr-1" /> MARGEM CRÍTICA
                                     </span>
                                   )}
                                 </div>
@@ -284,9 +329,12 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                               
                               {/* ── Info do Motor de Composição (Snapshot) ── */}
                               {hasFinancialAccess() && item.unitCostAtSale !== undefined && item.unitCostAtSale !== null && (
-                                <div className="mt-2 p-2 bg-slate-50 border border-slate-200 rounded text-[10px] text-right font-mono">
-                                  <div className="text-slate-500 uppercase font-bold tracking-tighter">Lucro de Venda</div>
-                                  <div className={`text-sm font-black ${item.profitAtSale > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                <div className={`mt-2 p-2 border rounded text-[10px] text-right font-mono transition-colors ${isCriticalMargin ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>
+                                  <div className={`uppercase font-bold tracking-tighter flex items-center justify-end gap-1 ${isCriticalMargin ? 'text-rose-600' : 'text-slate-500'}`}>
+                                    {isCriticalMargin && <AlertCircle className="w-3 h-3" />}
+                                    Lucro de Venda
+                                  </div>
+                                  <div className={`text-sm font-black flex items-center justify-end gap-1 ${item.profitAtSale > 0 ? (isCriticalMargin ? 'text-rose-600' : 'text-emerald-600') : 'text-red-600'}`}>
                                     {formatCurrency(item.profitAtSale)}/un
                                   </div>
                                   {item.unitCostAtSale > 0 && (
@@ -305,6 +353,17 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                                   onClick={() => onMaterialRequest(item)}
                                 >
                                   <Calculator className="w-3 h-3 mr-1" /> Material
+                                </Button>
+                              )}
+
+                              {!isCancelledOrDelivered && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="mt-1 w-full text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-transparent shadow-none"
+                                  onClick={() => setSelectedWasteItem(item)}
+                                >
+                                  <AlertCircle className="w-3 h-3 mr-1" /> Registrar Perda
                                 </Button>
                               )}
                             </div>
@@ -379,10 +438,19 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                         methodName: t.paymentMethod?.name || 'Não informado',
                         amount: Number(t.amount),
                         date: t.paidAt,
-                        installments: 1 // TODO: Support installments in transaction
+                        installments: 1
                       }))}
-                      onAddPayment={() => setIsPaymentModalOpen(true)}
-                      onRemovePayment={() => {}} // TODO: Implement delete transaction
+                      onAddPayment={() => {
+                        setPaymentDefaultMethod(undefined);
+                        setIsPaymentModalOpen(true);
+                      }}
+                      onRemovePayment={() => {}}
+                      customerBalance={Number(customerDetails?.balance || 0)}
+                      lastBalanceMovement={customerDetails?.balanceMovements?.[0] || null}
+                      onUseBalance={() => {
+                        setPaymentDefaultMethod('BALANCE');
+                        setIsPaymentModalOpen(true);
+                      }}
                     />
                   ) : pedido.status === 'APPROVED' || pedido.status === 'IN_PRODUCTION' || pedido.status === 'FINISHED' || pedido.status === 'DELIVERED' ? (
                     <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-sm italic">
@@ -405,9 +473,14 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                   remainingAmount={Number(receivable.amount) - (receivable.transactions?.reduce((sum: number, t: any) => sum + Number(t.amount), 0) || 0)}
                   receivableId={receivable.id}
                   receivableAccountId={receivable.receivableAccountId}
+                  availableBalance={Number(customerDetails?.balance || 0)}
+                  defaultMethodId={paymentDefaultMethod}
                   onSuccess={() => {
                     fetchFinancialData();
                     setIsPaymentModalOpen(false);
+                    if (onPaymentSuccess && pedido?.id) {
+                      onPaymentSuccess(pedido.id);
+                    }
                   }}
                 />
               )}
@@ -485,6 +558,17 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         onSuccess={() => {
           setSelectedItemIds([]);
           toast.success('Entrega gerada! Reabra o pedido para atualizar a visualização interna.');
+        }}
+      />
+
+      <WasteModal
+        isOpen={!!selectedWasteItem}
+        onClose={() => setSelectedWasteItem(null)}
+        orderId={pedido?.id || ''}
+        item={selectedWasteItem}
+        onSuccess={() => {
+          fetchFinancialData();
+          // Aqui no futuro poderia forçar recarregamento das linhas.
         }}
       />
     </div>

@@ -5,20 +5,28 @@ import { NotFoundError, ValidationError } from '../../../../shared/infrastructur
 import { ProcessStatusService } from '../../../organization/services/ProcessStatusService';
 import { ReceivableService } from '../../../finance/services/ReceivableService';
 import { OrderStatus as OrderStatusPrisma } from '@prisma/client';
+import { ProfileBalanceService } from '../../../profiles/services/ProfileBalanceService';
 
 export class UpdateOrderStatusUseCase {
   constructor(
     private orderRepository: OrderRepository,
     private prisma: any, // Injetar prisma para transações financeiras
-    private processStatusService: ProcessStatusService
-  ) { }
+    private processStatusService: ProcessStatusService,
+    private balanceService?: ProfileBalanceService
+  ) { 
+    if (!this.balanceService) {
+      this.balanceService = new ProfileBalanceService(this.prisma);
+    }
+  }
 
   async execute(id: string, status: string, details?: { userId?: string, reason?: string, paymentAction?: string, refundAmount?: number }): Promise<Order> {
     console.log(`[UpdateOrderStatus] Iniciando atualização do pedido ${id} para status ${status}`, { details });
 
-    // Validar status
+    // Validar status (pode ser um Enum ou um UUID de status customizado)
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(status);
     const validStatuses = Object.values(OrderStatusEnum);
-    if (!validStatuses.includes(status as OrderStatusEnum)) {
+    
+    if (!isUUID && !validStatuses.includes(status as OrderStatusEnum)) {
       throw new ValidationError('Status inválido');
     }
 
@@ -27,10 +35,7 @@ export class UpdateOrderStatusUseCase {
       throw new NotFoundError('Pedido');
     }
 
-    const newStatus = new OrderStatus(status as OrderStatusEnum);
-
-    // Lógica para Status Customizado (UUID)
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(status);
+    let targetStatusBehavior = status;
 
     if (isUUID) {
       // É um Status Customizado
@@ -41,56 +46,49 @@ export class UpdateOrderStatusUseCase {
 
       // Atualizar ID do status customizado
       order.updateProcessStatusId(customStatus.id);
+      targetStatusBehavior = customStatus.mappedBehavior;
+    }
 
-      // Mapear para o comportamento do sistema (Enum legado)
-      // Se for CANCELLED no comportamento, executa lógica de cancelamento abaixo
-      if (customStatus.mappedBehavior === OrderStatusEnum.CANCELLED) {
-        // Deixa passar para o bloco de cancelamento
-        status = OrderStatusEnum.CANCELLED;
-      } else {
-        // Atualiza o status legado para o comportamento mapeado
-        order.changeStatus(new OrderStatus(customStatus.mappedBehavior as OrderStatusEnum));
+    // Processar Cancelamento
+    if (targetStatusBehavior === OrderStatusEnum.CANCELLED) {
+      console.log(`[UpdateOrderStatus] Processando cancelamento do pedido ${id}. Ação: ${details?.paymentAction}`);
+      order.cancel(details);
+
+      // Lógica Financeira do Cancelamento
+      if (details?.paymentAction && details?.paymentAction !== 'NONE' && details?.refundAmount && Number(details.refundAmount) > 0) {
+        await this.processFinancialAction(order, details);
       }
     } else {
-      if (status === OrderStatusEnum.CANCELLED) {
-        console.log(`[UpdateOrderStatus] Processando cancelamento do pedido ${id}`);
-        order.cancel(details);
-
-        // Lógica Financeira do Cancelamento
-        if (details?.paymentAction && details?.paymentAction !== 'NONE' && details?.refundAmount && details.refundAmount > 0) {
-          await this.processFinancialAction(order, details);
-        }
-      } else {
-        // Se não for UUID e não for cancelado, atualiza status legado normalmente
-        order.changeStatus(newStatus);
-        
-        // --- INÍCIO DA INTEGRAÇÃO FINANCEIRA ---
-        if (status === OrderStatusEnum.APPROVED) {
-          console.log(`[UpdateOrderStatus] Detectado status APPROVED. Iniciando apropriação financeira para o pedido ${id}`);
-          await this.handleAppropriation(order, details);
-        }
-        // --- FIM DA INTEGRAÇÃO FINANCEIRA ---
-
-        // Se estiver finalizando o pedido, atualizar campos do regime de competência
-        if (newStatus.isFinished()) {
-          console.log(`[UpdateOrderStatus] Pedido FINALIZADO. Atualizando accrualDate das transações para hoje.`);
-          
-          const now = new Date();
-          
-          // Atualizar accrualDate de todas as transações de receita (INCOME) deste pedido
-          await this.prisma.transaction.updateMany({
-            where: { 
-              orderId: order.id, 
-              type: 'INCOME' 
-            },
-            data: {
-              accrualDate: now
-            }
-          });
-          
-          order.finishedAt = now;
-        }
+      // Atualização de Status Normal
+      const statusEnumValue = targetStatusBehavior as OrderStatusEnum;
+      order.changeStatus(new OrderStatus(statusEnumValue));
+      
+      // --- INÍCIO DA INTEGRAÇÃO FINANCEIRA ---
+      if (statusEnumValue === OrderStatusEnum.APPROVED) {
+        console.log(`[UpdateOrderStatus] Detectado status APPROVED. Iniciando apropriação financeira para o pedido ${id}`);
+        await this.handleAppropriation(order, details);
       }
+      
+      // Se estiver finalizando o pedido, atualizar campos do regime de competência
+      if (statusEnumValue === OrderStatusEnum.FINISHED) {
+        console.log(`[UpdateOrderStatus] Pedido FINALIZADO. Atualizando accrualDate das transações para hoje.`);
+        
+        const now = new Date();
+        
+        // Atualizar accrualDate de todas as transações de receita (INCOME) deste pedido
+        await this.prisma.transaction.updateMany({
+          where: { 
+            orderId: order.id, 
+            type: 'INCOME' 
+          },
+          data: {
+            accrualDate: now
+          }
+        });
+        
+        order.finishedAt = now;
+      }
+      // --- FIM DA INTEGRAÇÃO FINANCEIRA ---
     }
 
     const savedOrder = await this.orderRepository.save(order);
@@ -247,12 +245,16 @@ export class UpdateOrderStatusUseCase {
         console.log(`[UpdateOrderStatus] Transação de reembolso criada na conta ${account.name}`);
       }
     } else if (details.paymentAction === 'CREDIT') {
-      // Adicionar crédito ao saldo do Profile do cliente
-      await this.prisma.profile.update({
-        where: { id: order.customerId },
-        data: { balance: { increment: refundAmount } }
+      // Adicionar crédito ao saldo do Profile do cliente usando o serviço
+      await this.balanceService?.addCredit({
+        profileId: order.customerId,
+        organizationId: order.organizationId,
+        amount: refundAmount,
+        description: `Crédito por cancelamento do pedido #${order.orderNumber.value}`,
+        orderId: order.id,
+        userId: details.userId
       });
-      console.log(`[UpdateOrderStatus] Crédito de ${refundAmount} adicionado ao saldo do cliente ${order.customerId}`);
+      console.log(`[UpdateOrderStatus] Crédito de ${refundAmount} processado via ProfileBalanceService para o cliente ${order.customerId}`);
     }
   }
 }

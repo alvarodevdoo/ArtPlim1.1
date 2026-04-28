@@ -1,13 +1,16 @@
 import { addDays } from 'date-fns';
 import { Order } from '../../domain/entities/Order';
-import { OrderItem } from '../../domain/entities/OrderItem';
+import { OrderItem, DiscountStatus } from '../../domain/entities/OrderItem';
 import { OrderRepository } from '../../domain/repositories/OrderRepository';
+import { OrderStatusEnum } from '../../domain/value-objects/OrderStatus';
 import { Money } from '../../../../shared/domain/value-objects/Money';
 import { Dimensions } from '../../../../shared/domain/value-objects/Dimensions';
 import { PricingEngine } from '../../../../shared/application/pricing/PricingEngine';
 import { NotFoundError, ValidationError } from '../../../../shared/infrastructure/errors/AppError';
 import { CreateOrderDTO } from '../dto/CreateOrderDTO';
 import { PendingChangesService } from '../../../production/services/PendingChangesService';
+import { DiscountService, DiscountItemInput } from '../../domain/services/DiscountService';
+import { CommissionService } from '../../domain/services/CommissionService';
 
 export interface CustomerService {
   findById(id: string): Promise<{ id: string; organizationId: string } | null>;
@@ -109,21 +112,39 @@ export class UpdateOrderUseCase {
 
     // Buscar configurações da organização
     const settings = await this.organizationService.getSettings(customer.organizationId);
-    const validadeOrcamento = settings?.validadeOrcamento || 7; // padrão 7 dias
+    const validadeOrcamento = settings?.validadeOrcamento || 7;
 
-    // Calcular validade do orçamento
+    const org = await this.prisma?.organization.findUnique({
+      where: { id: customer.organizationId },
+      select: { defaultCommissionRate: true, maxDiscountThreshold: true }
+    });
+    const defaultCommissionRate = org?.defaultCommissionRate ? Number(org.defaultCommissionRate) : 0;
+    const maxDiscountThreshold = org?.maxDiscountThreshold !== null && org?.maxDiscountThreshold !== undefined 
+      ? Number(org.maxDiscountThreshold) 
+      : 0.15;
+
     const now = new Date();
     const validUntil = addDays(now, validadeOrcamento);
 
-    // Processar itens
     const orderItems: OrderItem[] = [];
+    const discountInputs: DiscountItemInput[] = [];
+    const productsInfo = new Map<string, { isCommissionable: boolean; specificCommissionRate: number | null }>();
 
-    for (const itemData of data.items) {
-      // Buscar produto
+    for (let index = 0; index < data.items.length; index++) {
+      const itemData = data.items[index];
       const product = await this.productService.findById(itemData.productId);
       if (!product) {
         throw new NotFoundError(`Produto ${itemData.productId}`);
       }
+
+      const dbProduct = await this.prisma?.product.findUnique({
+        where: { id: product.id },
+        select: { isCommissionable: true, specificCommissionRate: true }
+      });
+      productsInfo.set(itemData.productId, {
+        isCommissionable: dbProduct?.isCommissionable ?? true,
+        specificCommissionRate: dbProduct?.specificCommissionRate ? Number(dbProduct.specificCommissionRate) : null
+      });
 
       const selectedOptions = itemData.attributes?.selectedOptions || {};
       const selectedOptionIds = Object.values(selectedOptions).filter(id => !!id) as string[];
@@ -149,7 +170,11 @@ export class UpdateOrderUseCase {
         insumos_snapshot: pricing.insumos
       };
 
+      // Tenta encontrar o item correspondente no pedido existente para preservar o status
+      const existingItem = existingOrder.items.find(ei => ei.productId === itemData.productId && ei.quantity === itemData.quantity);
+
       const orderItem = new OrderItem({
+        id: itemData.id, // Preservar ID se enviado
         productId: itemData.productId,
         dimensions: new Dimensions(itemData.width, itemData.height),
         quantity: itemData.quantity,
@@ -158,6 +183,10 @@ export class UpdateOrderUseCase {
         unitPrice: new Money(unitPrice),
         notes: itemData.notes,
         attributes, // Salvar snapshot
+
+        // Preservar status se o item já existia
+        status: itemData.status || existingItem?.status || OrderStatusEnum.DRAFT,
+        processStatusId: itemData.processStatusId || existingItem?.processStatusId,
 
         // Campos específicos por tipo
         area: itemData.area,
@@ -172,28 +201,82 @@ export class UpdateOrderUseCase {
         // Tamanho personalizado
         customSizeName: itemData.customSizeName,
         isCustomSize: itemData.isCustomSize,
-        pricingRuleId: itemData.pricingRuleId || product.pricingRuleId // VINCULAR VERSÃO HISTÓRICA OU ATUAL DA REGRA
+        pricingRuleId: itemData.pricingRuleId || product.pricingRuleId,
+        discountStatus: (itemData.discountStatus as DiscountStatus) || DiscountStatus.NONE
       });
 
       orderItems.push(orderItem);
+
+      discountInputs.push({
+        id: index.toString(),
+        unitPrice: Number(unitPrice),
+        quantity: itemData.quantity,
+        discountItem: itemData.discount || 0,
+        discountStatus: itemData.discountStatus
+      });
     }
 
-    // Calcular subtotal
+    const discountService = new DiscountService();
+    const commissionService = new CommissionService();
+
+    const globalDiscount = data.globalDiscount || 0;
+
+    const discountOutputs = discountService.execute({
+      items: discountInputs,
+      globalDiscount,
+      maxDiscountThreshold,
+      globalDiscountStatus: data.discountStatus
+    });
+
+    discountOutputs.forEach((output, index) => {
+      const orderItem = orderItems[index];
+      const productInfo = productsInfo.get(orderItem.productId);
+
+      orderItem.applyDiscount(
+        new Money(output.discountItem),
+        new Money(output.discountGlobal)
+      );
+
+      const commissionOutput = commissionService.execute({
+        netPrice: output.netPrice,
+        isCommissionable: productInfo?.isCommissionable ?? true,
+        specificCommissionRate: productInfo?.specificCommissionRate,
+        defaultCommissionRate
+      });
+
+      orderItem.applyCommission(
+        commissionOutput.commissionRateApplied,
+        new Money(commissionOutput.commissionAmount)
+      );
+    });
+
+    // Calcular subtotais e totais finais
     const subtotal = orderItems.reduce(
-      (sum, item) => sum.add(item.totalPrice),
+      (sum, item) => sum.add(item.unitPrice.multiply(item.quantity)),
       Money.zero()
     );
+
+    const totalDiscounts = orderItems.reduce(
+      (sum, item) => sum.add(item.discountItem).add(item.discountGlobal),
+      Money.zero()
+    );
+
+    const total = subtotal.subtract(totalDiscounts);
 
     // Atualizar pedido existente
     existingOrder.updateDetails({
       customerId: data.customerId,
       items: orderItems,
       subtotal,
-      total: subtotal, // Mantendo discount e tax zerados por enquanto
+      total,
       deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : undefined,
       validUntil,
-      notes: data.notes || undefined
+      notes: data.notes || undefined,
+      discountStatus: (data.discountStatus as DiscountStatus) || DiscountStatus.NONE
     });
+
+    // O desconto precisa ser aplicado aqui também, para atualizar _discount
+    existingOrder.applyDiscount(totalDiscounts);
 
     // Salvar no repositório
     const updatedOrder = await this.orderRepository.save(existingOrder);

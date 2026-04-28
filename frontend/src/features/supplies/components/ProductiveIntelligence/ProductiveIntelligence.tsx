@@ -9,6 +9,7 @@ import {
   ConsumptionRule, 
   DimUnit 
 } from './types';
+import CurrencyInput from '@/components/ui/CurrencyInput';
 
 interface Props {
   value: ProductiveIntelligenceData;
@@ -155,22 +156,11 @@ export const ProductiveIntelligence: React.FC<Props> = ({
 
             <div className={styles.field}>
               <label>Preço de Compra (Unidade Inteira/NF)</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground italic">R$</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={value.purchasePrice || 0}
-                  onChange={e => {
-                    const val = parseFloat(e.target.value) || 0;
-                    onChange({ ...value, purchasePrice: val });
-                  }}
-                  className="font-bold bg-primary/5 border-primary/20"
-                  style={{ paddingLeft: '36px' }}
-                  placeholder="0,00"
-                />
-              </div>
+              <CurrencyInput
+                value={value.purchasePrice || 0}
+                onValueChange={val => onChange({ ...value, purchasePrice: val || 0 })}
+                className="font-bold bg-primary/5 border-primary/20 h-11"
+              />
               <p className="text-[9px] text-muted-foreground italic mt-1">* Digite o valor da chapa para calcular o custo unitário.</p>
             </div>
 

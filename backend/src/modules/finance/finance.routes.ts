@@ -8,6 +8,7 @@ import { AccountPayableService } from './services/AccountPayableService';
 import { PaymentService } from './services/PaymentService';
 import { ReceivableService } from './services/ReceivableService';
 import { FinancialReportService } from './services/FinancialReportService';
+import { RecurringBillService } from './services/RecurringBillService';
 import { AccountType, TransactionType, CategoryType } from '@prisma/client';
 
 const listQuerySchema = z.object({
@@ -55,6 +56,21 @@ const createChartAccountSchema = z.object({
   code: z.string(),
   name: z.string(),
   type: z.string().optional()
+});
+
+const createRecurringBillSchema = z.object({
+  name: z.string(),
+  description: z.string().optional().nullable(),
+  amount: z.number().positive(),
+  dueDay: z.number().int().min(1).max(31),
+  categoryId: z.string().uuid().optional().nullable(),
+  supplierId: z.string().uuid().optional().nullable(),
+  active: z.boolean().optional()
+});
+
+const generateRecurringBillsSchema = z.object({
+  year: z.number().int().min(2000),
+  month: z.number().int().min(1).max(12)
 });
 
 export async function financeRoutes(fastify: FastifyInstance) {
@@ -417,9 +433,9 @@ export async function financeRoutes(fastify: FastifyInstance) {
   });
 
   const payReceivableSchema = z.object({
-    paymentAccountId: z.string().uuid(),
+    paymentAccountId: z.string().uuid().optional(),
     receivableAccountId: z.string().uuid(),
-    paymentMethodId: z.string().uuid(),
+    paymentMethodId: z.string(),
     amountPaid: z.number().positive(),
     feeAmount: z.number().min(0).optional(),
     feeCategoryId: z.string().uuid().optional(),
@@ -448,6 +464,55 @@ export async function financeRoutes(fastify: FastifyInstance) {
     return reply.send({ success: true, data: receivable });
   });
 
+  // ========== CONTAS RECORRENTES ==========
+
+  fastify.get('/recurring-bills', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new RecurringBillService(prisma);
+    const bills = await service.list(request.user!.organizationId);
+    return reply.send({ success: true, data: bills });
+  });
+
+  fastify.post('/recurring-bills', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const data = createRecurringBillSchema.parse(request.body);
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new RecurringBillService(prisma);
+    const bill = await service.create({
+      ...data,
+      organizationId: request.user!.organizationId
+    });
+    return reply.code(201).send({ success: true, data: bill });
+  });
+
+  fastify.put('/recurring-bills/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const data = createRecurringBillSchema.partial().parse(request.body);
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new RecurringBillService(prisma);
+    const bill = await service.update(id, request.user!.organizationId, data);
+    return reply.send({ success: true, data: bill });
+  });
+
+  fastify.delete('/recurring-bills/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new RecurringBillService(prisma);
+    await service.delete(id, request.user!.organizationId);
+    return reply.send({ success: true, message: 'Conta recorrente removida.' });
+  });
+
+  fastify.post('/recurring-bills/generate-month', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const data = generateRecurringBillsSchema.parse(request.body);
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new RecurringBillService(prisma);
+    const result = await service.generateMonthlyPayables(
+      request.user!.organizationId,
+      data.year,
+      data.month
+    );
+    return reply.send({ success: true, data: result });
+  });
+
   // ========== RELATÓRIOS FINANCEIROS ==========
 
   const periodQuerySchema = z.object({
@@ -472,6 +537,21 @@ export async function financeRoutes(fastify: FastifyInstance) {
     });
 
     return reply.send({ success: true, data: dre });
+  });
+
+  // GET /api/finance/reports/cnq?startDate=2025-01-01&endDate=2025-12-31
+  fastify.get('/reports/cnq', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const query = periodQuerySchema.parse(request.query);
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new FinancialReportService(prisma as any);
+
+    const cnq = await service.generateCnqReport({
+      organizationId: request.user!.organizationId,
+      startDate: new Date(query.startDate),
+      endDate: new Date(query.endDate)
+    });
+
+    return reply.send({ success: true, data: cnq });
   });
 
   // GET /api/finance/reports/cash-flow?startDate=...&endDate=...&bankAccountIds=id1,id2

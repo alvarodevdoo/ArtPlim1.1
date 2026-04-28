@@ -17,7 +17,16 @@ export class OPGeneratorService {
    */
   async generateForOrderItem(orderItemId: string, organizationId: string, tx?: any): Promise<any> {
     const db = tx || this.prisma;
-    // 1. Buscar o item com o snapshot e o produto (incluindo operações e categoria)
+
+    // 1. Buscar se já existe uma OP para este item (evitar erro de restrição única)
+    const existingOp = await db.productionOrder.findUnique({
+      where: { orderItemId },
+      include: { steps: true }
+    });
+
+    if (existingOp) return existingOp;
+
+    // 2. Buscar o item com o snapshot e o produto (incluindo operações e categoria)
     const item = await db.orderItem.findUnique({
       where: { id: orderItemId },
       include: {
@@ -90,7 +99,7 @@ export class OPGeneratorService {
   async generateForOrder(orderId: string, organizationId: string, tx?: any): Promise<number> {
     const db = tx || this.prisma;
     const items = await db.orderItem.findMany({
-      where: { orderId, organizationId }
+      where: { orderId }
     });
 
     let count = 0;

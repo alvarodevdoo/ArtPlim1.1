@@ -32,6 +32,8 @@ export interface Cliente {
     email?: string;
     phone?: string;
     document?: string;
+    exemptFromDeposit?: boolean;
+    balance?: number;
 }
 
 export interface ItemPedido {
@@ -71,4 +73,16 @@ export interface ItemPedido {
         mappedBehavior: string;
     };
     status?: string;
+    
+    // Financial Snapshots (Motor de Composição)
+    unitCostAtSale?: number;
+    unitPriceAtSale?: number;
+    profitAtSale?: number;
+    compositionSnapshot?: any;
+    confirmedAt?: string;
+
+    discountItem?: number;
+    discountGlobal?: number;
+    commissionRateApplied?: number;
+    commissionAmount?: number;
 }

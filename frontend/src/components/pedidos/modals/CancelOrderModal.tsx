@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/Input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { XCircle } from 'lucide-react';
+import api from '@/lib/api';
 
 export interface PedidoCustomer {
   id: string;
@@ -41,7 +42,7 @@ const CancelOrderModal: React.FC<CancelOrderModalProps> = ({
 
   const totalPaid = pedido?.transactions
     ? pedido.transactions
-        .filter(t => t.status === 'PAID' && t.type === 'INCOME')
+        .filter(t => t.status === 'PAID' && (t.type === 'INCOME' || t.type === 'DEBIT'))
         .reduce((sum, t) => sum + Number(t.amount || 0), 0)
     : 0;
 
@@ -88,7 +89,7 @@ const CancelOrderModal: React.FC<CancelOrderModalProps> = ({
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Selecione a ação" />
               </SelectTrigger>
-              <SelectContent className="z-[70]">
+              <SelectContent className="z-[200]">
                 <SelectItem value="NONE">Nenhuma (Apenas cancelar)</SelectItem>
                 <SelectItem value="REFUND" disabled={totalPaid <= 0}>Solicitar Estorno/Devolução</SelectItem>
                 <SelectItem value="CREDIT" disabled={totalPaid <= 0}>Converter em Crédito para o Cliente</SelectItem>

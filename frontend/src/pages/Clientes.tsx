@@ -20,6 +20,7 @@ interface Cliente {
   zipCode?: string;
   type: 'INDIVIDUAL' | 'COMPANY';
   isCustomer: boolean;
+  exemptFromDeposit?: boolean;
   _count?: {
     orders: number;
   };
@@ -45,7 +46,8 @@ const Clientes: React.FC = () => {
     type: 'INDIVIDUAL' as 'INDIVIDUAL' | 'COMPANY',
     isCustomer: true,
     isSupplier: false,
-    isEmployee: false
+    isEmployee: false,
+    exemptFromDeposit: false
   });
 
   useEffect(() => {
@@ -218,7 +220,8 @@ const Clientes: React.FC = () => {
       type: cliente.type,
       isCustomer: cliente.isCustomer,
       isSupplier: (cliente as any).isSupplier || false,
-      isEmployee: (cliente as any).isEmployee || false
+      isEmployee: (cliente as any).isEmployee || false,
+      exemptFromDeposit: (cliente as any).exemptFromDeposit || false
     });
     setShowForm(true);
   };
@@ -249,7 +252,8 @@ const Clientes: React.FC = () => {
       type: 'INDIVIDUAL',
       isCustomer: true,
       isSupplier: false,
-      isEmployee: false
+      isEmployee: false,
+      exemptFromDeposit: false
     });
   };
 
@@ -415,6 +419,27 @@ const Clientes: React.FC = () => {
                           className="rounded border-input h-4 w-4"
                         />
                         <span className="text-sm">Colaborador</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Financeiro */}
+                  <div className="md:col-span-2 space-y-2 border-t pt-2 mt-2">
+                    <label className="text-sm font-medium block mb-2 text-primary">Financeiro</label>
+                    <div className="bg-primary/5 p-3 rounded-md border border-primary/20">
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.exemptFromDeposit}
+                          onChange={(e) => setFormData(prev => ({ ...prev, exemptFromDeposit: e.target.checked }))}
+                          className="rounded border-input h-4 w-4 text-primary"
+                        />
+                        <div className="space-y-0.5">
+                          <span className="text-sm font-semibold text-primary">Isento de Sinal Mínimo</span>
+                          <p className="text-xs text-muted-foreground">
+                            Ative esta opção para permitir que este cliente crie pedidos sem o pagamento de entrada obrigatório (50%).
+                          </p>
+                        </div>
                       </label>
                     </div>
                   </div>

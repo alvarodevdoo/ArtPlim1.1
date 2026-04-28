@@ -4,6 +4,8 @@ export interface CreateOrderItemDTO {
   height: number;
   quantity: number;
   unitPrice?: number;
+  discount?: number;
+  discountStatus?: string;
   notes?: string;
   
   // Campos específicos por tipo
@@ -26,6 +28,8 @@ export interface CreateOrderItemDTO {
 export interface CreateOrderDTO {
   customerId: string;
   items: CreateOrderItemDTO[];
+  globalDiscount?: number;
+  discountStatus?: string;
   deliveryDate?: string | null;
   notes?: string | null;
 }

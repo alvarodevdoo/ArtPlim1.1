@@ -18,6 +18,9 @@ export interface ProductDraft {
   sellWithoutStock: boolean;
   formulaData?: any;
   pricingRuleId?: string;
+  isCommissionable?: boolean;
+  specificCommissionRate?: number;
+  maxDiscountThreshold?: number;
 }
 
 // ─── BOM (Ficha Técnica) Draft ─────────────────────────────────────────────────

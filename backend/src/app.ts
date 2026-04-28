@@ -7,7 +7,12 @@ import { AppError } from './shared/infrastructure/errors/AppError';
 
 // Routes
 import { authRoutes } from './modules/auth/auth.routes';
-import { salesRoutes } from './modules/sales/sales.routes';
+import { SalesModule } from './modules/sales/SalesModule'; // Nova Arquitetura
+import { ProfileService } from './modules/profiles/services/ProfileService';
+import { ProductService } from './modules/catalog/services/ProductService';
+import { OrganizationService } from './modules/organization/services/OrganizationService';
+import { prisma } from './shared/infrastructure/database/prisma';
+
 import { catalogRoutes } from './modules/catalog/catalog.routes';
 import { profilesRoutes } from './modules/profiles/profiles.routes';
 import { organizationRoutes } from './modules/organization/organization.routes';
@@ -80,7 +85,16 @@ async function registerRoutes(fastify: FastifyInstance, options: { websocketServ
 
   await fastify.register(async function (api) {
     await api.register(authRoutes, { prefix: '/auth' });
-    await api.register(salesRoutes, { prefix: '/sales' }); // Vendas ficam em /api/sales (pedidos, simulação, etc)
+    
+    // Configurar e Registrar Módulo de Vendas (Novo)
+    const salesModule = new SalesModule(
+      prisma,
+      new ProfileService(prisma),
+      new ProductService(prisma),
+      new OrganizationService(prisma)
+    );
+    await api.register((instance) => salesModule.registerRoutes(instance), { prefix: '/sales' });
+
     await api.register(catalogRoutes, { prefix: '/catalog' });
     await api.register(profilesRoutes, { prefix: '/profiles' });
     await api.register(organizationRoutes, { prefix: '/organization' });

@@ -247,20 +247,18 @@ export class TransactionService {
           amount: true
         }
       }),
-      this.prisma.transaction.aggregate({
+      this.prisma.accountReceivable.aggregate({
         where: {
           organizationId,
-          type: 'INCOME',
           status: 'PENDING'
         },
         _sum: {
           amount: true
         }
       }),
-      this.prisma.transaction.aggregate({
+      this.prisma.accountPayable.aggregate({
         where: {
           organizationId,
-          type: 'EXPENSE',
           status: 'PENDING'
         },
         _sum: {

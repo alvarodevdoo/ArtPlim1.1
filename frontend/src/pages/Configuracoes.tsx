@@ -13,6 +13,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import api from '@/lib/api';
+import { ShoppingCart } from 'lucide-react';
 
 // Features (Modular Pattern)
 import { BackupManager } from '@/features/organization/backup/BackupManager';
@@ -20,6 +21,7 @@ import { SecurityManager } from '@/features/organization/security/SecurityManage
 import { GeneralSettings } from '@/features/organization/settings/GeneralSettings';
 import { SystemSettings } from '@/features/organization/settings/SystemSettings';
 import { FinanceIntegrationSettings } from '@/features/organization/settings/FinanceIntegrationSettings';
+import { OrderSettings } from '@/features/organization/settings/OrderSettings';
 
 // Shared Components
 import UserManagement from '@/components/admin/UserManagement';
@@ -55,6 +57,10 @@ interface OrganizationSettings {
   nfeCertificateExpiry?: string | null;
   nfeCertificateSubject?: string | null;
   nfeCertificateFileName?: string | null;
+  requireOrderDeposit: boolean;
+  minDepositPercent: number;
+  allowDeliveryWithBalance: boolean;
+  defaultDueDateDays: number;
 }
 
 const Configuracoes: React.FC = () => {
@@ -86,7 +92,11 @@ const Configuracoes: React.FC = () => {
     nfeCertificatePassword: null,
     nfeCertificateExpiry: null,
     nfeCertificateSubject: null,
-    nfeCertificateFileName: null
+    nfeCertificateFileName: null,
+    requireOrderDeposit: false,
+    minDepositPercent: 0.0,
+    allowDeliveryWithBalance: true,
+    defaultDueDateDays: 0
   });
 
   const [selectedModules, setSelectedModules] = useState<Record<string, boolean>>({
@@ -159,6 +169,7 @@ const Configuracoes: React.FC = () => {
     { id: 'empresa', label: 'Empresa', icon: Building },
     { id: 'sistema', label: 'Sistema', icon: Settings },
     { id: 'usuarios', label: 'Usuários', icon: Users },
+    { id: 'pedidos', label: 'Pedidos', icon: ShoppingCart },
     { id: 'financeiro', label: 'Financeiro', icon: DollarSign, setting: 'enableFinance' },
     { id: 'processos', label: 'Processos e Catálogo', icon: Workflow },
     { id: 'producao', label: 'Produção', icon: Package, setting: 'enableProduction' },
@@ -229,6 +240,15 @@ const Configuracoes: React.FC = () => {
                 <CardContent><RolePermissions /></CardContent>
               </Card>
             </div>
+          )}
+
+           {activeTab === 'pedidos' && (
+            <OrderSettings 
+              settings={settings}
+              setSettings={setSettings}
+              handleSaveSettings={handleSaveSettings}
+              loading={loading}
+            />
           )}
 
           {activeTab === 'financeiro' && (

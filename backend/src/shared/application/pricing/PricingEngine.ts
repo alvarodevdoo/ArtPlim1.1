@@ -239,6 +239,20 @@ export class PricingEngine {
     };
 
     let finalUnitCost = totalMaterialCost;
+
+    // FALLBACK: Se não houver custo de materiais (BOM vazia), tenta usar o custo base do produto
+    if (finalUnitCost === 0 && product.costPrice) {
+      const baseCost = Number(product.costPrice);
+      // Se tiver área calculada, assume que o custo é por m2
+      if (BOM_M2 > 0) {
+        finalUnitCost = baseCost * BOM_M2;
+        logs.push(`[Fallback] Custo baseado em Área (sem BOM): ${baseCost} * ${BOM_M2.toFixed(4)} = R$ ${finalUnitCost.toFixed(2)}`);
+      } else {
+        finalUnitCost = baseCost;
+        logs.push(`[Fallback] Usando custo fixo do produto (sem BOM): R$ ${finalUnitCost.toFixed(2)}`);
+      }
+    }
+
     let finalUnitPrice = Number(product.salePrice) || 0;
 
     try {

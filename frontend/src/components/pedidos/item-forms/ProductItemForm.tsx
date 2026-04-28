@@ -6,7 +6,8 @@ import {
     Package, 
     Save,
     Coins,
-    X
+    X,
+    AlertCircle
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -44,6 +45,7 @@ interface ProductItemFormProps {
     editingData?: any;
     isEditing?: boolean;
     isPriceUnlocked?: boolean;
+    maxDiscountThreshold?: number;
 }
 
 const ProductItemForm: React.FC<ProductItemFormProps> = ({
@@ -51,13 +53,15 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
     onSubmit,
     editingData,
     isEditing = false,
-    isPriceUnlocked: isPriceUnlockedParam = false
+    isPriceUnlocked: isPriceUnlockedParam = false,
+    maxDiscountThreshold = 0.15
 }) => {
     // ── Estados Principais ────────────────────────────────────────────
     const [quantity, setQuantity] = useState<number>(editingData?.quantity || 1);
     const [unitPrice, setUnitPrice] = useState<number | string>(
         editingData?.unitPrice ?? (produto.pricingMode === 'SIMPLE_AREA' ? 0 : (produto.salePrice || 0))
     );
+    const [discountItem, setDiscountItem] = useState<number | string>(editingData?.discountItem || 0);
     const [notes, setNotes] = useState(editingData?.notes || '');
     const [materiaisSelecionados, setMateriaisSelecionados] = useState<InsumoMaterialSelecionado[]>(
         editingData?.attributes?.insumos || []
@@ -80,18 +84,10 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
     const [authEmail, setAuthEmail] = useState('');
     const [authPassword, setAuthPassword] = useState('');
     const [authLoading, setAuthLoading] = useState(false);
+    const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
+    const [requestStatus, setRequestStatus] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | null>(null);
     const canEditPriceByRole = user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'MANAGER' || hasPermission('sales.edit_price');
     const isPriceLocked = produto.priceLocked && !isPriceUnlocked && !canEditPriceByRole;
-
-    // ── Motor de Composição ───────────────────────────────────────────
-    const { composition, loading: compLoading } = useComposition({
-        productId: produto.id,
-        selectedOptionIds: Object.values(opcoesSelecionadas).filter(Boolean),
-        quantity,
-        dynamicVariables, // AGORA PASSAMOS AS MEDIDAS PARA O BACKEND
-        debounceMs: 200 // Aumentado levemente para estabilidade
-    });
-    const { blockedIds } = useIncompatibilities(Object.values(opcoesSelecionadas).filter(Boolean));
 
     // ── Carregamento de Regras e Variáveis ────────────────────────────
     const pricingRule = useMemo(() => {
@@ -99,9 +95,6 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
         if (ruleFromProp?.formula) return typeof ruleFromProp.formula === 'string' ? JSON.parse(ruleFromProp.formula) : ruleFromProp.formula;
         return ruleFromProp || null;
     }, [produto]);
-
-    useEffect(() => {
-    }, [produto, pricingRule]);
 
     const inputVars = useMemo(() => {
         let vars = pricingRule?.variables?.filter((v: any) => {
@@ -124,6 +117,34 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
         return vars;
     }, [pricingRule, produto.pricingMode, globalUnit]);
 
+    // ── Normalização para o Motor de Composição ──────────────────────
+    const normalizedDims = useMemo(() => {
+        const scope = Object.entries(dynamicVariables).reduce((acc, [key, varObj]) => {
+            acc[key] = varObj.value;
+            if (varObj.unit) {
+                acc[`${key.toUpperCase()}_UNIT`] = varObj.unit;
+            }
+            return acc;
+        }, {} as Record<string, any>);
+
+        const norm = applyNormalization(inputVars, scope);
+        return {
+            width: Number(norm['LARGURA'] || 0),
+            height: Number(norm['ALTURA'] || 0)
+        };
+    }, [dynamicVariables, inputVars]);
+
+    // ── Motor de Composição ───────────────────────────────────────────
+    const { composition, loading: compLoading } = useComposition({
+        productId: produto.id,
+        selectedOptionIds: Object.values(opcoesSelecionadas).filter(Boolean),
+        quantity,
+        dynamicVariables,
+        width: normalizedDims.width,
+        height: normalizedDims.height,
+        debounceMs: 200 // Aumentado levemente para estabilidade
+    });
+    const { blockedIds } = useIncompatibilities(Object.values(opcoesSelecionadas).filter(Boolean));
     const hiddenFormulaVars = useMemo(() => pricingRule?.variables?.filter((v: any) => {
         const nameUpper = (v.name || v.id || '').toUpperCase();
         const isPriceField = v.role === 'SALE_PRICE' || v.role === 'MONETARY' || 
@@ -335,6 +356,37 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
         }
     }, [composition, formulaResultValue, dynamicVariables, globalUnit, pricingRule, produto, quantity, inputVars]);
 
+    // ── Validação de Desconto ─────────────────────────────────────────
+    const effectiveThreshold = useMemo(() => {
+        console.log('[ProductItemForm] Threshold debug:', {
+            productName: produto?.name,
+            productThreshold: produto?.maxDiscountThreshold,
+            orgThreshold: maxDiscountThreshold,
+            backendVersion: (produto as any)?._debug
+        });
+        if (produto.maxDiscountThreshold !== null && produto.maxDiscountThreshold !== undefined) {
+            return Number(produto.maxDiscountThreshold);
+        }
+        return maxDiscountThreshold; // Teto da empresa (fallback)
+    }, [produto.maxDiscountThreshold, maxDiscountThreshold, produto?.name, (produto as any)?._debug]);
+
+    const discountValidation = useMemo(() => {
+        const grossValue = Number(unitPrice) * quantity;
+        const discountVal = Number(discountItem) || 0;
+        if (grossValue <= 0) return { ok: true, percent: 0, exceedsGross: false };
+        
+        const exceedsGross = discountVal > grossValue;
+        const percent = discountVal / grossValue;
+        const exceedsThreshold = percent > effectiveThreshold;
+        
+        return {
+            ok: !exceedsThreshold && !exceedsGross,
+            percent: percent * 100,
+            exceedsThreshold,
+            exceedsGross
+        };
+    }, [unitPrice, quantity, discountItem, effectiveThreshold]);
+
     // ── Handlers ─────────────────────────────────────────────────────
     const handleDynamicVarChange = (id: string, field: 'value' | 'unit', val: any) => {
         setDynamicVariables(prev => ({ ...prev, [id]: { ...prev[id], [field]: val } }));
@@ -368,12 +420,78 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
         finally { setAuthLoading(false); }
     };
 
+    // Polling removido conforme nova regra: permitir salvamento imediato com status PENDING
+
+    const handleRequestRemoteAuth = async () => {
+        setAuthLoading(true);
+        try {
+            const resp = await api.post('/api/sales/authorizations/request', {
+                type: 'DISCOUNT',
+                data: {
+                    productId: produto.id,
+                    productName: produto.name,
+                    quantity,
+                    unitPrice: Number(unitPrice),
+                    discount: Number(discountItem),
+                    percent: discountValidation.percent
+                }
+            });
+            if (resp.data.success) {
+                const requestId = resp.data.data.id;
+                setPendingRequestId(requestId);
+                setRequestStatus('PENDING');
+                toast.success('Solicitação enviada! Item adicionado ao pedido como pendente.');
+                
+                // Fecha o modal de autorização e submete o item com status PENDING
+                setShowAuthModal(false);
+                
+                onSubmit({
+                    id: editingData?.id || `temp-${Math.random().toString(36).substr(2, 9)}`,
+                    productId: produto.id, product: produto,
+                    quantity, unitPrice: Number(unitPrice), 
+                    // totalPrice aqui será o valor integral no frontend para exibição inicial conforme solicitado
+                    totalPrice: (Number(unitPrice) * quantity), 
+                    discountItem: Number(discountItem) || 0,
+                    discountStatus: 'PENDING',
+                    authorizationRequestId: requestId,
+                    width: normalizedDims.width || null,
+                    height: normalizedDims.height || null,
+                    notes, attributes: { dynamicVariables, insumos: materiaisSelecionados, selectedOptions: opcoesSelecionadas }
+                });
+            }
+        } catch (err) {
+            toast.error('Erro ao enviar solicitação');
+        } finally {
+            setAuthLoading(false);
+        }
+    };
+
+    const handleRequestUnlock = () => {
+        setShowAuthModal(true);
+    };
+
     const handleSubmitLocal = () => {
         if (quantity <= 0 || Number(unitPrice) <= 0) return toast.error('Coloque quantidade e preço.');
+        
+        if (discountValidation.exceedsGross) {
+            return toast.error('O desconto não pode ser maior que o valor total do item.');
+        }
+
+        // Bloqueio estrito se exceder o teto e não estiver autorizado (E não for uma solicitação remota em curso)
+        if (!discountValidation.ok && !isPriceUnlocked) {
+            setShowAuthModal(true);
+            return;
+        }
+
         onSubmit({
             id: editingData?.id || `temp-${Math.random().toString(36).substr(2, 9)}`,
             productId: produto.id, product: produto,
-            quantity, unitPrice: Number(unitPrice), totalPrice: Number(unitPrice) * quantity,
+            quantity, unitPrice: Number(unitPrice), 
+            totalPrice: (Number(unitPrice) * quantity) - (Number(discountItem) || 0),
+            discountItem: Number(discountItem) || 0,
+            discountStatus: isPriceUnlocked ? 'APPROVED' : 'NONE',
+            width: normalizedDims.width || null,
+            height: normalizedDims.height || null,
             notes, attributes: { dynamicVariables, insumos: materiaisSelecionados, selectedOptions: opcoesSelecionadas }
         });
     };
@@ -462,8 +580,12 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                         quantity={quantity} setQuantity={setQuantity}
                         unitPrice={unitPrice} setUnitPrice={setUnitPrice}
                         isPriceLocked={isPriceLocked} isPriceUnlocked={isPriceUnlocked}
-                        setIsPriceUnlocked={setIsPriceUnlocked} setShowAuthModal={setShowAuthModal}
+                        setIsPriceUnlocked={setIsPriceUnlocked} 
+                        setShowAuthModal={handleRequestUnlock}
                         isPriceManualRef={isPriceManualRef} compLoading={compLoading}
+                        discountItem={discountItem} setDiscountItem={setDiscountItem}
+                        discountValidation={discountValidation}
+                        maxDiscountThreshold={effectiveThreshold}
                     />
                 </div>
             </div>
@@ -477,15 +599,28 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 </div>
                 <div className="lg:col-span-2 space-y-2">
                     <div className="flex items-center gap-2 text-slate-500 font-bold text-[10px] uppercase tracking-wider"><Coins className="w-3 h-3" />Lucratividade</div>
-                    <PriceSummaryPanel composition={composition} loading={compLoading} negotiatedPrice={unitPrice} quantity={quantity} />
+                    <PriceSummaryPanel composition={composition} loading={compLoading} negotiatedPrice={Number(unitPrice)} quantity={quantity} discountItem={Number(discountItem) || 0} />
                 </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-4 pt-2">
-                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Observações do item..." className="flex-1 h-10 p-2 border border-slate-200 rounded-lg bg-slate-50 text-[11px] font-medium resize-none focus:h-20 transition-all" />
-                <Button onClick={handleSubmitLocal} disabled={quantity <= 0 || Number(unitPrice) <= 0} className="w-full sm:w-64 h-10 text-xs font-bold uppercase tracking-widest bg-indigo-600 hover:bg-indigo-700 shadow-md">
-                    {isEditing ? <Save className="w-3.5 h-3.5 mr-2" /> : <Plus className="w-3.5 h-3.5 mr-2" />}
-                    {isEditing ? 'Salvar Item' : 'Adicionar Item'}
+            <div className="flex flex-col sm:flex-row gap-4 pt-6 border-t mt-4">
+                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Observações do item..." className="flex-1 h-12 p-3 border border-slate-200 rounded-lg bg-slate-50 text-[11px] font-medium resize-none focus:h-20 transition-all shadow-inner" />
+                <Button 
+                    onClick={handleSubmitLocal} 
+                    disabled={
+                        quantity <= 0 || 
+                        Number(unitPrice) <= 0 || 
+                        discountValidation.exceedsGross ||
+                        (!discountValidation.ok && !isPriceUnlocked)
+                    } 
+                    className={`w-full sm:w-72 h-12 text-sm font-bold uppercase tracking-widest shadow-lg transition-all ${
+                        !discountValidation.ok && !isPriceUnlocked 
+                        ? 'bg-slate-300 cursor-not-allowed' 
+                        : 'bg-indigo-600 hover:bg-indigo-700'
+                    }`}
+                >
+                    {isEditing ? <Save className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+                    {!discountValidation.ok && !isPriceUnlocked ? 'Solicitar Autorização' : (isEditing ? 'Salvar Item' : 'Adicionar Item')}
                 </Button>
             </div>
 
@@ -499,8 +634,29 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                         <form onSubmit={handleAuthorize} className="p-6 space-y-4">
                             <Input value={authEmail} onChange={e => setAuthEmail(e.target.value)} placeholder="Email" required />
                             <Input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} placeholder="Senha" required />
-                            <Button type="submit" disabled={authLoading} className="w-full">{authLoading ? 'Validando...' : 'Liberar Preço'}</Button>
+                            <Button type="submit" disabled={authLoading} className="w-full">{authLoading ? 'Validando...' : 'Liberar com Senha'}</Button>
                         </form>
+                        <div className="px-6 pb-6 space-y-3">
+                            <div className="relative">
+                                <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+                                <div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-slate-500 font-medium">Ou solicitar remotamente</span></div>
+                            </div>
+                            {pendingRequestId ? (
+                                <div className="bg-amber-50 border border-amber-100 rounded-lg p-4 text-center space-y-2 animate-pulse">
+                                    <p className="text-amber-800 text-xs font-bold uppercase tracking-wider">Aguardando Autorização...</p>
+                                    <p className="text-amber-600 text-[10px]">Uma notificação foi enviada aos supervisores.</p>
+                                </div>
+                            ) : (
+                                <Button 
+                                    variant="outline" 
+                                    onClick={handleRequestRemoteAuth} 
+                                    disabled={authLoading} 
+                                    className="w-full border-indigo-200 text-indigo-600 hover:bg-indigo-50"
+                                >
+                                    Solicitar Liberação Remota
+                                </Button>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}

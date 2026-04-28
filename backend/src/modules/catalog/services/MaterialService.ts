@@ -26,6 +26,7 @@ interface CreateMaterialInput {
   ncm?: string | null;
   ean?: string | null;
   spedType?: string | null;
+  purchasePrice?: number | null;
   suppliers?: { 
     supplierId: string; 
     costPrice: number; 
@@ -79,6 +80,7 @@ export class MaterialService {
         ncm: data.ncm,
         ean: data.ean,
         spedType: data.spedType,
+        purchasePrice: data.purchasePrice,
         suppliers: data.suppliers?.length ? {
           create: data.suppliers.map(s => ({
             supplierId: s.supplierId,
@@ -253,6 +255,7 @@ export class MaterialService {
       if (data.ncm !== undefined)                     updateFields.ncm = data.ncm;
       if (data.ean !== undefined)                     updateFields.ean = data.ean;
       if (data.spedType !== undefined)                updateFields.spedType = data.spedType;
+      if (data.purchasePrice !== undefined)           updateFields.purchasePrice = data.purchasePrice;
 
       if (suppliers !== undefined) {
         updateFields.suppliers = {

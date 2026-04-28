@@ -38,6 +38,8 @@ interface ItemConfigurationModalProps {
     onCancel: () => void;
     editingItem?: ItemPedido | null;
     isOpen: boolean;
+    maxDiscountThreshold?: number;
+    isPriceUnlocked?: boolean;
 }
 
 const ItemConfigurationModal: React.FC<ItemConfigurationModalProps> = ({
@@ -46,7 +48,9 @@ const ItemConfigurationModal: React.FC<ItemConfigurationModalProps> = ({
     onBack,
     onCancel,
     editingItem,
-    isOpen
+    isOpen,
+    maxDiscountThreshold = 0.15,
+    isPriceUnlocked = false
 }) => {
     // Obter informações do tipo de produto
     const productType = produto.productType || ItemType.PRODUCT;
@@ -155,6 +159,8 @@ const ItemConfigurationModal: React.FC<ItemConfigurationModalProps> = ({
                             onSubmit={handleItemSubmit}
                             editingData={editingItem}
                             isEditing={!!editingItem}
+                            maxDiscountThreshold={maxDiscountThreshold}
+                            isPriceUnlocked={isPriceUnlocked}
                         />
                     ) : (
                         <ProductItemForm
@@ -162,6 +168,8 @@ const ItemConfigurationModal: React.FC<ItemConfigurationModalProps> = ({
                             onSubmit={handleItemSubmit}
                             editingData={editingItem}
                             isEditing={!!editingItem}
+                            maxDiscountThreshold={maxDiscountThreshold}
+                            isPriceUnlocked={isPriceUnlocked}
                         />
                     )}
                 </CardContent>

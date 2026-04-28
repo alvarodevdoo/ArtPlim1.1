@@ -15,6 +15,7 @@ interface Receivable {
   notes: string | null;
   customer: { id: string; name: string; document: string | null };
   order: { id: string; orderNumber: string; total: number } | null;
+  transactions: Array<{ amount: number }>;
   _count: { transactions: number };
 }
 
@@ -92,8 +93,21 @@ export function ContasAReceber() {
     return <span className="flex items-center gap-1 text-yellow-600 bg-yellow-100 px-2 py-0.5 rounded text-xs font-semibold"><Clock className="w-3 h-3" /> Pendente</span>;
   };
 
-  const totalPending = receivables.filter(r => r.status === 'PENDING').reduce((s, r) => s + r.amount, 0);
-  const totalReceived = receivables.filter(r => r.status === 'PAID').reduce((s, r) => s + r.amount, 0);
+  const calculateNetBalance = (r: Receivable) => {
+    const paid = r.transactions?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
+    return Math.max(0, Number(r.amount) - paid);
+  };
+
+  const totalPending = receivables
+    .filter(r => r.status === 'PENDING')
+    .reduce((s, r) => s + calculateNetBalance(r), 0);
+    
+  const totalReceived = receivables
+    .filter(r => r.status === 'PAID')
+    .reduce((s, r) => s + Number(r.amount), 0) + 
+    receivables
+    .filter(r => r.status === 'PENDING')
+    .reduce((s, r) => s + (r.transactions?.reduce((sum, t) => sum + Number(t.amount), 0) || 0), 0);
 
   if (loading) return <div className="mt-6 text-muted-foreground">Carregando...</div>;
 
@@ -135,8 +149,11 @@ export function ContasAReceber() {
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-xs text-muted-foreground">Valor</p>
-                <p className="text-xl font-bold text-primary">{formatCurrency(r.amount)}</p>
+                <p className="text-xs text-muted-foreground">Valor em Aberto</p>
+                <p className="text-xl font-bold text-primary">{formatCurrency(calculateNetBalance(r))}</p>
+                {calculateNetBalance(r) < Number(r.amount) && r.status === 'PENDING' && (
+                  <p className="text-[10px] text-muted-foreground text-right italic">Original: {formatCurrency(Number(r.amount))}</p>
+                )}
               </div>
             </CardContent>
           </Card>

@@ -8,7 +8,14 @@ import { StatusEngine } from './domain/services/StatusEngine';
 import { TransactionService } from '../finance/services/TransactionService';
 import { PricingCompositionService } from '../catalog/services/PricingCompositionService';
 import { IncompatibilityService } from '../catalog/services/IncompatibilityService';
-import { ConfirmOrderService } from './application/ConfirmOrderService';
+import { ApproveOrderService } from './application/ApproveOrderService';
+import { FinishOrderService } from './application/FinishOrderService';
+import { ReopenOrderService } from './application/ReopenOrderService';
+import { RegenerateProductionService } from './application/RegenerateProductionService';
+import { OrderFinanceHelper } from '../../shared/utils/OrderFinanceHelper';
+import { InventoryValuationService } from '../../shared/services/InventoryValuationService';
+import { ReportWasteService } from './application/ReportWasteService';
+import { ProfileBalanceService } from '../profiles/services/ProfileBalanceService';
 
 const listQuerySchema = z.object({
   limit: z.string().transform(val => parseInt(val) || 50).optional(),
@@ -45,8 +52,8 @@ const createOrderSchema = z.object({
   // Pagamentos
   payments: z.array(z.object({
     id: z.string().optional(),
-    methodId: z.string(),
-    methodName: z.string(),
+    methodId: z.string().nullish(),
+    methodName: z.string().nullish(),
     amount: z.number().positive(),
     fee: z.number().min(0),
     netAmount: z.number().positive(),
@@ -280,7 +287,21 @@ export async function salesRoutes(fastify: FastifyInstance) {
       },
       include: {
         customer: true,
-        items: { include: { product: true } }
+        items: {
+          include: {
+            product: {
+              include: {
+                fichasTecnicas: { include: { material: true } },
+                components: { include: { material: true } },
+                configurations: {
+                  include: {
+                    options: { include: { material: true } }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     });
 
@@ -305,7 +326,21 @@ export async function salesRoutes(fastify: FastifyInstance) {
       const transactionService = new TransactionService(prisma);
 
       for (const p of body.payments) {
-        // Obter método de pagamento para descobrir a conta destino
+        // ── Pagamento via Saldo do Cliente ──
+        if (p.methodId === 'BALANCE') {
+          const balanceService = new ProfileBalanceService(prisma as any);
+          await balanceService.useCredit({
+            profileId: body.customerId,
+            organizationId: request.user!.organizationId,
+            amount: p.amount,
+            description: `Pagamento via Saldo - Pedido ${orderNumber}`,
+            orderId: order.id,
+            userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub
+          });
+          continue;
+        }
+
+        // ── Pagamento normal via método financeiro ──
         const paymentMethod = await prisma.paymentMethod.findFirst({
           where: { id: p.methodId, organizationId: request.user!.organizationId }
         });
@@ -352,7 +387,27 @@ export async function salesRoutes(fastify: FastifyInstance) {
       include: {
         customer: true,
         processStatus: true,
-        items: { include: { product: true } },
+        items: {
+          include: {
+            product: {
+              include: {
+                fichasTecnicas: {
+                  include: { material: true }
+                },
+                components: {
+                  include: { material: true }
+                },
+                configurations: {
+                  include: {
+                    options: {
+                      include: { material: true }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         transactions: { include: { paymentMethod: true } }
       }
     });
@@ -506,7 +561,21 @@ export async function salesRoutes(fastify: FastifyInstance) {
         const transactionService = new TransactionService(prisma);
 
         for (const p of novosPagamentos) {
-          // Obter método de pagamento para descobrir a conta destino
+          // ── Pagamento via Saldo do Cliente ──
+          if (p.methodId === 'BALANCE') {
+            const balanceService = new ProfileBalanceService(prisma as any);
+            await balanceService.useCredit({
+              profileId: existingOrder.customerId,
+              organizationId: request.user!.organizationId,
+              amount: p.amount,
+              description: `Pagamento via Saldo - Pedido ${existingOrder.orderNumber}`,
+              orderId: existingOrder.id,
+              userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub
+            });
+            continue;
+          }
+
+          // ── Pagamento normal via método financeiro ──
           const paymentMethod = await prisma.paymentMethod.findFirst({
             where: { id: p.methodId, organizationId: request.user!.organizationId }
           });
@@ -547,6 +616,34 @@ export async function salesRoutes(fastify: FastifyInstance) {
       }
     });
 
+    // Sincronizar Contas a Receber (Se houver título pendente)
+    const updatedOrderForFinance = await prisma.order.findUnique({
+      where: { id },
+      include: { transactions: true }
+    });
+
+    if (updatedOrderForFinance) {
+      const remainingBalance = OrderFinanceHelper.calculateRemainingBalance(updatedOrderForFinance);
+      const pendingReceivable = await prisma.accountReceivable.findFirst({
+        where: { orderId: id, status: 'PENDING', organizationId: request.user!.organizationId }
+      });
+
+      if (pendingReceivable) {
+        await prisma.accountReceivable.update({
+          where: { id: pendingReceivable.id },
+          data: { 
+            amount: remainingBalance,
+            dueDate: updatedOrderForFinance.deliveryDate 
+              ? new Date(updatedOrderForFinance.deliveryDate) 
+              : pendingReceivable.dueDate,
+            notes: (pendingReceivable.notes || '').includes('Valor ajustado na edição') 
+              ? pendingReceivable.notes 
+              : (pendingReceivable.notes || '') + ' | Valor ajustado na edição.'
+          }
+        });
+      }
+    }
+
     return reply.send({ success: true, data: finalResult });
   });
 
@@ -555,41 +652,115 @@ export async function salesRoutes(fastify: FastifyInstance) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const { status, processStatusId, notes } = request.body as any;
+    const { status, processStatusId, notes, reason, paymentAction, refundAmount } = request.body as any;
     const prisma = getTenantClient(request.user!.organizationId);
-
     const statusEngine = new StatusEngine(prisma as any);
-    await statusEngine.updateOrderStatus({
-      orderId: id,
-      organizationId: request.user!.organizationId,
-      newStatus: status,
-      newProcessStatusId: processStatusId,
-      userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub,
-      notes: notes || null
-    });
+    const userId = (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub;
+    const finalNotes = notes || reason || null;
 
-    if (notes) {
-      // Atualizar as notas legadas só para compatibilidade
-      const existing = await (prisma as any).order.findUnique({ where: { id }, select: { notes: true } });
-      const separator = existing?.notes ? '\n\n' : '';
-      await prisma.order.update({
-        where: { id },
-        data: { notes: (existing?.notes || '') + separator + `[${new Date().toLocaleDateString('pt-BR')}] MOTIVO: ` + notes }
+    try {
+      await statusEngine.updateOrderStatus({
+        orderId: id,
+        organizationId: request.user!.organizationId,
+        newStatus: status,
+        newProcessStatusId: processStatusId,
+        userId,
+        notes: finalNotes
       });
-    }
 
-    // Buscar pedido completo final para retorno
-    const updatedResult = await prisma.order.findUnique({
-      where: { id },
-      include: {
-        customer: true,
-        processStatus: true,
-        items: { include: { product: true } },
-        transactions: { include: { paymentMethod: true } }
+      if (finalNotes) {
+        // Atualizar as notas legadas só para compatibilidade
+        const existing = await (prisma as any).order.findUnique({ where: { id }, select: { notes: true } });
+        const separator = existing?.notes ? '\n\n' : '';
+        await prisma.order.update({
+          where: { id },
+          data: { notes: (existing?.notes || '') + separator + `[${new Date().toLocaleDateString('pt-BR')}] MOTIVO: ` + finalNotes }
+        });
       }
-    });
 
-    return reply.send({ success: true, data: updatedResult });
+      if (status === 'CANCELLED') {
+        // Salvar os dados do cancelamento financeiro no pedido
+        await prisma.order.update({
+          where: { id },
+          data: {
+            cancellationPaymentAction: paymentAction || null,
+            cancellationRefundAmount: refundAmount ? Number(refundAmount) : null
+          }
+        });
+
+        // Lógica financeira de cancelamento
+        if (paymentAction && paymentAction !== 'NONE' && refundAmount && Number(refundAmount) > 0) {
+          const orderInfo = await prisma.order.findUnique({ where: { id }, select: { customerId: true, orderNumber: true } });
+          if (orderInfo) {
+            if (paymentAction === 'REFUND') {
+              const account = await prisma.account.findFirst({
+                where: { organizationId: request.user!.organizationId, active: true }
+              });
+              if (account) {
+                await prisma.transaction.create({
+                  data: {
+                    organizationId: request.user!.organizationId,
+                    accountId: account.id,
+                    type: 'EXPENSE',
+                    amount: Number(refundAmount),
+                    description: `Estorno de Cancelamento - Pedido #${orderInfo.orderNumber}`,
+                    orderId: id,
+                    status: 'PAID',
+                    paidAt: new Date(),
+                    userId,
+                    profileId: orderInfo.customerId
+                  }
+                });
+                await prisma.account.update({
+                  where: { id: account.id },
+                  data: { balance: { decrement: Number(refundAmount) } }
+                });
+              }
+            } else if (paymentAction === 'CREDIT') {
+              const balanceService = new ProfileBalanceService(prisma as any);
+              await balanceService.addCredit({
+                profileId: orderInfo.customerId,
+                organizationId: request.user!.organizationId,
+                amount: Number(refundAmount),
+                description: `Crédito por cancelamento do pedido #${orderInfo.orderNumber}`,
+                orderId: id,
+                userId
+              });
+            }
+          }
+        }
+      }
+
+      // Buscar pedido completo final para retorno
+      const updatedResult = await prisma.order.findUnique({
+        where: { id },
+        include: {
+          customer: true,
+          processStatus: true,
+          items: {
+            include: {
+              product: {
+                include: {
+                  fichasTecnicas: { include: { material: true } },
+                  components: { include: { material: true } },
+                  configurations: {
+                    include: {
+                      options: { include: { material: true } }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          transactions: { include: { paymentMethod: true } }
+        }
+      });
+
+      return reply.send({ success: true, data: updatedResult });
+    } catch (error: any) {
+      console.error('[SALES_STATUS_PATCH] Erro ao atualizar status:', error);
+      return reply.code(400).send({ success: false, message: error.message });
+    }
   });
 
   // Atualizar status de item específico (Usando StatusEngine)
@@ -597,17 +768,18 @@ export async function salesRoutes(fastify: FastifyInstance) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { itemId } = request.params as { itemId: string };
-    const { status } = request.body as { status: string };
+    const { status, notes } = request.body as { status: string, notes?: string };
     const prisma = getTenantClient(request.user!.organizationId);
-    
     const statusEngine = new StatusEngine(prisma as any);
+    const userId = (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub;
+
     try {
       const updatedItem = await statusEngine.updateItemStatus({
         itemId,
         organizationId: request.user!.organizationId,
         newStatus: status,
-        userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub,
-        notes: 'Alteração manual no item.'
+        userId,
+        notes: notes || 'Alteração manual no item.'
       }) as any;
       
       const orderId = updatedItem.orderId;
@@ -642,7 +814,9 @@ export async function salesRoutes(fastify: FastifyInstance) {
     const body = z.object({
       productId: z.string().min(1),
       selectedOptionIds: z.array(z.string()).default([]),
-      quantity: z.number().positive().default(1)
+      quantity: z.number().positive().default(1),
+      width: z.number().optional(),
+      height: z.number().optional()
     }).parse(request.body);
 
     const prisma = getTenantClient(request.user!.organizationId);
@@ -652,6 +826,8 @@ export async function salesRoutes(fastify: FastifyInstance) {
       productId: body.productId,
       selectedOptionIds: body.selectedOptionIds,
       quantity: body.quantity,
+      width: body.width,
+      height: body.height,
       organizationId: request.user!.organizationId
     });
 
@@ -659,13 +835,7 @@ export async function salesRoutes(fastify: FastifyInstance) {
   });
 
   /**
-   * POST /orders/:id/confirm
-   * Transação atômica de confirmação do pedido (status → APPROVED):
-   *   - Valida incompatibilidades de opções
-   *   - Valida estoque suficiente
-   *   - Captura snapshot de custo (unitCostAtSale, profitAtSale)
-   *   - Gera StockMovement (baixa de currentStock)
-   *   - Lança Receita + CMV no Plano de Contas
+   * POST /orders/:id/approve
    */
   fastify.post('/orders/:id/confirm', {
     preHandler: [fastify.authenticate]
@@ -673,7 +843,7 @@ export async function salesRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     const { processStatusId } = request.body as { processStatusId?: string };
     const prisma = getTenantClient(request.user!.organizationId);
-    const service = new ConfirmOrderService(prisma);
+    const service = new ApproveOrderService(prisma);
 
     try {
       const result = await service.execute({
@@ -685,9 +855,96 @@ export async function salesRoutes(fastify: FastifyInstance) {
 
       return reply.send({ success: true, data: result });
     } catch (error: any) {
+      console.error('[SALES_APPROVE] Erro ao aprovar pedido:', error);
       return reply.code(400).send({ success: false, message: error.message });
     }
   });
+
+  /**
+   * POST /orders/:id/finish
+   * Finaliza o pedido, definindo finishedAt (gatilho DRE) e sincronizando o financeiro.
+   */
+  fastify.post('/orders/:id/finish', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { processStatusId } = request.body as { processStatusId?: string };
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new FinishOrderService(prisma);
+
+    try {
+      const result = await service.execute({
+        orderId: id,
+        organizationId: request.user!.organizationId,
+        userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub,
+        processStatusId
+      });
+
+      return reply.send({ success: true, data: result });
+    } catch (error: any) {
+      console.error('[SALES_FINISH] Erro ao finalizar pedido:', error);
+      return reply.code(400).send({ success: false, message: error.message });
+    }
+  });
+
+
+
+  /**
+   * POST /orders/:id/reopen
+   * Reverte o status do pedido para o imediatamente anterior (ex: FINISHED → APPROVED).
+   * SEM impacto em estoque ou financeiro. Uso: correcão de clique acidental.
+   */
+  fastify.post('/orders/:id/reopen', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { reason } = request.body as { reason?: string };
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new ReopenOrderService(prisma);
+
+    try {
+      const result = await service.execute({
+        orderId: id,
+        organizationId: request.user!.organizationId,
+        userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub,
+        reason
+      });
+      return reply.send({ success: true, data: result });
+    } catch (error: any) {
+      console.error('[SALES_REOPEN] Erro ao reabrir pedido:', error);
+      return reply.code(400).send({ success: false, message: error.message });
+    }
+  });
+
+  /**
+   * POST /orders/:id/regenerate
+   * Regenera a producão de um pedido com defeito. Cancela OPs antigas, baixa estoque
+   * novamente (custo de retrabalho) e volta o status para APPROVED.
+   * O campo finishedAt e o financeiro são zerados pois a produção recomecu.
+   */
+  fastify.post('/orders/:id/regenerate', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as { reason: string; itemIds?: string[] };
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new RegenerateProductionService(prisma);
+
+    try {
+      const result = await service.execute({
+        orderId: id,
+        organizationId: request.user!.organizationId,
+        userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub,
+        reason: body.reason,
+        itemIds: body.itemIds
+      });
+      return reply.send({ success: true, data: result });
+    } catch (error: any) {
+      console.error('[SALES_REGENERATE] Erro ao regenerar producão:', error);
+      return reply.code(400).send({ success: false, message: error.message });
+    }
+  });
+
 
   /**
    * GET /orders/:id/incompatibilities
@@ -705,6 +962,103 @@ export async function salesRoutes(fastify: FastifyInstance) {
     const service = new IncompatibilityService(prisma);
 
     const result = await service.getIncompatibleOptionIds(query.selectedOptionIds);
+    return reply.send({ success: true, data: result });
+  });
+
+  /**
+   * POST /orders/:id/items/:itemId/waste
+   * Registra uma perda/retrabalho para um item de produção específico.
+   * Cria registro analítico, consome estoque extra e aumenta o valor de `unitCostAtSale` da ordem.
+   */
+  const wasteBodySchema = z.object({
+    materialId: z.string(),
+    quantity: z.number().positive(),
+    reason: z.string().min(3),
+    unitCost: z.number().optional()
+  });
+
+  fastify.post('/orders/:id/items/:itemId/waste', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id: orderId, itemId } = request.params as { id: string, itemId: string };
+    const body = wasteBodySchema.parse(request.body);
+    const prisma = getTenantClient(request.user!.organizationId);
+    
+    const valuationSvc = new InventoryValuationService(prisma as any);
+    const service = new ReportWasteService(prisma as any, valuationSvc);
+
+    try {
+      const result = await service.execute({
+        orderId,
+        itemId,
+        materialId: body.materialId,
+        wasteQuantity: body.quantity,
+        reason: body.reason,
+        organizationId: request.user!.organizationId,
+        userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub,
+        overrideUnitCost: body.unitCost
+      });
+      return reply.code(201).send({ success: true, data: result });
+    } catch (error: any) {
+      return reply.code(400).send({ success: false, message: error.message });
+    }
+  });
+
+  // ========== AUTORIZAÇÕES ==========
+
+  const { AuthorizationService } = await import('./services/AuthorizationService');
+
+  // Criar solicitação de autorização
+  fastify.post('/authorizations/request', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const body = z.object({
+      type: z.string(),
+      data: z.any()
+    }).parse(request.body);
+
+    const service = new AuthorizationService();
+    const result = await service.createRequest({
+      organizationId: request.user!.organizationId,
+      requesterId: request.user!.userId,
+      type: body.type,
+      data: body.data
+    });
+
+    return reply.code(201).send({ success: true, data: result });
+  });
+
+  // Listar solicitações pendentes (para supervisores)
+  fastify.get('/authorizations/pending', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const service = new AuthorizationService();
+    const result = await service.listPendingRequests(request.user!.organizationId);
+    return reply.send({ success: true, data: result });
+  });
+
+  // Verificar status de uma solicitação
+  fastify.get('/authorizations/:id', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const service = new AuthorizationService();
+    const result = await service.getRequestStatus(id);
+    return reply.send({ success: true, data: result });
+  });
+
+  // Revisar solicitação (Aprovar/Rejeitar)
+  fastify.post('/authorizations/:id/review', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { status, notes } = z.object({
+      status: z.enum(['APPROVED', 'REJECTED']),
+      notes: z.string().optional()
+    }).parse(request.body);
+
+    const service = new AuthorizationService();
+    const result = await service.reviewRequest(id, request.user!.userId, status, notes);
     return reply.send({ success: true, data: result });
   });
 }

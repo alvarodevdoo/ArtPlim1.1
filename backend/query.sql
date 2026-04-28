@@ -1,5 +1,5 @@
-SELECT p.name as product_name, cg.name as "group_name", co.label as option_label 
-FROM products p
-JOIN product_configurations cg ON cg."productId" = p.id
-JOIN configuration_options co ON co."configurationId" = cg.id
-WHERE p.name = 'teste';
+SELECT p.id, p.name, p.balance, count(m.id) as movements_count 
+FROM profiles p 
+LEFT JOIN profile_balance_movements m ON p.id = m."profileId"
+WHERE p.name ILIKE '%Portuguesa%'
+GROUP BY p.id, p.name, p.balance;

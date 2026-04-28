@@ -10,6 +10,8 @@ export interface CreateProcessStatusInput {
     scope?: StatusScope;
     mappedBehavior: OrderStatus;
     allowEdition?: boolean;
+    requirePayment?: boolean;
+    requireDeposit?: boolean;
     displayOrder?: number;
     hideFromFlow?: boolean;
 }
@@ -22,6 +24,8 @@ export interface UpdateProcessStatusInput {
     scope?: StatusScope;
     mappedBehavior?: OrderStatus;
     allowEdition?: boolean;
+    requirePayment?: boolean;
+    requireDeposit?: boolean;
     displayOrder?: number;
     active?: boolean;
     hideFromFlow?: boolean;
@@ -49,6 +53,8 @@ export class ProcessStatusService {
                 scope: data.scope || 'ORDER',
                 mappedBehavior: data.mappedBehavior,
                 allowEdition: data.allowEdition ?? true,
+                requirePayment: data.requirePayment ?? false,
+                requireDeposit: data.requireDeposit ?? false,
                 displayOrder: data.displayOrder || 1,
                 hideFromFlow: data.hideFromFlow || false,
             },
@@ -67,7 +73,7 @@ export class ProcessStatusService {
 
         // Extrai apenas os campos editáveis, ignorando campos de sistema
         // que o frontend pode enviar de volta (id, children, parent, createdAt, etc.)
-        const { name, color, icon, parentId, scope, mappedBehavior, allowEdition, displayOrder, active, hideFromFlow } = data as any;
+        const { name, color, icon, parentId, scope, mappedBehavior, allowEdition, requirePayment, requireDeposit, displayOrder, active, hideFromFlow } = data as any;
 
         const cleanData: UpdateProcessStatusInput = {};
         if (name !== undefined)          cleanData.name = name;
@@ -77,6 +83,8 @@ export class ProcessStatusService {
         if (scope !== undefined)         cleanData.scope = scope;
         if (mappedBehavior !== undefined) cleanData.mappedBehavior = mappedBehavior;
         if (allowEdition !== undefined)  cleanData.allowEdition = allowEdition;
+        if (requirePayment !== undefined) cleanData.requirePayment = requirePayment;
+        if (requireDeposit !== undefined) cleanData.requireDeposit = requireDeposit;
         if (displayOrder !== undefined)  cleanData.displayOrder = displayOrder;
         if (active !== undefined)        cleanData.active = active;
         if (hideFromFlow !== undefined)  cleanData.hideFromFlow = hideFromFlow;
@@ -146,12 +154,12 @@ export class ProcessStatusService {
         if (count > 0) return; // Já existem status
 
         const defaults = [
-            { name: 'Rascunho', mappedBehavior: OrderStatus.DRAFT, color: '#9CA3AF', icon: 'FileText', allowEdition: true, scope: StatusScope.ORDER, order: 1 },
-            { name: 'Aprovado', mappedBehavior: OrderStatus.APPROVED, color: '#10B981', icon: 'CheckCircle', allowEdition: false, scope: StatusScope.ORDER, order: 2 },
-            { name: 'Em Produção', mappedBehavior: OrderStatus.IN_PRODUCTION, color: '#3B82F6', icon: 'Settings', allowEdition: false, scope: StatusScope.BOTH, order: 3 },
-            { name: 'Finalizado', mappedBehavior: OrderStatus.FINISHED, color: '#4F46E5', icon: 'Package', allowEdition: false, scope: StatusScope.BOTH, order: 4 },
-            { name: 'Entregue', mappedBehavior: OrderStatus.DELIVERED, color: '#059669', icon: 'Truck', allowEdition: false, scope: StatusScope.BOTH, order: 5, hideFromFlow: true },
-            { name: 'Cancelado', mappedBehavior: OrderStatus.CANCELLED, color: '#EF4444', icon: 'XCircle', allowEdition: false, scope: StatusScope.ORDER, order: 6, hideFromFlow: true },
+            { name: 'Rascunho', mappedBehavior: OrderStatus.DRAFT, color: '#9CA3AF', icon: 'FileText', allowEdition: true, requirePayment: false, requireDeposit: false, scope: StatusScope.ORDER, order: 1 },
+            { name: 'Aprovado', mappedBehavior: OrderStatus.APPROVED, color: '#10B981', icon: 'CheckCircle', allowEdition: false, requirePayment: false, requireDeposit: true, scope: StatusScope.ORDER, order: 2 },
+            { name: 'Em Produção', mappedBehavior: OrderStatus.IN_PRODUCTION, color: '#3B82F6', icon: 'Settings', allowEdition: false, requirePayment: false, requireDeposit: false, scope: StatusScope.BOTH, order: 3 },
+            { name: 'Finalizado', mappedBehavior: OrderStatus.FINISHED, color: '#4F46E5', icon: 'Package', allowEdition: false, requirePayment: true, requireDeposit: false, scope: StatusScope.BOTH, order: 4 },
+            { name: 'Entregue', mappedBehavior: OrderStatus.DELIVERED, color: '#059669', icon: 'Truck', allowEdition: false, requirePayment: true, requireDeposit: false, scope: StatusScope.BOTH, order: 5, hideFromFlow: true },
+            { name: 'Cancelado', mappedBehavior: OrderStatus.CANCELLED, color: '#EF4444', icon: 'XCircle', allowEdition: false, requirePayment: false, requireDeposit: false, scope: StatusScope.ORDER, order: 6, hideFromFlow: true },
         ];
 
         for (const def of defaults) {

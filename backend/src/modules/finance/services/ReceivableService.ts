@@ -139,6 +139,10 @@ export class ReceivableService {
       include: {
         customer: { select: { id: true, name: true, document: true } },
         order: { select: { id: true, orderNumber: true, total: true } },
+        transactions: {
+          where: { type: 'CREDIT', status: 'PAID' },
+          select: { amount: true }
+        },
         _count: { select: { transactions: true } }
       },
       orderBy: [{ status: 'asc' }, { dueDate: 'asc' }]

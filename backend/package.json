@@ -21,7 +21,8 @@
     "db:studio": "pnpm exec prisma studio",
     "seed:products": "tsx scripts/seed-products.ts",
     "seed:artplim": "tsx scripts/seed-ArtPlim.ts",
-    "db:clear-orders": "tsx scripts/clear-orders.ts"
+    "db:clear-orders": "tsx scripts/clear-orders.ts",
+    "clear:vendas": "node scripts/clear_vendas.js"
   },
   "prisma": {
     "seed": "tsx scripts/seed-ArtPlim.ts"

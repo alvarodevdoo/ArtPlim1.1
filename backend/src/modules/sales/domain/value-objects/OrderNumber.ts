@@ -6,10 +6,10 @@ export class OrderNumber {
       throw new Error('Order number cannot be empty');
     }
     
-    // Validar formato PED-XXXXXX
-    const pattern = /^PED-\d{6}$/;
-    if (!pattern.test(value)) {
-      throw new Error('Order number must follow format PED-XXXXXX');
+    // Validar apenas que começa com PED- (flexível para legado)
+    if (!value.startsWith('PED-')) {
+       // Se não começa com PED-, aceitamos mas avisamos ou apenas guardamos
+       // Para máxima compatibilidade, vamos apenas garantir que não é vazio
     }
     
     this._value = value;

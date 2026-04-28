@@ -93,6 +93,12 @@ const allMenuItems: MenuItem[] = [
     alwaysVisible: true
   },
   {
+    title: 'Pendências',
+    href: '/pendencias',
+    icon: ListChecks,
+    permission: 'sales.edit_price'
+  },
+  {
     title: 'Estoque',
     href: '/estoque',
     icon: Warehouse,
