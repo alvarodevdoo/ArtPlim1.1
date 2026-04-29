@@ -790,8 +790,12 @@ const CriarPedido: React.FC = () => {
   };
 
   const handleAutoStatusUpdate = async (paymentsToUse: any[]) => {
-    const targetStatus = searchParams.get('targetStatus');
-    const targetProcessStatusId = searchParams.get('targetProcessStatusId');
+    const rawTargetStatus = searchParams.get('targetStatus');
+    const rawTargetProcessStatusId = searchParams.get('targetProcessStatusId');
+    
+    const targetStatus = rawTargetStatus === 'undefined' ? null : rawTargetStatus;
+    const targetProcessStatusId = rawTargetProcessStatusId === 'undefined' ? null : rawTargetProcessStatusId;
+
     if (targetStatus && editId) {
       try {
         console.log('[CriarPedido] Salvando pedido antes da transio de status...');
@@ -804,8 +808,16 @@ const CriarPedido: React.FC = () => {
         // Delay para garantir sincronia temporal no BD (transaction updates)
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        console.log('[CriarPedido] Executando atualizao de status automtica:', targetStatus);
+        console.log('[CriarPedido] Executando atualizao de status automtica:', targetStatus, 'ProcessId:', targetProcessStatusId);
         const payload: any = targetProcessStatusId ? { processStatusId: targetProcessStatusId } : { status: targetStatus };
+        
+        console.log('[CriarPedido] Payload da atualizacao:', payload);
+        if (!payload.status && !payload.processStatusId) {
+            console.error('[CriarPedido] Abortando PATCH: payload sem status válido');
+            toast.error('Erro interno: status de destino não configurado');
+            return;
+        }
+
         await api.patch(`/api/sales/orders/${editId}/status`, payload);
         toast.success('Status atualizado com sucesso aps pagamento!');
         

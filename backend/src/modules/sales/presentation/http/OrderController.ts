@@ -8,6 +8,7 @@ import { GetOrderStatsUseCase } from '../../application/use-cases/GetOrderStatsU
 import { CancelOrderItemsUseCase } from '../../application/use-cases/CancelOrderItemsUseCase';
 import { CreateDeliveryUseCase } from '../../application/use-cases/CreateDeliveryUseCase';
 import { CreateOrderDTO } from '../../application/dto/CreateOrderDTO';
+import { OrderPaymentProcessor } from '../../application/services/OrderPaymentProcessor';
 import { getTenantClient } from '../../../../shared/infrastructure/database/tenant';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
@@ -37,13 +38,31 @@ export class OrderController {
     private regenerateProductionService: RegenerateProductionService,
     private reportWasteService: ReportWasteService,
     private pricingCompositionService: PricingCompositionService,
-    private incompatibilityService: IncompatibilityService
+    private incompatibilityService: IncompatibilityService,
+    private websocketServer?: any
   ) { }
 
   async create(request: FastifyRequest, reply: FastifyReply) {
     try {
       const data = request.body as CreateOrderDTO;
-      const order = await this.createOrderUseCase.execute(data);
+      const userId = (request as any).user?.userId || 'system';
+      const order = await this.createOrderUseCase.execute(data, userId);
+
+      // Processar pagamentos
+      if (data.payments && data.payments.length > 0) {
+        const prisma = getTenantClient(request.user!.organizationId);
+        const paymentProcessor = new OrderPaymentProcessor(prisma);
+        await paymentProcessor.process(order.id, data.payments, (request as any).user);
+      }
+
+      // Notificar via WebSocket
+      if (this.websocketServer) {
+        this.websocketServer.notifyOrganization(request.user!.organizationId, 'order-created', {
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          customerName: (order as any).customer?.name
+        });
+      }
 
       return reply.status(201).send({
         success: true,
@@ -58,8 +77,23 @@ export class OrderController {
     try {
       const { id } = request.params as { id: string };
       const data = request.body as CreateOrderDTO;
-      const userId = (request as any).user?.id || 'system';
+      const userId = (request as any).user?.userId || 'system';
       const result = await this.updateOrderUseCase.execute(id, data, userId);
+
+      // Processar pagamentos
+      if (data.payments) {
+        const prisma = getTenantClient(request.user!.organizationId);
+        const paymentProcessor = new OrderPaymentProcessor(prisma);
+        await paymentProcessor.process(id, data.payments, (request as any).user);
+      }
+
+      // Notificar via WebSocket
+      if (this.websocketServer) {
+        this.websocketServer.notifyOrganization(request.user!.organizationId, 'order-updated', {
+          orderId: id,
+          orderNumber: result.order.orderNumber
+        });
+      }
 
       return reply.send({
         success: true,
@@ -237,9 +271,18 @@ export class OrderController {
       const result = await this.approveOrderService.execute({
         orderId: id,
         organizationId: request.user!.organizationId,
-        userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub,
+        userId: (request.user as any)?.userId,
         processStatusId
       });
+
+      // Notificar via WebSocket
+      if (this.websocketServer) {
+        this.websocketServer.notifyOrganization(request.user!.organizationId, 'order-updated', {
+          orderId: id,
+          orderNumber: (result as any).order?.orderNumber || (result as any).orderNumber,
+          status: 'APPROVED'
+        });
+      }
 
       return reply.send({ success: true, data: result });
     } catch (error: any) {
@@ -255,9 +298,18 @@ export class OrderController {
       const result = await this.finishOrderService.execute({
         orderId: id,
         organizationId: request.user!.organizationId,
-        userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub,
+        userId: (request.user as any)?.userId,
         processStatusId
       });
+
+      // Notificar via WebSocket
+      if (this.websocketServer) {
+        this.websocketServer.notifyOrganization(request.user!.organizationId, 'order-updated', {
+          orderId: id,
+          orderNumber: (result as any).order?.orderNumber || (result as any).orderNumber,
+          status: 'FINISHED'
+        });
+      }
 
       return reply.send({ success: true, data: result });
     } catch (error: any) {
@@ -273,9 +325,18 @@ export class OrderController {
       const result = await this.reopenOrderService.execute({
         orderId: id,
         organizationId: request.user!.organizationId,
-        userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub,
+        userId: (request.user as any)?.userId,
         reason
       });
+
+      // Notificar via WebSocket
+      if (this.websocketServer) {
+        this.websocketServer.notifyOrganization(request.user!.organizationId, 'order-updated', {
+          orderId: id,
+          status: 'REOPENED'
+        });
+      }
+
       return reply.send({ success: true, data: result });
     } catch (error: any) {
       throw error;
@@ -290,10 +351,19 @@ export class OrderController {
       const result = await this.regenerateProductionService.execute({
         orderId: id,
         organizationId: request.user!.organizationId,
-        userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub,
+        userId: (request.user as any)?.userId,
         reason: body.reason,
         itemIds: body.itemIds
       });
+
+      // Notificar via WebSocket
+      if (this.websocketServer) {
+        this.websocketServer.notifyOrganization(request.user!.organizationId, 'order-updated', {
+          orderId: id,
+          status: 'REGENERATED'
+        });
+      }
+
       return reply.send({ success: true, data: result });
     } catch (error: any) {
       throw error;
@@ -330,7 +400,7 @@ export class OrderController {
         wasteQuantity: body.quantity,
         reason: body.reason,
         organizationId: request.user!.organizationId,
-        userId: (request.user as any)?.id || (request.user as any)?.userId || (request.user as any)?.sub,
+        userId: (request.user as any)?.userId,
         overrideUnitCost: body.unitCost
       });
       return reply.code(201).send({ success: true, data: result });
@@ -465,21 +535,38 @@ export class OrderController {
   async updateStatus(request: FastifyRequest, reply: FastifyReply) {
     try {
       const { id } = request.params as { id: string };
-      const { status, reason, paymentAction, refundAmount } = request.body as {
-        status: string;
+      const { status, processStatusId, reason, paymentAction, refundAmount } = request.body as {
+        status?: string;
+        processStatusId?: string;
         reason?: string;
         paymentAction?: string;
         refundAmount?: number;
       };
 
-      const userId = (request as any).user?.id;
+      const userId = (request as any).user?.userId;
 
-      const order = await this.updateOrderStatusUseCase.execute(id, status, {
+      // O UseCase aceita tanto o Enum de status quanto o UUID do processStatusId
+      const targetStatus = processStatusId || status;
+
+      if (!targetStatus) {
+        return reply.status(400).send({ success: false, message: 'Status ou processStatusId é obrigatório' });
+      }
+
+      const order = await this.updateOrderStatusUseCase.execute(id, targetStatus, {
         userId,
         reason,
         paymentAction,
         refundAmount
       });
+
+      // Notificar via WebSocket
+      if (this.websocketServer) {
+        this.websocketServer.notifyOrganization(request.user!.organizationId, 'order-updated', {
+          orderId: id,
+          orderNumber: (order as any).orderNumber,
+          status: targetStatus
+        });
+      }
 
       return reply.send({
         success: true,
@@ -494,7 +581,7 @@ export class OrderController {
     try {
       const { id } = request.params as { id: string };
       const { itemIds, reason } = request.body as { itemIds: string[]; reason?: string };
-      const userId = (request as any).user?.id || 'system';
+      const userId = (request as any).user?.userId || 'system';
       const organizationId = request.user?.organizationId;
 
       if (!organizationId) {
@@ -519,7 +606,7 @@ export class OrderController {
     try {
       const { id } = request.params as { id: string };
       const { items, notes } = request.body as { items: { orderItemId: string, quantity: number }[]; notes?: string };
-      const userId = (request as any).user?.id || 'system';
+      const userId = (request as any).user?.userId || 'system';
       const organizationId = request.user?.organizationId;
 
       if (!organizationId) {

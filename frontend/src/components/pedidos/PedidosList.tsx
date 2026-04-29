@@ -276,9 +276,11 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
                       const isCancelled = pedido?.status === 'CANCELLED';
                       if (isCancelled) return null;
 
-                      const canEdit = pedido?.processStatus
-                        ? pedido.processStatus.allowEdition
-                        : pedido?.status === 'DRAFT';
+                      const canEdit = pedido.status !== 'CANCELLED' && (
+                        pedido?.processStatus
+                          ? pedido.processStatus.allowEdition
+                          : pedido?.status === 'DRAFT'
+                      );
 
                       if (canEdit) {
                         return (
@@ -407,6 +409,9 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
                 <div className="relative pl-6 space-y-8 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-200">
                   {historyData.map((event, idx) => {
                     const toStatusInfo = statusConfig[event.toStatus as keyof typeof statusConfig];
+                    const fromLabel = event.fromProcessStatus?.name || statusConfig[event.fromStatus as keyof typeof statusConfig]?.label || event.fromStatus;
+                    const toLabel = event.toProcessStatus?.name || toStatusInfo?.label || event.toStatus;
+
                     return (
                       <div key={idx} className="relative">
                         <div className="absolute -left-[31px] top-1 w-6 h-6 rounded-full bg-white border-2 border-primary flex items-center justify-center z-10 shadow-sm">
@@ -423,16 +428,16 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
                           
                           <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-sm transition-hover hover:bg-white hover:shadow-md">
                             <div className="flex items-center gap-2 mb-1">
-                               {event.fromStatus && (
+                               {event.fromStatus && event.fromStatus !== event.toStatus && (
                                  <>
                                    <span className="text-[11px] text-muted-foreground line-through">
-                                      {statusConfig[event.fromStatus as keyof typeof statusConfig]?.label || event.fromStatus}
+                                      {fromLabel}
                                    </span>
                                    <span className="text-muted-foreground">→</span>
                                  </>
                                )}
                                <h4 className="font-bold text-sm text-slate-800">
-                                  {toStatusInfo?.label || event.toStatus}
+                                  {event.notes?.includes('Pagamento') ? 'Registro de Pagamento' : toLabel}
                                </h4>
                             </div>
                             {event.notes && (

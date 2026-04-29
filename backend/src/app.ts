@@ -4,6 +4,7 @@ import jwt from '@fastify/jwt';
 import multipart from '@fastify/multipart';
 import { authMiddleware } from './shared/infrastructure/auth/middleware';
 import { AppError } from './shared/infrastructure/errors/AppError';
+import { WebSocketServer } from './shared/infrastructure/websocket/WebSocketServer';
 
 // Routes
 import { authRoutes } from './modules/auth/auth.routes';
@@ -91,7 +92,8 @@ async function registerRoutes(fastify: FastifyInstance, options: { websocketServ
       prisma,
       new ProfileService(prisma),
       new ProductService(prisma),
-      new OrganizationService(prisma)
+      new OrganizationService(prisma),
+      options.websocketServer
     );
     await api.register((instance) => salesModule.registerRoutes(instance), { prefix: '/sales' });
 
@@ -181,7 +183,7 @@ function setupErrorHandler(fastify: FastifyInstance) {
   });
 }
 
-export async function buildApp(options: { websocketServer?: any } = {}) {
+export async function buildApp() {
   const fastify = Fastify({
     logger: process.env.NODE_ENV === 'production' ? false : {
       level: 'info',
@@ -191,6 +193,10 @@ export async function buildApp(options: { websocketServer?: any } = {}) {
       }
     }
   });
+  
+  const websocketServer = new WebSocketServer(fastify.server, prisma);
+  fastify.decorate('websocketServer', websocketServer);
+  const options = { websocketServer };
 
   await registerPlugins(fastify);
   await registerRoutes(fastify, options);

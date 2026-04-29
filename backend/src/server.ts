@@ -15,24 +15,12 @@ async function start() {
         // No Fastify, o httpServer é criado assim que a instância é gerada.
         
         const fastify = await buildApp(); 
-        // Nota: as rotas de produção não funcionarão até o websocketServer ser injetado se ele for obrigatório no registro.
-        // Mas eu mudei o app.ts para apenas registrar se options.websocketServer existir.
-        
-        // 2. Inicializar WebSocket Server usando o servidor do Fastify
-        const websocketServer = new WebSocketServer(fastify.server, prisma);
-
-        // 3. Como as rotas já foram registradas (ou não, se o if falhou), 
-        // uma estratégia melhor é usar um decorator ou passar a instância.
-        
-        // Vamos refatorar o app.ts para permitir injeção via decorator.
-        
-        // Por enquanto, para manter a simplicidade e resolver o bloqueio:
         console.log('🚀 Iniciando servidor Fastify...');
 
         // Graceful shutdown
         const shutdown = async () => {
             console.log('🛑 Shutting down gracefully...');
-            websocketServer.close();
+            (fastify as any).websocketServer?.close();
             await prisma.$disconnect();
             await fastify.close();
             process.exit(0);

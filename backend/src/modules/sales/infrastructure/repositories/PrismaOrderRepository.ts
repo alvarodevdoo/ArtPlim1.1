@@ -92,7 +92,22 @@ export class PrismaOrderRepository implements OrderRepository {
             }
           },
           include: {
-            items: true
+            processStatus: true,
+            items: {
+              include: {
+                product: {
+                  select: { id: true, name: true, description: true }
+                }
+              }
+            },
+            customer: {
+              select: { id: true, name: true, email: true, phone: true }
+            },
+            transactions: {
+              include: {
+                paymentMethod: { select: { name: true } }
+              }
+            }
           }
         });
 
@@ -169,7 +184,22 @@ export class PrismaOrderRepository implements OrderRepository {
           }
         },
         include: {
-          items: true
+          processStatus: true,
+          items: {
+            include: {
+              product: {
+                select: { id: true, name: true, description: true }
+              }
+            }
+          },
+          customer: {
+            select: { id: true, name: true, email: true, phone: true }
+          },
+          transactions: {
+            include: {
+              paymentMethod: { select: { name: true } }
+            }
+          }
         }
       });
 
@@ -204,6 +234,13 @@ export class PrismaOrderRepository implements OrderRepository {
             city: true,
             state: true,
             zipCode: true
+          }
+        },
+        transactions: {
+          include: {
+            paymentMethod: {
+              select: { name: true }
+            }
           }
         }
       }
@@ -246,10 +283,19 @@ export class PrismaOrderRepository implements OrderRepository {
     if (filters?.status) {
       whereClause.status = filters.status;
     } else if (!filters?.search) {
-      // Se não há filtro de status nem busca, ocultar os pedidos marcados para sair do fluxo padrão
-      whereClause.processStatus = {
-        hideFromFlow: false
-      };
+      // Se não há filtro de status nem busca:
+      // 1. Ocultar cancelados por padrão no fluxo diário
+      // 2. Respeitar a flag hideFromFlow dos status customizados
+      // 3. Mostrar pedidos sem status customizado (processStatusId: null)
+      whereClause.AND = [
+        { status: { not: 'CANCELLED' } },
+        {
+          OR: [
+            { processStatusId: null },
+            { processStatus: { hideFromFlow: false } }
+          ]
+        }
+      ];
     }
 
     if (filters?.search) {
@@ -296,6 +342,13 @@ export class PrismaOrderRepository implements OrderRepository {
             name: true,
             email: true,
             phone: true
+          }
+        },
+        transactions: {
+          include: {
+            paymentMethod: {
+              select: { name: true }
+            }
           }
         }
       },
@@ -486,8 +539,10 @@ export class PrismaOrderRepository implements OrderRepository {
       cancellationPaymentAction: prismaOrder.cancellationPaymentAction,
       cancellationRefundAmount: prismaOrder.cancellationRefundAmount ? Number(prismaOrder.cancellationRefundAmount) : undefined,
       processStatusId: prismaOrder.processStatusId,
+      processStatus: prismaOrder.processStatus,
       discountStatus: prismaOrder.discountStatus as any,
-      authorizationRequestId: prismaOrder.authorizationRequestId
+      authorizationRequestId: prismaOrder.authorizationRequestId,
+      transactions: prismaOrder.transactions
     });
   }
 }

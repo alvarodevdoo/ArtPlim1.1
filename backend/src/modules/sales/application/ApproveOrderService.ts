@@ -300,8 +300,10 @@ export class ApproveOrderService {
           orderId,
           fromStatus: order.status,
           toStatus: 'APPROVED',
+          fromProcessStatusId: order.processStatusId || null,
+          toProcessStatusId: finalProcessStatusId || null,
           notes: 'Pedido aprovado para produção — estoque reservado.',
-          userId
+          userId: (userId && userId !== 'system') ? userId : null
         }
       });
 

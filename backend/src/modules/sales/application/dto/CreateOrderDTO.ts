@@ -32,4 +32,5 @@ export interface CreateOrderDTO {
   discountStatus?: string;
   deliveryDate?: string | null;
   notes?: string | null;
+  payments?: any[];
 }

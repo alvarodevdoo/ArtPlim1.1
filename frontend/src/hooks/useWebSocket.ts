@@ -21,12 +21,15 @@ export const useWebSocket = (): WebSocketHook => {
   const [lastConnected, setLastConnected] = useState<Date | null>(null);
   const [lastDisconnected, setLastDisconnected] = useState<Date | null>(null);
   
-  const { user, token } = useAuth();
+  const { user } = useAuth();
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
   const maxReconnectAttempts = 5;
   const reconnectDelay = 3000; // 3 segundos
 
   const connect = useCallback(() => {
+    // Lê o token diretamente do localStorage (mesmo padrão do api.ts)
+    const token = localStorage.getItem('token');
+
     if (!user?.organizationId || !token) {
       console.log('🔌 WebSocket: Aguardando autenticação...');
       return;
@@ -37,18 +40,26 @@ export const useWebSocket = (): WebSocketHook => {
       return;
     }
 
-    console.log('🔌 WebSocket: Conectando...');
+    console.log('🔌 WebSocket: Iniciando conexão...');
 
-    const wsUrl = process.env.REACT_APP_WS_URL || 
-                  process.env.REACT_APP_API_URL?.replace('/api', '') || 
-                  'http://localhost:3001';
+    // Em desenvolvimento com Vite, o melhor é usar URL relativa
+    // para passar pelo proxy e evitar problemas de CORS/HTTPS.
+    // Se VITE_API_URL for absoluto, ele tentará direto. 
+    // Vamos preferir o proxy se estivermos em localhost.
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const wsUrl = isLocalhost ? '/' : (import.meta.env.VITE_API_URL || '/');
+
+    console.log(`🔌 WebSocket: Conectando em ${wsUrl} (Path: /socket.io)`);
 
     const newSocket = io(wsUrl, {
       auth: { token },
       transports: ['websocket', 'polling'],
       timeout: 10000,
-      reconnection: false, // Vamos gerenciar a reconexão manualmente
-      forceNew: true
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 2000,
+      forceNew: true,
+      path: '/socket.io'
     });
 
     newSocket.on('connect', () => {
@@ -89,7 +100,7 @@ export const useWebSocket = (): WebSocketHook => {
     });
 
     setSocket(newSocket);
-  }, [user?.organizationId, token, reconnectAttempts]);
+  }, [user?.organizationId, reconnectAttempts]); // token é lido internamente do localStorage
 
   const scheduleReconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {

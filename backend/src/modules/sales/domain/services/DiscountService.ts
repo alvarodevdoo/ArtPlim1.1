@@ -6,12 +6,13 @@ export interface DiscountItemInput {
   quantity: number;
   discountItem: number;
   discountStatus?: string;
+  maxDiscountThreshold?: number;
 }
 
 export interface DiscountServiceInput {
   items: DiscountItemInput[];
   globalDiscount: number;
-  maxDiscountThreshold: number; // e.g., 0.15 for 15%
+  maxDiscountThreshold: number; // Limite global/da organização
   globalDiscountStatus?: string;
 }
 
@@ -82,8 +83,12 @@ export class DiscountService {
 
         if (!isAuthorized) {
           const discountPercentage = totalDiscount / grossValue;
-          if (discountPercentage > maxDiscountThreshold) {
-            throw new AppError(`O desconto total de ${(discountPercentage * 100).toFixed(2)}% em um dos itens excede o teto permitido de ${(maxDiscountThreshold * 100).toFixed(2)}%.`, 400);
+          const effectiveThreshold = output.maxDiscountThreshold !== undefined && output.maxDiscountThreshold !== null
+            ? output.maxDiscountThreshold 
+            : maxDiscountThreshold;
+
+          if (discountPercentage > effectiveThreshold) {
+            throw new AppError(`O desconto total de ${(discountPercentage * 100).toFixed(2)}% em um dos itens excede o teto permitido de ${(effectiveThreshold * 100).toFixed(2)}%.`, 400);
           }
         }
       }

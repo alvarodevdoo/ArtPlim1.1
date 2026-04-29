@@ -19,7 +19,12 @@ export class WebSocketServer {
     this.prisma = prisma;
     this.io = new SocketIOServer(httpServer, {
       cors: {
-        origin: process.env.FRONTEND_URL || "http://localhost:3000",
+        origin: [
+          'http://localhost:3000',
+          'http://localhost:3001',
+          process.env.FRONTEND_URL || 'http://localhost:3000',
+          'https://erp.artplim.com.br'
+        ],
         methods: ["GET", "POST"],
         credentials: true
       },

@@ -31,6 +31,8 @@ export interface OrderProps {
   processStatusId?: string;
   discountStatus?: DiscountStatus;
   authorizationRequestId?: string;
+  transactions?: any[];
+  processStatus?: any;
 }
 
 export class Order {
@@ -58,9 +60,11 @@ export class Order {
   private _cancellationReason?: string;
   private _cancellationPaymentAction?: string;
   private _cancellationRefundAmount?: Money;
+  private _transactions?: any[];
   private _processStatusId?: string;
   private _discountStatus: DiscountStatus;
   private _authorizationRequestId?: string;
+  private _processStatus?: any;
 
   constructor(props: OrderProps) {
     this._id = props.id;
@@ -90,6 +94,8 @@ export class Order {
     this._processStatusId = props.processStatusId;
     this._discountStatus = props.discountStatus || DiscountStatus.NONE;
     this._authorizationRequestId = props.authorizationRequestId;
+    this._transactions = props.transactions;
+    this._processStatus = props.processStatus;
 
     this.recalculateTotals();
     this.validate();
@@ -458,7 +464,9 @@ export class Order {
       cancellationRefundAmount: this._cancellationRefundAmount?.value,
       processStatusId: this._processStatusId,
       discountStatus: this._discountStatus,
-      authorizationRequestId: this._authorizationRequestId
+      authorizationRequestId: this._authorizationRequestId,
+      transactions: this._transactions,
+      processStatus: this._processStatus
     };
   }
 

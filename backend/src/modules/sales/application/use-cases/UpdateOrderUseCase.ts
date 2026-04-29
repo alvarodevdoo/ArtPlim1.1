@@ -139,7 +139,7 @@ export class UpdateOrderUseCase {
 
       const dbProduct = await this.prisma?.product.findUnique({
         where: { id: product.id },
-        select: { isCommissionable: true, specificCommissionRate: true }
+        select: { isCommissionable: true, specificCommissionRate: true, maxDiscountThreshold: true }
       });
       productsInfo.set(itemData.productId, {
         isCommissionable: dbProduct?.isCommissionable ?? true,
@@ -212,7 +212,8 @@ export class UpdateOrderUseCase {
         unitPrice: Number(unitPrice),
         quantity: itemData.quantity,
         discountItem: itemData.discount || 0,
-        discountStatus: itemData.discountStatus
+        discountStatus: itemData.discountStatus,
+        maxDiscountThreshold: dbProduct?.maxDiscountThreshold !== null && dbProduct?.maxDiscountThreshold !== undefined ? Number(dbProduct.maxDiscountThreshold) : undefined
       });
     }
 

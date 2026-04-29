@@ -62,13 +62,16 @@ export class SalesModule {
   private reportWasteService!: ReportWasteService;
   private pricingCompositionService!: PricingCompositionService;
   private incompatibilityService!: IncompatibilityService;
+  private websocketServer?: any;
 
   constructor(
     private prisma: any,
     private customerService: CustomerService,
     private productService: ProductService,
-    private organizationService: OrganizationService
+    private organizationService: OrganizationService,
+    websocketServer?: any
   ) {
+    this.websocketServer = websocketServer;
     this.setupDependencies();
   }
 
@@ -87,7 +90,8 @@ export class SalesModule {
       this.productService,
       this.organizationService,
       this.processStatusService,
-      this.pricingEngine
+      this.pricingEngine,
+      this.prisma
     );
 
     this.updateOrderUseCase = new UpdateOrderUseCase(
@@ -136,7 +140,8 @@ export class SalesModule {
       this.regenerateProductionService,
       this.reportWasteService,
       this.pricingCompositionService,
-      this.incompatibilityService
+      this.incompatibilityService,
+      this.websocketServer
     );
 
     this.authorizationService = new AuthorizationService();

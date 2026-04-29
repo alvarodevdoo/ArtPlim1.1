@@ -2,7 +2,7 @@ import React from 'react';
 import { statusConfig } from '@/types/pedidos';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Plus, Edit, Trash2, AlertCircle } from 'lucide-react';
+import { Plus, Edit, Trash2, AlertCircle, Ban } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { ItemPedido, Produto } from '@/types/sales';
 import { ITEM_TYPE_CONFIGS } from '@/types/item-types';
@@ -209,7 +209,7 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({
                                 className={`border rounded-lg p-4 ${editingItemId === item.id ? 'border-blue-300 bg-blue-50' : 'border-border'
                                     }`}
                             >
-                                <div className="flex justify-between items-start">
+                                <div className="flex justify-between items-stretch">
                                     <div className="flex-1">
                                         <div className="flex items-center space-x-2 mb-2">
                                             <span className="bg-muted text-muted-foreground px-2 py-1 rounded text-sm">
@@ -253,7 +253,7 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({
                                         {renderVariations(item, itemProduct as Produto)}
 
                                         {/* Basic item information */}
-                                        <div className="mt-2 grid grid-cols-2 gap-4 text-sm">
+                                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                                             <p><span className="font-medium">Qtd:</span> {item.quantity} un</p>
 
                                             {/* Show dimensions only for area-based products */}
@@ -275,13 +275,39 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({
                                                 <span className="font-medium">Observações:</span> {item.notes}
                                             </div>
                                         )}
+                                    </div>
 
-                                        {/* Item Status Selector - Badge Style */}
-                                        <div className="mt-4 flex items-center space-x-2">
+                                    {/* Right side: Price block + Action buttons */}
+                                    <div className="text-right ml-4 flex flex-col items-end justify-between min-w-[130px]">
+                                        <div>
+                                            <p className="text-sm text-gray-500">{formatCurrency(item.unitPrice)}{formatarUnidadePreco(itemProduct as Produto | undefined)}</p>
+                                            {/* Discount tag - above total */}
+                                            {(item.discountItem || 0) > 0 && (
+                                                (item as any).discountStatus === 'PENDING' ? (
+                                                    <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 font-medium" title="Aguardando autorização de desconto">
+                                                        ⏳ -{formatCurrency(item.discountItem || 0)} pendente
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1 text-[11px] text-red-500 font-medium">
+                                                        ↓ {formatCurrency(item.discountItem || 0)} desc.
+                                                    </span>
+                                                )
+                                            )}
+                                            <p className="text-lg font-bold">
+                                                {formatCurrency(item.totalPrice)}
+                                            </p>
+                                            {(item as any).discountStatus === 'PENDING' && !(item.discountItem || 0) && (
+                                                <p className="text-[10px] text-amber-600 font-medium italic">
+                                                    * Aguardando liberação
+                                                </p>
+                                            )}
+                                        </div>
+                                        {/* Status + Action buttons in same row */}
+                                        <div className="flex items-center gap-1 mt-auto">
                                             <select
                                                 value={(item as any).status || 'DRAFT'}
                                                 onChange={(e) => onItemStatusChange?.(item.id, e.target.value)}
-                                                className={`px-3 py-1.5 rounded-full text-xs font-medium border cursor-pointer transition-colors ${statusConfig[(item as any).status as keyof typeof statusConfig]?.color || 'bg-gray-100 text-gray-800 border-gray-200'}`}
+                                                className={`px-3 py-1 rounded-full text-xs font-medium border cursor-pointer transition-colors ${statusConfig[(item as any).status as keyof typeof statusConfig]?.color || 'bg-gray-100 text-gray-800 border-gray-200'}`}
                                                 style={{ appearance: 'none', paddingRight: '28px', backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 12 12\'%3E%3Cpath fill=\'currentColor\' d=\'M6 9L1 4h10z\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center' }}
                                             >
                                                 {processStatuses.length > 0 ? (
@@ -298,69 +324,52 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({
                                                     ))
                                                 )}
                                             </select>
-
-                                            {/* Delivery Button for FINISHED items */}
                                             {(item as any).status === 'FINISHED' && (
                                                 <Button
                                                     size="sm"
                                                     variant="outline"
-                                                    className="text-green-600 border-green-200 hover:bg-green-50"
+                                                    className="text-green-600 border-green-200 hover:bg-green-50 h-7 text-xs px-2"
                                                     onClick={() => onItemStatusChange?.(item.id, 'DELIVERED')}
                                                 >
-                                                    ✓ Marcar como Entregue
+                                                    ✓ Entregue
                                                 </Button>
                                             )}
-
-                                            {/* Show delivered badge */}
                                             {(item as any).status === 'DELIVERED' && (
-                                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
                                                     ✓ Entregue
                                                 </span>
                                             )}
-                                        </div>
-                                    </div>
-                                    <div className="text-right ml-4">
-                                        <p className="font-medium">{formatCurrency(item.unitPrice)}{formatarUnidadePreco(itemProduct as Produto | undefined)}</p>
-                                        <div className="flex flex-col items-end">
-                                            <p className="text-lg font-bold">
-                                                {formatCurrency(item.totalPrice)}
-                                            </p>
-                                            {(item as any).discountStatus === 'PENDING' && (
-                                                <p className="text-[10px] text-amber-600 font-medium italic">
-                                                    * Valor integral (aguardando liberação)
-                                                </p>
+                                            <div className="w-px h-5 bg-gray-200 mx-1" />
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-8 w-8 p-0"
+                                                onClick={() => onEdit(item)}
+                                                title="Editar item"
+                                            >
+                                                <Edit className="w-3.5 h-3.5" />
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-8 w-8 p-0 text-red-600 border-red-200 hover:bg-red-50"
+                                                onClick={() => onRemove(item.id)}
+                                                title="Remover item"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </Button>
+                                            {item.id && onRegisterWaste && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8 w-8 p-0 text-rose-500 border-rose-200 hover:bg-rose-50"
+                                                    onClick={() => onRegisterWaste(item)}
+                                                    title="Registrar perda"
+                                                >
+                                                    <Ban className="w-3.5 h-3.5" />
+                                                </Button>
                                             )}
                                         </div>
-                                        <div className="flex space-x-2 mt-2">
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => onEdit(item)}
-                                            >
-                                                <Edit className="w-3 h-3 mr-1" />
-                                                Editar
-                                            </Button>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="text-red-600 border-red-200 hover:bg-red-50"
-                                                onClick={() => onRemove(item.id)}
-                                            >
-                                                <Trash2 className="w-3 h-3 mr-1" />
-                                                Remover
-                                            </Button>
-                                        </div>
-                                        {item.id && onRegisterWaste && (
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="mt-2 w-full text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-100 shadow-none"
-                                                onClick={() => onRegisterWaste(item)}
-                                            >
-                                                <AlertCircle className="w-3 h-3 mr-1" />
-                                                Registrar Perda
-                                            </Button>
-                                        )}
                                     </div>
                                 </div>
                             </div>

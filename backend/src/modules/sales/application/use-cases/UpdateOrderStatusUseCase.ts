@@ -37,6 +37,9 @@ export class UpdateOrderStatusUseCase {
 
     let targetStatusBehavior = status;
 
+    const previousStatus = order.toJSON().status;
+    const previousProcessStatusId = order.toJSON().processStatusId;
+
     if (isUUID) {
       // É um Status Customizado
       const customStatus = await this.prisma.processStatus.findUnique({ where: { id: status } });
@@ -92,6 +95,28 @@ export class UpdateOrderStatusUseCase {
     }
 
     const savedOrder = await this.orderRepository.save(order);
+    
+    // Registrar no histórico de status
+    try {
+      const historyData = {
+        orderId: order.id,
+        fromStatus: previousStatus,
+        toStatus: targetStatusBehavior as any,
+        fromProcessStatusId: previousProcessStatusId || null,
+        toProcessStatusId: isUUID ? status : null,
+        notes: details?.reason || 'Alteração de status.',
+        userId: (details?.userId && details.userId !== 'system') ? details.userId : null
+      };
+
+      console.log('[UpdateOrderStatus] Gravando histórico:', historyData);
+
+      await this.prisma.orderStatusHistory.create({
+        data: historyData
+      });
+    } catch (historyError) {
+      console.error('[UpdateOrderStatus] Erro ao registrar histórico:', historyError);
+    }
+
     console.log(`[UpdateOrderStatus] Pedido ${id} salvo com sucesso`);
     return savedOrder;
   }

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useWebSocket } from '@/hooks/useWebSocket';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { useSensor, useSensors, PointerSensor, DragEndEvent } from '@dnd-kit/core';
@@ -9,6 +10,7 @@ import { Pedido, PedidoStats, ProcessStatus, statusConfig } from '@/types/pedido
 
 export function usePedidos() {
   const { settings, hasPermission } = useAuth();
+  const { subscribe, connected } = useWebSocket();
 
   // --- Estados Base ---
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
@@ -70,11 +72,13 @@ export function usePedidos() {
 
   useEffect(() => { loadProcessStatuses(); }, [loadProcessStatuses]);
 
-  const loadPedidos = useCallback(async (searchQuery?: string) => {
+  const loadPedidos = useCallback(async (searchQuery?: string, status?: string, date?: string) => {
     try {
       setLoading(true);
       const params: any = {};
       if (searchQuery) params.search = searchQuery;
+      if (status) params.status = status;
+      if (date) params.dateFrom = date; // Backend pode tratar como dateFrom ou data exata
 
       const [pedidosResponse, statsResponse] = await Promise.all([
         api.get('/api/sales/orders', { params }),
@@ -90,11 +94,39 @@ export function usePedidos() {
     }
   }, []);
 
-  useEffect(() => { loadPedidos(debouncedSearch); }, [debouncedSearch, loadPedidos]);
+  useEffect(() => { 
+    loadPedidos(debouncedSearch, statusFilter, dateFilter); 
+  }, [debouncedSearch, statusFilter, dateFilter, loadPedidos]);
+  
+  // --- WebSocket Listeners ---
+  useEffect(() => {
+    if (!connected || !subscribe) return;
+    
+    console.log('🔌 [usePedidos] Configurando listeners real-time...');
+    
+    const unsubUpdate = subscribe('order-updated', (data: any) => {
+      console.log('🔄 [WebSocket] Pedido atualizado:', data);
+      loadPedidos(debouncedSearch, statusFilter, dateFilter);
+    });
+    
+    const unsubCreate = subscribe('order-created', (data: any) => {
+      console.log('🆕 [WebSocket] Novo pedido criado:', data);
+      loadPedidos(debouncedSearch, statusFilter, dateFilter);
+    });
+    
+    return () => {
+      unsubUpdate?.();
+      unsubCreate?.();
+    };
+  }, [connected, subscribe, loadPedidos, debouncedSearch, statusFilter, dateFilter]);
 
   // --- Derivações ---
   const getStatusDisplay = useCallback((pedido: Pedido) => {
     const baseConfig = statusConfig[pedido?.status as keyof typeof statusConfig] || statusConfig.DRAFT;
+    
+    // Se estiver cancelado, ignora status customizado antigo
+    if (pedido?.status === 'CANCELLED') return statusConfig.CANCELLED;
+
     // Se o pedido tem um processStatus dinâmico, expor a cor dele como badgeColor
     if (pedido?.processStatus?.color) {
       return {
@@ -210,6 +242,15 @@ export function usePedidos() {
         // Fluxo padrão para demais transições
         if (isProcessStatus) payload.processStatusId = newStatus;
         else payload.status = newStatus;
+
+        if (!payload.status || payload.status === 'undefined' || payload.status === 'null') {
+          if (!payload.processStatusId || payload.processStatusId === 'undefined' || payload.processStatusId === 'null') {
+            console.error('[usePedidos] Abortando PATCH: payload sem status válido. newStatus recebido:', newStatus);
+            toast.error('Erro interno: status de destino é inválido.');
+            return;
+          }
+        }
+
         response = await api.patch(`/api/sales/orders/${pedidoId}/status`, payload);
       }
 
@@ -266,7 +307,7 @@ export function usePedidos() {
           });
 
           // Redireciona para a página de EDIÇÃO com TODAS as instruções de destino
-          navigate(`/pedidos/criar?edit=${pedidoId}&autoPay=true&targetStatus=${mappedBehavior}&targetProcessStatusId=${isProcessStatus ? newStatus : ''}`);
+          navigate(`/pedidos/criar?edit=${pedidoId}&autoPay=true&targetStatus=${mappedBehavior || ''}&targetProcessStatusId=${isProcessStatus ? newStatus : ''}`);
         } else {
           console.error('[StatusChange] Falha ao localizar pedido para abrir modal:', pedidoId);
           toast.error('Realize o pagamento para prosseguir (não foi possível abrir o modal automaticamente).');

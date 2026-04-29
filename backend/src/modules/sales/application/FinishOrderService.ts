@@ -159,8 +159,10 @@ export class FinishOrderService {
           orderId,
           fromStatus: order.status,
           toStatus: 'FINISHED',
+          fromProcessStatusId: order.processStatusId || null,
+          toProcessStatusId: input.processStatusId || null,
           notes: 'Ciclo de produção encerrado — Venda reconhecida no DRE.',
-          userId
+          userId: (userId && userId !== 'system') ? userId : null
         }
       });
 

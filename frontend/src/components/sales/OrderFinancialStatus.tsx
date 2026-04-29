@@ -34,11 +34,18 @@ export const OrderFinancialStatus: React.FC<OrderFinancialStatusProps> = ({
     onUseBalance
 }) => {
     const pendingAmount = totalOrder - paidAmount;
-    const isPaid = pendingAmount <= 0;
-    const overPaid = pendingAmount < 0;
-    const hasBalance = customerBalance > 0;
+    const isPaid = pendingAmount <= 0.01;
+    const overPaid = pendingAmount < -0.01;
+
+    // Calcular quanto do saldo já foi adicionado aos pagamentos locais
+    const usedBalance = payments
+        .filter(p => p.methodId === 'BALANCE' || p.methodName === 'Saldo do Cliente')
+        .reduce((sum, p) => sum + p.amount, 0);
+
+    const availableCustomerBalance = Math.max(0, customerBalance - usedBalance);
+    const hasBalance = availableCustomerBalance > 0;
     // Quanto do saldo pode ser usado (limitado ao pendente)
-    const usableBalance = Math.min(customerBalance, Math.max(pendingAmount, 0));
+    const usableBalance = Math.min(availableCustomerBalance, Math.max(pendingAmount, 0));
     const [applyingBalance, setApplyingBalance] = useState(false);
 
     const formatCurrency = (value: number) => {
@@ -121,7 +128,7 @@ export const OrderFinancialStatus: React.FC<OrderFinancialStatusProps> = ({
                                     </div>
                                 </div>
                                 <span className="text-xl font-black text-emerald-700 tabular-nums">
-                                    {formatCurrency(customerBalance)}
+                                    {formatCurrency(availableCustomerBalance)}
                                 </span>
                             </div>
 
@@ -145,9 +152,9 @@ export const OrderFinancialStatus: React.FC<OrderFinancialStatusProps> = ({
                                 )}
                             </Button>
 
-                            {usableBalance < customerBalance && (
+                            {usableBalance < availableCustomerBalance && (
                                 <p className="text-[10px] text-emerald-600/70 mt-2 text-center italic">
-                                    Será aplicado apenas {formatCurrency(usableBalance)} (valor pendente). Restante de {formatCurrency(customerBalance - usableBalance)} ficará disponível.
+                                    Será aplicado apenas {formatCurrency(usableBalance)} (valor pendente). Restante de {formatCurrency(availableCustomerBalance - usableBalance)} ficará disponível.
                                 </p>
                             )}
                         </div>
@@ -159,7 +166,7 @@ export const OrderFinancialStatus: React.FC<OrderFinancialStatusProps> = ({
                     <div className="flex items-center gap-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
                         <Check className="w-4 h-4 text-emerald-600" />
                         <span className="text-xs text-emerald-700 font-medium">
-                            Cliente possui {formatCurrency(customerBalance)} em crédito disponível para outros pedidos.
+                            Cliente possui {formatCurrency(availableCustomerBalance)} em crédito disponível para outros pedidos.
                         </span>
                     </div>
                 )}

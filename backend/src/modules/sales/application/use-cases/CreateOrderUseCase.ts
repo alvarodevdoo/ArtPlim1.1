@@ -36,10 +36,11 @@ export class CreateOrderUseCase {
     private productService: ProductService,
     private organizationService: OrganizationService,
     private processStatusService: ProcessStatusService, // Injetar serviço
-    private pricingEngine: PricingEngine
+    private pricingEngine: PricingEngine,
+    private prisma: any // Injetar prisma
   ) { }
 
-  async execute(data: CreateOrderDTO): Promise<Order> {
+  async execute(data: CreateOrderDTO, userId: string = 'SYSTEM'): Promise<Order> {
     // Verificar se o cliente existe
     const customer = await this.customerService.findById(data.customerId);
     if (!customer) {
@@ -90,7 +91,7 @@ export class CreateOrderUseCase {
       // Buscar as regras de comissão (pois productService.findById pode não trazer os campos novos)
       const dbProduct = await (this as any).prisma?.product.findUnique({
         where: { id: product.id },
-        select: { isCommissionable: true, specificCommissionRate: true }
+        select: { isCommissionable: true, specificCommissionRate: true, maxDiscountThreshold: true }
       });
       productsInfo.set(itemData.productId, {
         isCommissionable: dbProduct?.isCommissionable ?? true,
@@ -158,7 +159,8 @@ export class CreateOrderUseCase {
         unitPrice: Number(unitPrice),
         quantity: itemData.quantity,
         discountItem: itemData.discount || 0,
-        discountStatus: itemData.discountStatus
+        discountStatus: itemData.discountStatus,
+        maxDiscountThreshold: dbProduct?.maxDiscountThreshold !== null && dbProduct?.maxDiscountThreshold !== undefined ? Number(dbProduct.maxDiscountThreshold) : undefined
       });
     }
 
@@ -282,6 +284,23 @@ export class CreateOrderUseCase {
     });
 
     // Salvar no repositório
-    return await this.orderRepository.save(order);
+    const savedOrder = await this.orderRepository.save(order);
+
+    // Registrar no histórico de status (Criação)
+    try {
+      await this.prisma.orderStatusHistory.create({
+        data: {
+          orderId: savedOrder.id,
+          fromStatus: 'NONE',
+          toStatus: 'DRAFT',
+          notes: 'Pedido criado por Usuário',
+          userId: userId
+        }
+      });
+    } catch (historyError) {
+      console.error('[CreateOrderUseCase] Erro ao registrar histórico:', historyError);
+    }
+
+    return savedOrder;
   }
 }
