@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '@/lib/api';
-import { PermissionType, MODULE_SETTINGS_MAP } from '@/lib/permissions';
+import { PermissionType, MODULE_SETTINGS_MAP, ROLE_PERMISSIONS } from '@/lib/permissions';
 
 interface User {
   id: string;
@@ -189,8 +189,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // 1. O Proprietário (OWNER) sempre tem permissão total por padrão no RBAC
     if (user.role !== 'OWNER') {
-      // Verificar se o usuário possui a permissão no RBAC dinâmico
-      const hasRolePermission = user.permissions.includes(permission);
+      // Verificar permissões dinâmicas do backend, com fallback para as permissões padrão do role
+      const userPerms = user.permissions && user.permissions.length > 0
+        ? user.permissions
+        : (ROLE_PERMISSIONS[user.role] || []);
+      const hasRolePermission = userPerms.includes(permission);
       if (!hasRolePermission) return false;
     }
 

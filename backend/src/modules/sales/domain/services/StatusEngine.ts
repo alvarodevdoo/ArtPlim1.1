@@ -288,31 +288,40 @@ export class StatusEngine {
 
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { transactions: true }
+      include: { 
+        transactions: true,
+        customer: {
+          select: { exemptFromDeposit: true }
+        }
+      }
     });
 
     if (!order) return;
 
     const totalOrder = Number(order.total || 0);
-    const remainingBalance = OrderFinanceHelper.calculateRemainingBalance(order);
+    const remainingBalance = OrderFinanceHelper.calculateRemainingBalance(order as any);
     const paidTotal = totalOrder - remainingBalance;
 
     // 1. Regra de Sinal (Entrada) baseada na Etapa
     if (targetPS.requireDeposit && settings.requireOrderDeposit) {
-      const minPercent = Number(settings.minDepositPercent || 0);
-      
-      // EXCEÇÃO: Se o pedido não tiver nenhuma transação ainda mas a regra global permitir aprovação sem depósito 
-      // (ajuda no fluxo de criação), mas aqui respeitamos a flag da ETAPA.
-      if (order.transactions && order.transactions.length === 0) {
-        console.log(`[StatusEngine] Validando aprovação inicial sem transações para a etapa ${targetPS.name}`);
-      }
+      if (order.customer?.exemptFromDeposit) {
+        console.log(`[StatusEngine/Finance] Cliente isento de sinal mínimo. Ignorando validação de depósito.`);
+      } else {
+        const minPercent = Number(settings.minDepositPercent || 0);
+        
+        // EXCEÇÃO: Se o pedido não tiver nenhuma transação ainda mas a regra global permitir aprovação sem depósito 
+        // (ajuda no fluxo de criação), mas aqui respeitamos a flag da ETAPA.
+        if (order.transactions && order.transactions.length === 0) {
+          console.log(`[StatusEngine] Validando aprovação inicial sem transações para a etapa ${targetPS.name}`);
+        }
 
-      const paidPercent = (paidTotal / totalOrder) * 100;
+        const paidPercent = (paidTotal / totalOrder) * 100;
 
-      if (paidPercent < minPercent) {
-        const requiredValue = totalOrder * (minPercent / 100);
-        console.error(`[StatusEngine/Finance] 🚫 BLOQUEADO POR SINAL! Exige: ${minPercent}%, Pago: ${paidPercent}%`);
-        throw new Error(`PAYMENT_REQUIRED:SINAL|A etapa "${targetPS.name}" exige um sinal mínimo de ${minPercent}% (${OrderFinanceHelper.formatCurrency(requiredValue)}). Pago: ${paidPercent.toFixed(1)}%`);
+        if (paidPercent < minPercent) {
+          const requiredValue = totalOrder * (minPercent / 100);
+          console.error(`[StatusEngine/Finance] 🚫 BLOQUEADO POR SINAL! Exige: ${minPercent}%, Pago: ${paidPercent}%`);
+          throw new Error(`PAYMENT_REQUIRED:SINAL|A etapa "${targetPS.name}" exige um sinal mínimo de ${minPercent}% (${OrderFinanceHelper.formatCurrency(requiredValue)}). Pago: ${paidPercent.toFixed(1)}%`);
+        }
       }
     }
 

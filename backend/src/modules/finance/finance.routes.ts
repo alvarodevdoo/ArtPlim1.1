@@ -423,13 +423,89 @@ export async function financeRoutes(fastify: FastifyInstance) {
       where: { orderId, organizationId: request.user!.organizationId },
       include: {
         transactions: {
-          where: { status: 'PAID' },
           include: { category: true, paymentMethod: true }
         }
       }
     });
 
-    return reply.send({ success: true, data: receivable });
+    // Buscar TODAS as transações de crédito pagas vinculadas a este pedido
+    // Isso garante que entradas/pagamentos feitos na criação do pedido (sem receivableId) apareçam.
+    const allOrderPayments = await prisma.transaction.findMany({
+      where: { 
+        orderId, 
+        organizationId: request.user!.organizationId, 
+        type: { in: ['CREDIT', 'INCOME'] }, 
+        status: 'PAID' 
+      },
+      include: { paymentMethod: true, category: true }
+    });
+
+    let finalReceivable = receivable;
+
+    // Se não existir recebível mas o pedido já foi aprovado/confirmado, 
+    // tentamos criar um "on-the-fly" para corrigir dados inconsistentes
+    if (!finalReceivable) {
+      const order = await prisma.order.findUnique({
+        where: { id: orderId, organizationId: request.user!.organizationId }
+      });
+
+      if (order && !['DRAFT', 'CANCELLED'].includes(order.status)) {
+        // Calcular quanto ainda falta pagar
+        const totalPaid = allOrderPayments.reduce((sum, t) => sum + Number(t.amount), 0);
+        const remaining = Number(order.total) - totalPaid;
+
+        if (remaining > 0.01) {
+          // Criar o título de Contas a Receber que estava faltando
+          finalReceivable = await prisma.accountReceivable.create({
+            data: {
+              organizationId: request.user!.organizationId,
+              orderId,
+              customerId: order.customerId,
+              amount: remaining,
+              dueDate: order.deliveryDate || new Date(),
+              status: 'PENDING',
+              notes: 'Gerado automaticamente por detecção de inconsistência'
+            },
+            include: {
+              transactions: {
+                include: { category: true, paymentMethod: true }
+              }
+            }
+          });
+        }
+      }
+    }
+
+    // Objeto final de resposta para garantir que o frontend sempre receba algo válido
+    const result: any = finalReceivable ? JSON.parse(JSON.stringify(finalReceivable)) : { allPayments: [] };
+    result.allPayments = allOrderPayments;
+
+    if (finalReceivable) {
+      const debitTx = (finalReceivable.transactions || []).find((t: any) => t.type === 'DEBIT');
+      let receivableAccountId = debitTx?.accountId;
+
+      if (!receivableAccountId) {
+        let fallbackAccount = await prisma.account.findFirst({
+          where: { organizationId: request.user!.organizationId, type: 'RECEIVABLE', active: true }
+        });
+
+        if (!fallbackAccount) {
+          fallbackAccount = await prisma.account.create({
+            data: {
+              organizationId: request.user!.organizationId,
+              name: 'Contas a Receber',
+              type: 'RECEIVABLE',
+              balance: 0,
+              active: true
+            }
+          });
+        }
+        receivableAccountId = fallbackAccount.id;
+      }
+      result.receivableAccountId = receivableAccountId;
+    }
+
+    return reply.send({ success: true, data: result });
   });
 
   const payReceivableSchema = z.object({
@@ -570,5 +646,20 @@ export async function financeRoutes(fastify: FastifyInstance) {
     });
 
     return reply.send({ success: true, data: cashFlow });
+  });
+
+  // GET /api/finance/reports/commissions?startDate=...&endDate=...
+  fastify.get('/reports/commissions', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const query = periodQuerySchema.parse(request.query);
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new FinancialReportService(prisma);
+
+    const commissions = await service.generateCommissionReport({
+      organizationId: request.user!.organizationId,
+      startDate: new Date(query.startDate),
+      endDate: new Date(query.endDate)
+    });
+
+    return reply.send({ success: true, data: commissions });
   });
 }

@@ -10,7 +10,7 @@ export class OrderPaymentProcessor {
 
   async process(orderId: string, payments: any[], user: any) {
     const organizationId = user.organizationId;
-    const userId = user.userId || user.id;
+    const userId = user.userId || user.id || user.sub || 'system';
 
     if (!payments) return;
 
@@ -31,12 +31,9 @@ export class OrderPaymentProcessor {
     if (!order) return;
 
     const existingTransactions = order.transactions || [];
-
-    // 2. Identificar transações a serem removidas (as que estão no banco mas não no array 'payments')
     const paymentIds = payments.map(p => p.id).filter(Boolean);
     const transactionsToRemove = existingTransactions.filter((t: any) => !paymentIds.includes(t.id));
 
-    // 3. Buscar conta padrão e configurações da organização
     const [defaultAccount, settings] = await Promise.all([
       this.prisma.account.findFirst({
         where: { active: true, organizationId },
@@ -47,14 +44,14 @@ export class OrderPaymentProcessor {
       })
     ]);
 
+    let historyNotes: string[] = [];
+
     await this.prisma.$transaction(async (tx: any) => {
-      // Usar uma instância local do balanceService com o tx da transação para atomicidade
       const txBalanceService = new ProfileBalanceService(tx);
 
-      // A. Remover transações e estornar saldo se necessário
+      // A. Remover transações
       for (const t of transactionsToRemove) {
         if (t.isVirtual || t.paymentMethodId === 'BALANCE') { 
-           // Estornar crédito de saldo do cliente
            await txBalanceService.addCredit({
              profileId: order.customerId,
              organizationId,
@@ -65,23 +62,8 @@ export class OrderPaymentProcessor {
            });
         }
         
-        // Deletar a transação
         await tx.transaction.delete({ where: { id: t.id } });
-
-        // Registrar no histórico do pedido
-        try {
-          await tx.orderStatusHistory.create({
-            data: {
-              orderId: order.id,
-              fromStatus: order.status,
-              toStatus: order.status,
-              notes: `Pagamento removido: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(t.amount))}`,
-              userId: userId
-            }
-          });
-        } catch (err) {
-          console.error('[OrderPaymentProcessor] Erro ao gravar histórico de remoção de pagamento:', err);
-        }
+        historyNotes.push(`Pagamento removido: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(t.amount))}`);
       }
 
       // B. Adicionar ou atualizar transações
@@ -89,9 +71,7 @@ export class OrderPaymentProcessor {
         const isInternalBalance = p.methodId === 'BALANCE';
         
         if (!p.id) {
-          // NOVO PAGAMENTO
           if (isInternalBalance) {
-            // Se for saldo, o ProfileBalanceService.useCredit já cria a transação INCOME virtual
             await txBalanceService.useCredit({
               profileId: order.customerId,
               organizationId,
@@ -101,10 +81,7 @@ export class OrderPaymentProcessor {
               userId
             });
           } else {
-            // Pagamento normal (Pix, Cartão, etc)
             let accountId = defaultAccount?.id;
-            
-            // Tentar pegar a conta vinculada ao método de pagamento
             if (p.methodId) {
               const method = await tx.paymentMethod.findUnique({ where: { id: p.methodId } });
               if (method?.accountId) accountId = method.accountId;
@@ -127,59 +104,34 @@ export class OrderPaymentProcessor {
                 categoryId: settings?.defaultRevenueCategoryId
               }
             });
-
-            // Registrar no histórico do pedido
-            try {
-              await tx.orderStatusHistory.create({
-                data: {
-                  orderId: order.id,
-                  fromStatus: order.status,
-                  toStatus: order.status,
-                  notes: `Pagamento registrado: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.amount)}`,
-                  userId: userId
-                }
-              });
-            } catch (err) {
-              console.error('[OrderPaymentProcessor] Erro ao gravar histórico de pagamento:', err);
-            }
           }
+          historyNotes.push(`Pagamento registrado: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.amount)}`);
         } else {
-          // PAGAMENTO EXISTENTE - Verificar se mudou o valor (especialmente para BALANCE)
           const existing = existingTransactions.find((t: any) => t.id === p.id);
-          if (existing && isInternalBalance && Number(existing.amount) !== Number(p.amount)) {
-             const diff = Number(p.amount) - Number(existing.amount);
-             if (diff > 0) {
-                // Aumentou o uso de saldo
-                await txBalanceService.useCredit({
-                  profileId: order.customerId,
-                  organizationId,
-                  amount: diff,
-                  description: `Ajuste Pagamento Pedido #${order.orderNumber}`,
-                  orderId: order.id,
-                  userId
-                });
-             } else {
-                // Diminuiu o uso de saldo (devolve a diferença)
-                await txBalanceService.addCredit({
-                  profileId: order.customerId,
-                  organizationId,
-                  amount: Math.abs(diff),
-                  description: `Ajuste Pagamento Pedido #${order.orderNumber}`,
-                  orderId: order.id,
-                  userId
-                });
+          if (existing && Number(existing.amount) !== Number(p.amount)) {
+             if (isInternalBalance) {
+                const diff = Number(p.amount) - Number(existing.amount);
+                if (diff > 0) {
+                   await txBalanceService.useCredit({
+                     profileId: order.customerId,
+                     organizationId,
+                     amount: diff,
+                     description: `Ajuste Pagamento Pedido #${order.orderNumber}`,
+                     orderId: order.id,
+                     userId
+                   });
+                } else {
+                   await txBalanceService.addCredit({
+                     profileId: order.customerId,
+                     organizationId,
+                     amount: Math.abs(diff),
+                     description: `Ajuste Pagamento Pedido #${order.orderNumber}`,
+                     orderId: order.id,
+                     userId
+                   });
+                }
              }
              
-             // Atualizar o valor na transação original (a que não é virtual) 
-             // Nota: useCredit/addCredit criam NOVAS transações de ajuste.
-             // Para manter o histórico limpo, talvez devêssemos consolidar, mas por segurança
-             // vamos apenas atualizar a transação principal se ela existir.
-             await tx.transaction.update({
-               where: { id: p.id },
-               data: { amount: p.amount }
-             });
-          } else if (existing && !isInternalBalance && Number(existing.amount) !== Number(p.amount)) {
-             // Atualização de valor de pagamento normal
              await tx.transaction.update({
                where: { id: p.id },
                data: { 
@@ -188,7 +140,25 @@ export class OrderPaymentProcessor {
                  paidAt: p.date ? new Date(p.date) : existing.paidAt
                }
              });
+             historyNotes.push(`Pagamento alterado de ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(existing.amount))} para ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.amount)}`);
           }
+        }
+      }
+
+      // Criar entrada única de histórico se houve mudanças
+      if (historyNotes.length > 0) {
+        try {
+          await tx.orderStatusHistory.create({
+            data: {
+              orderId: order.id,
+              fromStatus: order.status,
+              toStatus: order.status,
+              notes: `[Financeiro] ${historyNotes.join('; ')}`,
+              userId: userId
+            }
+          });
+        } catch (err) {
+          console.error('[OrderPaymentProcessor] Erro ao gravar histórico consolidado:', err);
         }
       }
     });

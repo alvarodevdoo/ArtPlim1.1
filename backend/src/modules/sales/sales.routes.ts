@@ -90,7 +90,8 @@ export async function salesRoutes(fastify: FastifyInstance) {
       request.user!.organizationId,
       query.limit || 50,
       query.offset || 0,
-      query.search
+      query.search,
+      (query as any).status
     );
     
     return reply.send({

@@ -23,6 +23,8 @@ const Relatorios: React.FC = () => {
   });
 
   const [selectedReport, setSelectedReport] = useState('');
+  const [commissionsData, setCommissionsData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
   // Mock data para demonstração
   const reportData = {
@@ -93,6 +95,14 @@ const Relatorios: React.FC = () => {
       icon: Package,
       color: 'text-red-500',
       setting: 'enableWMS'
+    },
+    {
+      id: 'comissoes',
+      title: 'Relatório de Comissões',
+      description: 'Cálculo de comissões por vendedor no período',
+      icon: DollarSign,
+      color: 'text-yellow-600',
+      setting: 'enableFinanceReports'
     }
   ].filter(report => {
     if (report.setting === 'enableFinanceReports') return hasPermission('finance.reports');
@@ -101,14 +111,34 @@ const Relatorios: React.FC = () => {
     return true;
   });
 
-  const handleGenerateReport = () => {
+  const handleGenerateReport = async () => {
     if (!selectedReport) {
-      alert('Selecione um tipo de relatório');
+      toast.error('Selecione um tipo de relatório');
       return;
     }
 
-    // Aqui seria implementada a geração do relatório
-    alert(`Gerando relatório: ${reportTypes.find(r => r.id === selectedReport)?.title}`);
+    if (!dateRange.startDate || !dateRange.endDate) {
+      toast.error('Selecione o período (data inicial e final)');
+      return;
+    }
+
+    if (selectedReport === 'comissoes') {
+      setLoading(true);
+      try {
+        const response = await api.get(`/api/finance/reports/commissions?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`);
+        setCommissionsData(response.data.data);
+        toast.success('Relatório de comissões gerado com sucesso!');
+      } catch (error) {
+        console.error('Erro ao gerar relatório de comissões:', error);
+        toast.error('Erro ao gerar relatório de comissões');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Outros relatórios mockados
+    toast.info(`Funcionalidade de geração para "${reportTypes.find(r => r.id === selectedReport)?.title}" em desenvolvimento.`);
   };
 
   return (
@@ -303,17 +333,55 @@ const Relatorios: React.FC = () => {
       {/* Recent Reports */}
       <Card>
         <CardHeader>
-          <CardTitle>Relatórios Recentes</CardTitle>
+          <CardTitle>{selectedReport === 'comissoes' ? 'Resultado: Relatório de Comissões' : 'Relatórios Recentes'}</CardTitle>
           <CardDescription>
-            Últimos relatórios gerados
+            {selectedReport === 'comissoes' ? `Período: ${dateRange.startDate} até ${dateRange.endDate}` : 'Últimos relatórios gerados'}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-12 text-muted-foreground">
-            <BarChart3 className="w-12 h-12 mx-auto mb-4 opacity-50" />
-            <p>Nenhum relatório gerado ainda</p>
-            <p className="text-sm">Use o gerador acima para criar seu primeiro relatório</p>
-          </div>
+          {loading ? (
+             <div className="text-center py-12">
+               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
+               <p>Gerando relatório...</p>
+             </div>
+          ) : selectedReport === 'comissoes' && commissionsData.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-3 font-medium">Vendedor</th>
+                    <th className="text-right py-3 font-medium">Qtd Itens</th>
+                    <th className="text-right py-3 font-medium">Total Vendido</th>
+                    <th className="text-right py-3 font-medium">Comissão Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {commissionsData.map((row, idx) => (
+                    <tr key={idx} className="border-b hover:bg-muted/50 transition-colors">
+                      <td className="py-3 font-medium">{row.sellerName}</td>
+                      <td className="py-3 text-right">{row.totalItems}</td>
+                      <td className="py-3 text-right">{formatCurrency(row.totalSales)}</td>
+                      <td className="py-3 text-right font-bold text-green-600">{formatCurrency(row.totalCommission)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="font-bold bg-muted/20">
+                    <td className="py-3">TOTAL GERAL</td>
+                    <td className="py-3 text-right">{commissionsData.reduce((s, r) => s + r.totalItems, 0)}</td>
+                    <td className="py-3 text-right">{formatCurrency(commissionsData.reduce((s, r) => s + r.totalSales, 0))}</td>
+                    <td className="py-3 text-right text-green-700">{formatCurrency(commissionsData.reduce((s, r) => s + r.totalCommission, 0))}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              <BarChart3 className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>Nenhum dado para exibir no momento</p>
+              <p className="text-sm">Selecione o tipo de relatório e clique em "Gerar Relatório"</p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -27,9 +27,10 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Card, CardContent } from '@/components/ui/Card';
+import TaskAssignmentAction from './TaskAssignmentAction';
 
 // Component for Sortable Item
-const SortableItem = ({ item, onClick }: { item: KanbanItem; onClick: () => void }) => {
+const SortableItem = ({ item, onClick, onAssignSuccess }: { item: KanbanItem; onClick: () => void; onAssignSuccess: () => void }) => {
     const {
         attributes,
         listeners,
@@ -74,7 +75,7 @@ const SortableItem = ({ item, onClick }: { item: KanbanItem; onClick: () => void
 
                     <div className="text-xs text-muted-foreground">
                         <p>{item.order.customer.name}</p>
-                        <div className="flex gap-2 mt-1">
+                        <div className="flex gap-2 mt-1 mb-3">
                             <Badge variant="outline" className="text-[10px] h-5">
                                 {item.quantity}un
                             </Badge>
@@ -85,13 +86,26 @@ const SortableItem = ({ item, onClick }: { item: KanbanItem; onClick: () => void
                             )}
                         </div>
                     </div>
+
+                    <div className="pt-2 border-t flex justify-end" onPointerDown={(e) => e.stopPropagation()}>
+                        <TaskAssignmentAction
+                            orderId={item.order.id!}
+                            variant="compact"
+                            tasks={{
+                                art: item.order.artDesigner || null,
+                                prod: item.order.producer || null,
+                                finish: item.order.packer || null,
+                            }}
+                            onAssignSuccess={onAssignSuccess}
+                        />
+                    </div>
                 </CardContent>
             </Card>
         </div>
     );
 };
 
-const KanbanColumn = ({ status, items, onClick }: { status: ProcessStatus; items: KanbanItem[]; onClick: (item: KanbanItem) => void }) => {
+const KanbanColumn = ({ status, items, onClick, onAssignSuccess }: { status: ProcessStatus; items: KanbanItem[]; onClick: (item: KanbanItem) => void; onAssignSuccess: () => void }) => {
     const { setNodeRef, isOver } = useDroppable({
         id: status.id,
     });
@@ -121,6 +135,7 @@ const KanbanColumn = ({ status, items, onClick }: { status: ProcessStatus; items
                                 key={item.id}
                                 item={item}
                                 onClick={() => onClick(item)}
+                                onAssignSuccess={onAssignSuccess}
                             />
                         ))}
                     </div>
@@ -141,10 +156,17 @@ interface ProcessStatus {
 interface KanbanItem {
     id: string;
     order: {
+        id: string;
         orderNumber: string;
         customer: { name: string };
         deliveryDate: string | null;
         status: string;
+        artDesignerId?: string;
+        productionUserId?: string;
+        packagingUserId?: string;
+        artDesigner?: { id: string; name: string } | null;
+        producer?: { id: string; name: string } | null;
+        packer?: { id: string; name: string } | null;
     };
     product: { name: string };
     processStatus: ProcessStatus | null;
@@ -385,16 +407,17 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ filters }) => {
                         Nenhum status configurado.
                     </div>
                 ) : columns.map(status => (
-                    <KanbanColumn
-                        key={status.id}
-                        status={status}
-                        items={items.filter(i =>
-                            status.id === 'WAITING'
-                                ? !i.processStatusId
-                                : i.processStatusId === status.id
-                        )}
-                        onClick={onItemClick}
-                    />
+                        <KanbanColumn
+                            key={status.id}
+                            status={status}
+                            items={items.filter(i =>
+                                status.id === 'WAITING'
+                                    ? !i.processStatusId
+                                    : i.processStatusId === status.id
+                            )}
+                            onClick={onItemClick}
+                            onAssignSuccess={fetchData}
+                        />
                 ))}
             </div>
             <DragOverlay dropAnimation={dropAnimation}>

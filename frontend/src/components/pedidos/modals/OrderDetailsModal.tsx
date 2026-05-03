@@ -44,7 +44,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   autoOpenPayment = false,
   onPaymentSuccess
 }) => {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const [receivable, setReceivable] = React.useState<any>(null);
   const [loadingFinancial, setLoadingFinancial] = React.useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = React.useState(false);
@@ -74,7 +74,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   };
 
   const fetchFinancialData = React.useCallback(async () => {
-    if (!pedido?.id || !hasPermission('finance.view')) return;
+    if (!pedido?.id || !(hasPermission('finance.view') || hasPermission('sales.edit'))) return;
     
     try {
       setLoadingFinancial(true);
@@ -125,7 +125,13 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
 
   if (!isOpen || !pedido) return null;
 
-  const hasFinancialAccess = () => hasPermission('finance.view');
+  const canViewFinancials = () => {
+    return hasPermission('finance.view') || hasPermission('sales.edit');
+  };
+
+  const canViewMargins = () => {
+    return hasPermission('finance.margins');
+  };
 
   const getStatusDisplay = (status: string) => {
     return statusConfig[status as keyof typeof statusConfig] || statusConfig.DRAFT;
@@ -328,7 +334,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                               <p className="text-lg font-bold">{formatCurrency(item.totalPrice || 0)}</p>
                               
                               {/* ── Info do Motor de Composição (Snapshot) ── */}
-                              {hasFinancialAccess() && item.unitCostAtSale !== undefined && item.unitCostAtSale !== null && (
+                              {canViewMargins() && item.unitCostAtSale !== undefined && item.unitCostAtSale !== null && (
                                 <div className={`mt-2 p-2 border rounded text-[10px] text-right font-mono transition-colors ${isCriticalMargin ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>
                                   <div className={`uppercase font-bold tracking-tighter flex items-center justify-end gap-1 ${isCriticalMargin ? 'text-rose-600' : 'text-slate-500'}`}>
                                     {isCriticalMargin && <AlertCircle className="w-3 h-3" />}
@@ -345,7 +351,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                                 </div>
                               )}
 
-                              {hasFinancialAccess() && onMaterialRequest && (
+                              {canViewFinancials() && onMaterialRequest && (
                                 <Button 
                                   size="sm" 
                                   variant="outline" 
@@ -424,7 +430,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
               </Card>
 
               {/* Análise Financeira Real */}
-              {hasFinancialAccess() && (
+              {canViewFinancials() && (
                 <div className="space-y-4">
                   {loadingFinancial ? (
                     <div className="p-8 text-center animate-pulse bg-slate-50 rounded-lg">
@@ -432,12 +438,12 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                     </div>
                   ) : receivable ? (
                     <OrderFinancialStatus 
-                      totalOrder={Number(receivable.amount)}
-                      paidAmount={receivable.transactions?.reduce((sum: number, t: any) => sum + Number(t.amount), 0) || 0}
-                      payments={receivable.transactions?.map((t: any) => ({
+                      totalOrder={Number(pedido.total?.value || pedido.total || 0)}
+                      paidAmount={(receivable.allPayments || []).reduce((sum: number, t: any) => sum + Number(t.amount), 0)}
+                      payments={(receivable.allPayments || []).map((t: any) => ({
                         methodName: t.paymentMethod?.name || 'Não informado',
                         amount: Number(t.amount),
-                        date: t.paidAt,
+                        date: t.paidAt || t.createdAt,
                         installments: 1
                       }))}
                       onAddPayment={() => {
@@ -470,7 +476,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                   isOpen={isPaymentModalOpen}
                   onClose={() => setIsPaymentModalOpen(false)}
                   onAddPayment={() => {}} // Não usado no fluxo de liquidação direta
-                  remainingAmount={Number(receivable.amount) - (receivable.transactions?.reduce((sum: number, t: any) => sum + Number(t.amount), 0) || 0)}
+                  remainingAmount={Number(pedido.total?.value || pedido.total || 0) - (receivable.allPayments || []).reduce((sum: number, t: any) => sum + Number(t.amount), 0)}
                   receivableId={receivable.id}
                   receivableAccountId={receivable.receivableAccountId}
                   availableBalance={Number(customerDetails?.balance || 0)}

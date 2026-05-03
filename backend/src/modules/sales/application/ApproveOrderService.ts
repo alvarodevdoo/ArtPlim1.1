@@ -14,7 +14,9 @@ import { PricingCompositionService, CompositionLineItem } from '../../catalog/se
 import { IncompatibilityService } from '../../catalog/services/IncompatibilityService';
 import { OPGeneratorService } from '../../production/services/OPGeneratorService';
 import { InventoryValuationService, ValuationMethod } from '../../../shared/services/InventoryValuationService';
+import { CommissionService } from './services/CommissionService';
 import { StatusEngine } from '../domain/services/StatusEngine';
+import { CommissionService } from './services/CommissionService';
 
 export interface ApproveOrderInput {
   orderId: string;
@@ -38,12 +40,14 @@ export class ApproveOrderService {
   private incompatibilityService: IncompatibilityService;
   private valuationService: InventoryValuationService;
   private statusEngine: StatusEngine;
+  private commissionService: CommissionService;
 
   constructor(private readonly prisma: any) {
     this.compositionService = new PricingCompositionService(prisma);
     this.incompatibilityService = new IncompatibilityService(prisma);
     this.valuationService = new InventoryValuationService(prisma);
     this.statusEngine = new StatusEngine(prisma);
+    this.commissionService = new CommissionService(prisma);
   }
 
   async execute(input: ApproveOrderInput): Promise<any> {
@@ -349,9 +353,10 @@ export class ApproveOrderService {
         });
       }
 
-      // 3f. Geração de OPs
+      // 3f. Geração de OPs e Processamento de Comissões
       const opGenerator = new OPGeneratorService(tx);
       await opGenerator.generateForOrder(orderId, organizationId);
+      await this.commissionService.processOrderCommissions(orderId, organizationId, tx);
     });
 
     // ── Fase 4: Retorno Sincronizado ──────────

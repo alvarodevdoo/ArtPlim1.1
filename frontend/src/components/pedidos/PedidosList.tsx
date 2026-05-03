@@ -170,7 +170,7 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
                       if (pedido?.status === 'CANCELLED') return null;
 
                       const totalPaid = pedido?.transactions?.reduce((sum, t) => {
-                        if (t?.type === 'INCOME' && t?.status === 'PAID') return sum + Number(t?.amount || 0);
+                        if ((t?.type === 'INCOME' || t?.type === 'CREDIT') && t?.status === 'PAID') return sum + Number(t?.amount || 0);
                         return sum;
                       }, 0) || 0;
                       const pendingAmount = Number(pedido?.total || 0) - totalPaid;

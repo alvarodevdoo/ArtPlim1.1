@@ -273,7 +273,10 @@ export class UpdateOrderUseCase {
       deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : undefined,
       validUntil,
       notes: data.notes || undefined,
-      discountStatus: (data.discountStatus as DiscountStatus) || DiscountStatus.NONE
+      discountStatus: (data.discountStatus as DiscountStatus) || DiscountStatus.NONE,
+      artDesignerId: data.artDesignerId,
+      productionUserId: data.productionUserId,
+      packagingUserId: data.packagingUserId
     });
 
     // O desconto precisa ser aplicado aqui também, para atualizar _discount

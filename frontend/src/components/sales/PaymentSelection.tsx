@@ -194,7 +194,11 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
         setIsLoading(true);
         try {
             // Se tivermos um receivableId, persistimos direto no backend (Fluxo de Liquidação)
-            if (receivableId && receivableAccountId) {
+            if (receivableId) {
+                if (!receivableAccountId) {
+                    toast.error('Erro de configuração: conta de recebíveis não encontrada. Reabra o pedido e tente novamente.');
+                    return;
+                }
                 await api.post(`/api/finance/receivables/${receivableId}/pay`, {
                     paymentAccountId: method?.accountId, // Onde o dinheiro entra (Configurado no Método)
                     receivableAccountId: receivableAccountId, // Ativo que é baixado

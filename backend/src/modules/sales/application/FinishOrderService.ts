@@ -1,6 +1,7 @@
 import { OrderFinanceHelper } from '../../../shared/utils/OrderFinanceHelper';
 import { PricingCompositionService } from '../../catalog/services/PricingCompositionService';
 import { InventoryValuationService, ValuationMethod } from '../../../shared/services/InventoryValuationService';
+import { CommissionService } from './services/CommissionService';
 
 export interface FinishOrderInput {
   orderId: string;
@@ -18,7 +19,11 @@ export interface FinishOrderResult {
 }
 
 export class FinishOrderService {
-  constructor(private readonly prisma: any) {}
+  private commissionService: CommissionService;
+
+  constructor(private readonly prisma: any) {
+    this.commissionService = new CommissionService(prisma);
+  }
 
   async execute(input: FinishOrderInput): Promise<any> {
     const { orderId, organizationId, userId } = input;
@@ -217,6 +222,9 @@ export class FinishOrderService {
           }
         });
       }
+
+      // 2e. Processar Comissões
+      await this.commissionService.processOrderCommissions(orderId, organizationId, tx);
     });
 
     // ── Fase 3: Retorno Sincronizado ──────────

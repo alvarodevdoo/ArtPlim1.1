@@ -55,6 +55,10 @@ export class PrismaOrderRepository implements OrderRepository {
             cancellationRefundAmount: data.cancellationRefundAmount,
             discountStatus: data.discountStatus,
             authorizationRequestId: data.authorizationRequestId,
+            sellerId: data.sellerId,
+            artDesignerId: data.artDesignerId,
+            productionUserId: data.productionUserId,
+            packagingUserId: data.packagingUserId,
             items: {
               create: data.items.map((item: any) => ({
                 productId: item.productId,
@@ -147,6 +151,10 @@ export class PrismaOrderRepository implements OrderRepository {
           cancellationRefundAmount: data.cancellationRefundAmount,
           discountStatus: data.discountStatus,
           authorizationRequestId: data.authorizationRequestId,
+          sellerId: data.sellerId,
+          artDesignerId: data.artDesignerId,
+          productionUserId: data.productionUserId,
+          packagingUserId: data.packagingUserId,
           items: {
             create: data.items.map((item: any) => ({
               productId: item.productId,
@@ -542,6 +550,10 @@ export class PrismaOrderRepository implements OrderRepository {
       processStatus: prismaOrder.processStatus,
       discountStatus: prismaOrder.discountStatus as any,
       authorizationRequestId: prismaOrder.authorizationRequestId,
+      sellerId: prismaOrder.sellerId,
+      artDesignerId: prismaOrder.artDesignerId,
+      productionUserId: prismaOrder.productionUserId,
+      packagingUserId: prismaOrder.packagingUserId,
       transactions: prismaOrder.transactions
     });
   }

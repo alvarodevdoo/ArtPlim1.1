@@ -341,4 +341,56 @@ export class FinancialReportService {
       pareto
     };
   }
+
+  /**
+   * Relatório de Comissões por Vendedor
+   */
+  async generateCommissionReport(filter: DREFilter): Promise<any> {
+    const { organizationId, startDate, endDate } = filter;
+
+    const orders = await this.prisma.order.findMany({
+      where: {
+        organizationId,
+        approvedAt: { gte: startDate, lte: endDate },
+        status: { in: ['APPROVED', 'FINISHED', 'DELIVERED'] }
+      },
+      include: {
+        seller: {
+          select: { id: true, name: true }
+        },
+        items: {
+          select: {
+            commissionAmount: true,
+            totalPrice: true,
+            quantity: true
+          }
+        }
+      }
+    });
+
+    const commissionBySellerMap = new Map<string, { sellerId: string; sellerName: string; totalSales: number; totalItems: number; totalCommission: number }>();
+
+    orders.forEach(order => {
+      const sellerId = order.sellerId || 'sem_vendedor';
+      const sellerName = order.seller?.name || 'Vendedor Não Identificado';
+
+      const existing = commissionBySellerMap.get(sellerId) || {
+        sellerId,
+        sellerName,
+        totalSales: 0,
+        totalItems: 0,
+        totalCommission: 0
+      };
+
+      order.items.forEach(item => {
+        existing.totalSales += Number(item.totalPrice || 0);
+        existing.totalItems += item.quantity || 1;
+        existing.totalCommission += Number(item.commissionAmount || 0);
+      });
+
+      commissionBySellerMap.set(sellerId, existing);
+    });
+
+    return Array.from(commissionBySellerMap.values()).sort((a, b) => b.totalCommission - a.totalCommission);
+  }
 }

@@ -33,4 +33,7 @@ export interface CreateOrderDTO {
   deliveryDate?: string | null;
   notes?: string | null;
   payments?: any[];
+  artDesignerId?: string;
+  productionUserId?: string;
+  packagingUserId?: string;
 }

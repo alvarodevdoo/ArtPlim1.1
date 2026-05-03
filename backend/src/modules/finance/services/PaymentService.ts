@@ -1,3 +1,4 @@
+import { PrismaClient, PayableStatus, TransactionType, TransactionStatus } from '@prisma/client';
 import { AppError } from '../../../shared/infrastructure/errors/AppError';
 import { ProfileBalanceService } from '../../profiles/services/ProfileBalanceService';
 
@@ -238,7 +239,6 @@ export class PaymentService {
         where: { id: receivableId },
         data: {
           status: isFullyPaid ? 'PAID' : 'PENDING',
-          paidAt: isFullyPaid ? today : null,
           notes: notes ? `${receivable.notes ?? ''}\nPGTO (${today.toLocaleDateString()}): ${notes}` : receivable.notes
         }
       });

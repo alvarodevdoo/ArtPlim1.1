@@ -58,14 +58,6 @@ const Pedidos: React.FC = () => {
     settings,
   } = usePedidos();
 
-  if (loading && pedidos.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary" />
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -99,12 +91,25 @@ const Pedidos: React.FC = () => {
 
       {/* Filtros */}
       <PedidosFilters
-        searchInput={searchInput} setSearchInput={setSearchInput}
-        statusFilter={statusFilter} setStatusFilter={setStatusFilter}
-        dateFilter={dateFilter} setDateFilter={setDateFilter}
-        sortBy={sortBy} setSortBy={setSortBy}
-        sortOrder={sortOrder} setSortOrder={setSortOrder}
+        searchInput={searchInput}
+        setSearchInput={setSearchInput}
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
+        dateFilter={dateFilter}
+        setDateFilter={setDateFilter}
+        sortBy={sortBy}
+        setSortBy={setSortBy}
+        sortOrder={sortOrder}
+        setSortOrder={setSortOrder}
+        processStatuses={processStatuses}
       />
+
+      {loading && pedidos.length === 0 && (
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mr-3" />
+          <p className="text-muted-foreground">Carregando pedidos...</p>
+        </div>
+      )}
 
       {/* Stats (somente quando não há filtros ativos) */}
       {!(debouncedSearch || statusFilter || dateFilter) && (
@@ -218,7 +223,7 @@ const Pedidos: React.FC = () => {
         }}
       />
 
-      {showMaterialCalculator && calculatorItem && hasFinancialAccess() && (
+      {showMaterialCalculator && calculatorItem && (hasFinancialAccess() || hasPermission('sales.edit')) && (
         <div className="modal-overlay">
           <Card className="modal-content-card max-w-4xl">
 

@@ -142,10 +142,19 @@ export function usePedidos() {
     const term = debouncedSearch.toLowerCase();
     return (pedidos || [])
       .filter(pedido => {
-        const matchesSearch =
+        const numericTerm = term.replace(/\D/g, '');
+        
+        const matchesSearch = !term ||
           pedido?.orderNumber?.toLowerCase().includes(term) ||
           pedido?.customer?.name?.toLowerCase().includes(term) ||
-          (pedido?.customer?.phone && pedido.customer.phone.toLowerCase().includes(term));
+          (pedido?.customer?.phone && (
+             pedido.customer.phone.toLowerCase().includes(term) || 
+             (numericTerm.length >= 3 && pedido.customer.phone.replace(/\D/g, '').includes(numericTerm))
+          )) ||
+          (pedido?.customer?.document && (
+             pedido.customer.document.toLowerCase().includes(term) ||
+             (numericTerm.length >= 3 && pedido.customer.document.replace(/\D/g, '').includes(numericTerm))
+          ));
         const matchesStatus = !statusFilter || pedido.status === statusFilter;
         const matchesDate = !dateFilter || (pedido?.createdAt && new Date(pedido.createdAt).toISOString().split('T')[0] === dateFilter);
         return matchesSearch && matchesStatus && matchesDate;
@@ -319,8 +328,8 @@ export function usePedidos() {
   }, [processStatuses, settings?.enableAutomation, loadPedidos, debouncedSearch, pedidos, selectedPedido?.id]);
 
   const handlePaymentSuccess = useCallback(async (pedidoId: string) => {
-    // 1. Recarregar a lista para atualizar saldos e transações
-    await loadPedidos(debouncedSearch);
+    // 1. Recarregar a lista para atualizar saldos e transações, mantendo os filtros atuais
+    await loadPedidos(debouncedSearch, statusFilter, dateFilter);
     
     // 2. Se temos uma mudança pendente para esse pedido, vamos executá-la
     if (pendingStatusUpdate && pendingStatusUpdate.pedidoId === pedidoId) {
@@ -334,7 +343,7 @@ export function usePedidos() {
         handleStatusChange(pedidoId, processStatusId || status);
       }, 500);
     }
-  }, [loadPedidos, debouncedSearch, pendingStatusUpdate, handleStatusChange]);
+  }, [loadPedidos, debouncedSearch, statusFilter, dateFilter, pendingStatusUpdate, handleStatusChange]);
 
   const handleBulkStatusChange = useCallback(async (newStatus: string) => {
     if (selectedPedidos.length === 0) return toast.error('Selecione pelo menos um pedido');

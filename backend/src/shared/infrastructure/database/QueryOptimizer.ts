@@ -64,15 +64,51 @@ export class QueryOptimizer {
   }
 
   // Otimizar consulta de pedidos com itens
-  async getOptimizedOrders(organizationId: string, limit: number = 20, offset: number = 0, search?: string) {
+  async getOptimizedOrders(organizationId: string, limit: number = 20, offset: number = 0, search?: string, status?: string) {
     const where: any = { organizationId };
 
+    if (status) {
+      where.status = status;
+    }
+
     if (search) {
-      where.OR = [
+      const numericSearch = search.replace(/\D/g, '');
+      const orConditions: any[] = [
         { orderNumber: { contains: search, mode: 'insensitive' } },
         { customer: { name: { contains: search, mode: 'insensitive' } } },
-        { customer: { phone: { contains: search, mode: 'insensitive' } } }
+        { customer: { phone: { contains: search, mode: 'insensitive' } } },
+        { customer: { document: { contains: search, mode: 'insensitive' } } }
       ];
+
+      if (numericSearch && numericSearch.length >= 3) {
+        orConditions.push({ customer: { phone: { contains: numericSearch, mode: 'insensitive' } } });
+        orConditions.push({ customer: { document: { contains: numericSearch, mode: 'insensitive' } } });
+        
+        // Se parece um celular ou telefone, gerar versão com máscara para tentar achar no banco
+        if (numericSearch.length === 11) {
+          const formattedPhone = `(${numericSearch.substring(0,2)}) ${numericSearch.substring(2,7)}-${numericSearch.substring(7,11)}`;
+          orConditions.push({ customer: { phone: { contains: formattedPhone, mode: 'insensitive' } } });
+        } else if (numericSearch.length === 10) {
+          const formattedPhone = `(${numericSearch.substring(0,2)}) ${numericSearch.substring(2,6)}-${numericSearch.substring(6,10)}`;
+          orConditions.push({ customer: { phone: { contains: formattedPhone, mode: 'insensitive' } } });
+        }
+
+        // Se parece CPF ou CNPJ, gerar versão com máscara
+        if (numericSearch.length === 11) {
+          const formattedCpf = `${numericSearch.substring(0,3)}.${numericSearch.substring(3,6)}.${numericSearch.substring(6,9)}-${numericSearch.substring(9,11)}`;
+          orConditions.push({ customer: { document: { contains: formattedCpf, mode: 'insensitive' } } });
+        } else if (numericSearch.length === 14) {
+          const formattedCnpj = `${numericSearch.substring(0,2)}.${numericSearch.substring(2,5)}.${numericSearch.substring(5,8)}/${numericSearch.substring(8,12)}-${numericSearch.substring(12,14)}`;
+          orConditions.push({ customer: { document: { contains: formattedCnpj, mode: 'insensitive' } } });
+        }
+        
+        if (numericSearch.length >= 8) {
+          const last8 = numericSearch.slice(-8);
+          orConditions.push({ customer: { phone: { contains: last8, mode: 'insensitive' } } });
+        }
+      }
+
+      where.OR = orConditions;
     }
 
     return await this.prisma.order.findMany({
@@ -110,7 +146,8 @@ export class QueryOptimizer {
             id: true,
             name: true,
             email: true,
-            phone: true
+            phone: true,
+            document: true
           }
         },
         productionQueue: {

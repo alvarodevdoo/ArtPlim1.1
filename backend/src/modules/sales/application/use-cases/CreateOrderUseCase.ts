@@ -280,7 +280,11 @@ export class CreateOrderUseCase {
       deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : undefined,
       validUntil,
       notes: data.notes || undefined,
-      discountStatus: (data.discountStatus as DiscountStatus) || DiscountStatus.NONE
+      discountStatus: (data.discountStatus as DiscountStatus) || DiscountStatus.NONE,
+      sellerId: userId !== 'SYSTEM' ? userId : undefined,
+      artDesignerId: data.artDesignerId,
+      productionUserId: data.productionUserId,
+      packagingUserId: data.packagingUserId
     });
 
     // Salvar no repositório

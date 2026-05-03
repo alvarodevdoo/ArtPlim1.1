@@ -1,12 +1,16 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from './src/shared/infrastructure/database/prisma';
+async function run() {
+  const accountReceivables = await prisma.accountReceivable.findMany({
+    where: { order: { orderNumber: 'PED-0019' } },
+    include: { 
+      order: true, 
+      transactions: {
+        include: { paymentMethod: true, account: true }
+      } 
+    }
+  });
+  console.log('Account Receivables for PED-0019:', JSON.stringify(accountReceivables, null, 2));
 
-const prisma = new PrismaClient();
-
-async function main() {
-  const statuses = await (prisma as any).processStatus.findMany({ take: 5 });
-  console.log(JSON.stringify(statuses, null, 2));
+  await prisma.$disconnect();
 }
-
-main()
-  .catch(console.error)
-  .finally(() => prisma.$disconnect());
+run();

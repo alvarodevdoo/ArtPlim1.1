@@ -33,6 +33,10 @@ export interface OrderProps {
   authorizationRequestId?: string;
   transactions?: any[];
   processStatus?: any;
+  sellerId?: string;
+  artDesignerId?: string;
+  productionUserId?: string;
+  packagingUserId?: string;
 }
 
 export class Order {
@@ -65,6 +69,10 @@ export class Order {
   private _discountStatus: DiscountStatus;
   private _authorizationRequestId?: string;
   private _processStatus?: any;
+  private _sellerId?: string;
+  private _artDesignerId?: string;
+  private _productionUserId?: string;
+  private _packagingUserId?: string;
 
   constructor(props: OrderProps) {
     this._id = props.id;
@@ -96,6 +104,10 @@ export class Order {
     this._authorizationRequestId = props.authorizationRequestId;
     this._transactions = props.transactions;
     this._processStatus = props.processStatus;
+    this._sellerId = props.sellerId;
+    this._artDesignerId = props.artDesignerId;
+    this._productionUserId = props.productionUserId;
+    this._packagingUserId = props.packagingUserId;
 
     this.recalculateTotals();
     this.validate();
@@ -229,6 +241,22 @@ export class Order {
     return this._authorizationRequestId;
   }
 
+  get sellerId(): string | undefined {
+    return this._sellerId;
+  }
+
+  get artDesignerId(): string | undefined {
+    return this._artDesignerId;
+  }
+
+  get productionUserId(): string | undefined {
+    return this._productionUserId;
+  }
+
+  get packagingUserId(): string | undefined {
+    return this._packagingUserId;
+  }
+
   // Métodos de negócio
   addItem(item: OrderItem): void {
     this._items.push(item);
@@ -328,6 +356,10 @@ export class Order {
     validUntil?: Date;
     notes?: string;
     discountStatus?: DiscountStatus;
+    sellerId?: string;
+    artDesignerId?: string;
+    productionUserId?: string;
+    packagingUserId?: string;
   }): void {
     if (!this.canBeModified()) {
       throw new Error('Order cannot be modified in current status');
@@ -363,6 +395,22 @@ export class Order {
 
     if (details.discountStatus !== undefined) {
       this._discountStatus = details.discountStatus;
+    }
+
+    if (details.sellerId !== undefined) {
+      this._sellerId = details.sellerId;
+    }
+
+    if (details.artDesignerId !== undefined) {
+      this._artDesignerId = details.artDesignerId;
+    }
+
+    if (details.productionUserId !== undefined) {
+      this._productionUserId = details.productionUserId;
+    }
+
+    if (details.packagingUserId !== undefined) {
+      this._packagingUserId = details.packagingUserId;
     }
 
     this._updatedAt = new Date();
@@ -465,6 +513,10 @@ export class Order {
       processStatusId: this._processStatusId,
       discountStatus: this._discountStatus,
       authorizationRequestId: this._authorizationRequestId,
+      sellerId: this._sellerId,
+      artDesignerId: this._artDesignerId,
+      productionUserId: this._productionUserId,
+      packagingUserId: this._packagingUserId,
       transactions: this._transactions,
       processStatus: this._processStatus
     };

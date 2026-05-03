@@ -20,6 +20,39 @@ interface RegisterData {
 
 export class AuthService {
 
+  private getDefaultPermissionsForRole(role: string): string[] {
+    const rolePermissions: Record<string, string[]> = {
+      OWNER: [
+        'sales.view', 'sales.create', 'sales.edit', 'sales.delete', 'sales.approve',
+        'finance.view', 'finance.costs', 'finance.margins', 'finance.reports',
+        'production.view', 'production.manage',
+        'inventory.view', 'inventory.manage',
+        'admin.users', 'admin.settings', 'admin.organization'
+      ],
+      ADMIN: [
+        'sales.view', 'sales.create', 'sales.edit', 'sales.delete', 'sales.approve',
+        'finance.view', 'finance.costs', 'finance.margins', 'finance.reports',
+        'production.view', 'production.manage',
+        'inventory.view', 'inventory.manage',
+        'admin.users', 'admin.settings'
+      ],
+      MANAGER: [
+        'sales.view', 'sales.create', 'sales.edit', 'sales.approve',
+        'finance.view', 'finance.costs', 'finance.margins',
+        'production.view', 'production.manage',
+        'inventory.view', 'inventory.manage'
+      ],
+      OPERATOR: [
+        'production.view', 'production.manage',
+        'inventory.view'
+      ],
+      USER: [
+        'sales.view', 'sales.create', 'sales.edit'
+      ]
+    };
+    return rolePermissions[role] || [];
+  }
+
   async login({ email: loginEmail, password, organizationSlug }: LoginData) {
     const email = loginEmail.toLowerCase();
     // Buscar organização
@@ -82,8 +115,7 @@ export class AuthService {
         organizationId: user.organizationId,
         organizationName: organization.name,
         permissions: user.customRole?.permissions.map(p => p.permissionKey) || 
-          (user.role === 'OWNER' ? ['admin.organization', 'admin.settings', 'admin.users', 'finance.view', 'sales.view', 'production.view', 'inventory.view', 'finance.reports'] : 
-           user.role === 'ADMIN' ? ['admin.settings', 'admin.users', 'finance.view', 'sales.view', 'production.view', 'inventory.view', 'finance.reports'] : [])
+          this.getDefaultPermissionsForRole(user.role)
       }
     };
   }
@@ -213,8 +245,7 @@ export class AuthService {
       role: user.role,
       organization: user.organization,
       permissions: user.customRole?.permissions.map(p => p.permissionKey) || 
-        (user.role === 'OWNER' ? ['admin.organization', 'admin.settings', 'admin.users', 'finance.view', 'sales.view', 'production.view', 'inventory.view', 'finance.reports'] : 
-         user.role === 'ADMIN' ? ['admin.settings', 'admin.users', 'finance.view', 'sales.view', 'production.view', 'inventory.view', 'finance.reports'] : [])
+        this.getDefaultPermissionsForRole(user.role)
     };
   }
 

@@ -51,6 +51,10 @@ const CriarPedido: React.FC = () => {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [selectedOriginOrder, setSelectedOriginOrder] = useState<string>('');
   const [processStatuses, setProcessStatuses] = useState<any[]>([]);
+  const [equipe, setEquipe] = useState<any[]>([]);
+  const [artDesignerId, setArtDesignerId] = useState('');
+  const [productionUserId, setProductionUserId] = useState('');
+  const [packagingUserId, setPackagingUserId] = useState('');
 
   // Edio de item
   const [editingItem, setEditingItem] = useState<ItemPedido | null>(null);
@@ -69,6 +73,7 @@ const CriarPedido: React.FC = () => {
     loadProdutos();
     loadProcessStatuses();
     loadOrgSettings();
+    loadEquipe();
 
     // Se estiver editando, carregar dados do pedido
     if (isEditing && editId) {
@@ -86,10 +91,22 @@ const CriarPedido: React.FC = () => {
     }
   }, [isEditing, editId, cloneId, fromBudgetId]);
 
+
+  const loadEquipe = async () => {
+    try {
+      const response = await api.get('/api/profiles?isEmployee=true');
+      setEquipe(response.data.data || []);
+    } catch (error) {
+      console.error('Erro ao carregar equipe:', error);
+    }
+  };
+
   const loadProcessStatuses = async () => {
     try {
       const response = await api.get('/api/organization/config/process-statuses');
-      setProcessStatuses(response.data.data || []);
+      if (response.data.success) {
+        setProcessStatuses(response.data.data || []);
+      }
     } catch (error) {
       console.error('Erro ao carregar status de processo:', error);
     }
@@ -250,6 +267,9 @@ const CriarPedido: React.FC = () => {
       setGlobalDiscount(pedido.globalDiscount ? Number(pedido.globalDiscount) : 0);
       setDeliveryDate(pedido.deliveryDate ? new Date(pedido.deliveryDate).toISOString().split('T')[0] : '');
       setNotes(pedido.notes || '');
+      setArtDesignerId(pedido.artDesignerId || '');
+      setProductionUserId(pedido.productionUserId || '');
+      setPackagingUserId(pedido.packagingUserId || '');
 
       // Carregar pagamentos (transaes)
       if (pedido.transactions && pedido.transactions.length > 0) {
@@ -329,6 +349,9 @@ const CriarPedido: React.FC = () => {
       setItens(itensCarregados);
       setDeliveryDate('');
       setNotes('Pedido duplicado - ' + (pedido.notes || ''));
+      setArtDesignerId(pedido.artDesignerId || '');
+      setProductionUserId(pedido.productionUserId || '');
+      setPackagingUserId(pedido.packagingUserId || '');
       toast.success('Itens do pedido clonados com sucesso!');
     } catch (error: any) {
       toast.error('Erro ao carregar pedido para clonagem');
@@ -727,6 +750,9 @@ const CriarPedido: React.FC = () => {
         discountStatus: globalDiscount > 0 ? (globalDiscountValidation.ok || canEditPriceByRole ? 'APPROVED' : 'PENDING') : 'NONE',
         deliveryDate: deliveryDate || undefined,
         notes: notes || undefined,
+        artDesignerId: artDesignerId || undefined,
+        productionUserId: productionUserId || undefined,
+        packagingUserId: packagingUserId || undefined,
         payments: (customPayments || payments).map(p => ({
           id: p.id,           //  IMPORTANTE: incluir id para o backend saber quais j existem
           methodId: p.methodId,
@@ -896,8 +922,63 @@ const CriarPedido: React.FC = () => {
             />
 
             {/* Observaes e Envio */}
-            <div className="bg-white p-6 rounded-lg border shadow-sm space-y-4">
-              <h3 className="text-lg font-medium">Informaes Adicionais</h3>
+            <div className="bg-white p-6 rounded-lg border shadow-sm space-y-6">
+              <h3 className="text-lg font-medium">Informaes Adicionais e Responsveis</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Arte / Designer
+                  </label>
+                  <select
+                    className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                    value={artDesignerId}
+                    onChange={(e) => setArtDesignerId(e.target.value)}
+                  >
+                    <option value="">No atribuído</option>
+                    {equipe.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Produo
+                  </label>
+                  <select
+                    className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                    value={productionUserId}
+                    onChange={(e) => setProductionUserId(e.target.value)}
+                  >
+                    <option value="">No atribuído</option>
+                    {equipe.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Acabamento / Expedio
+                  </label>
+                  <select
+                    className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                    value={packagingUserId}
+                    onChange={(e) => setPackagingUserId(e.target.value)}
+                  >
+                    <option value="">No atribuído</option>
+                    {equipe.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">

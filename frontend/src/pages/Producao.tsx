@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import PendingChangeCard, { PendingChange } from '@/components/production/PendingChangeCard';
 import ChangeDetailsPanel from '@/components/production/ChangeDetailsPanel';
 import KanbanBoard from '@/components/production/KanbanBoard';
+import ProductionFilterBar from '@/components/production/ProductionFilterBar';
 
 // Interface moved to imported type
 interface ProductionStats {
@@ -56,6 +57,7 @@ export const Producao: React.FC = () => {
     status: '',
     priority: '',
     search: '',
+    assignedUserId: '',
     tab: 'kanban' // kanban or changes
   });
   const [processStatuses, setProcessStatuses] = useState<ProcessStatusOption[]>([]);
@@ -307,6 +309,11 @@ export const Producao: React.FC = () => {
                   ))}
                 </SelectContent>
               </Select>
+
+              <ProductionFilterBar 
+                assignedUserId={filters.assignedUserId}
+                onFilterChange={(userId) => setFilters(prev => ({ ...prev, assignedUserId: userId === 'ALL' ? '' : userId }))}
+              />
             </div>
           </CardContent>
         </Card>
@@ -315,7 +322,8 @@ export const Producao: React.FC = () => {
       {filters.tab === 'kanban' ? (
         <KanbanBoard filters={{
           search: filters.search,
-          parentStatusId: filters.status === 'ALL' ? undefined : filters.status
+          parentStatusId: filters.status === 'ALL' ? undefined : filters.status,
+          assignedUserId: filters.assignedUserId || undefined
         }} />
       ) : (
         <div className="space-y-6">

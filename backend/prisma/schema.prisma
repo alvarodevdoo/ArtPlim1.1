@@ -58,6 +58,9 @@ model Organization {
   profiles               Profile[]
   standardSizes          StandardSize[]
   transactions           Transaction[]
+  commissionRules        CommissionRule[]
+  commissionEntries      CommissionEntry[]
+
   balanceMovements       ProfileBalanceMovement[]
   users                  User[]
   roles                  Role[]
@@ -142,6 +145,12 @@ model User {
   cancelledMovements StockMovement[]      @relation("CancelledMovements")
   requestedAuths     AuthorizationRequest[] @relation("RequestedAuths")
   approvedAuths      AuthorizationRequest[] @relation("ApprovedAuths")
+  commissionEntries  CommissionEntry[]
+  soldOrders         Order[]              @relation("OrderSeller")
+  artDesignerOrders  Order[]              @relation("OrderArtDesigner")
+  productionOrders   Order[]              @relation("OrderProducer")
+  packagingOrders    Order[]              @relation("OrderPacker")
+
   organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, email])
@@ -591,6 +600,21 @@ model Order {
   customer                  Profile                @relation(fields: [customerId], references: [id])
   organization              Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   processStatus             ProcessStatus?         @relation(fields: [processStatusId], references: [id])
+  sellerId                  String?
+  seller                    User?                  @relation("OrderSeller", fields: [sellerId], references: [id])
+  artDesignerId             String?
+  artDesigner               User?                  @relation("OrderArtDesigner", fields: [artDesignerId], references: [id])
+  artAssignedAt             DateTime?
+  
+  productionUserId          String?
+  producer                  User?                  @relation("OrderProducer", fields: [productionUserId], references: [id])
+  productionAssignedAt      DateTime?
+  
+  packagingUserId           String?
+  packer                    User?                  @relation("OrderPacker", fields: [packagingUserId], references: [id])
+  packagingAssignedAt       DateTime?
+
+  commissionEntries         CommissionEntry[]
   pendingChanges            PendingChanges[]
   productionQueue           ProductionQueue[]
   productionWastes          ProductionWaste[]
@@ -1671,8 +1695,10 @@ model Role {
   active         Boolean  @default(true)
   createdAt      DateTime @default(now())
 
-  users       User[]
-  permissions RolePermission[]
+  users             User[]
+  permissions       RolePermission[]
+  commissionRules   CommissionRule[]
+  commissionEntries CommissionEntry[]
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -1689,4 +1715,40 @@ model RolePermission {
 
   @@unique([roleId, permissionKey])
   @@map("role_permissions")
+}
+
+model CommissionRule {
+  id              String   @id @default(uuid())
+  organizationId  String
+  roleId          String
+  rate            Decimal  @db.Decimal(10, 2)
+  description     String?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  role            Role         @relation(fields: [roleId], references: [id])
+
+  @@map("commission_rules")
+}
+
+model CommissionEntry {
+  id              String   @id @default(uuid())
+  organizationId  String
+  orderId         String
+  userId          String?
+  roleId          String?
+  amount          Decimal  @db.Decimal(10, 2)
+  rateApplied     Decimal  @db.Decimal(10, 2)
+  description     String
+  status          String   @default("PENDING")
+  createdAt       DateTime @default(now())
+
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  order           Order        @relation(fields: [orderId], references: [id])
+  user            User?        @relation(fields: [userId], references: [id])
+  role            Role?        @relation(fields: [roleId], references: [id])
+
+  @@map("commission_entries")
 }
