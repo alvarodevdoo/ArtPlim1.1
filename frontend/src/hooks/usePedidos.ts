@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWebSocket } from '@/hooks/useWebSocket';
@@ -99,26 +99,31 @@ export function usePedidos() {
   }, [debouncedSearch, statusFilter, dateFilter, loadPedidos]);
   
   // --- WebSocket Listeners ---
+  // Refs para evitar re-subscrição a cada keystroke: os callbacks de load usam
+  // os valores mais recentes dos filtros via ref sem precisar estar no array de deps.
+  const filtersRef = React.useRef({ debouncedSearch, statusFilter, dateFilter });
+  useEffect(() => { filtersRef.current = { debouncedSearch, statusFilter, dateFilter }; });
+
   useEffect(() => {
     if (!connected || !subscribe) return;
-    
+
     console.log('🔌 [usePedidos] Configurando listeners real-time...');
-    
-    const unsubUpdate = subscribe('order-updated', (data: any) => {
-      console.log('🔄 [WebSocket] Pedido atualizado:', data);
-      loadPedidos(debouncedSearch, statusFilter, dateFilter);
+
+    const unsubUpdate = subscribe('order-updated', () => {
+      const { debouncedSearch: s, statusFilter: st, dateFilter: d } = filtersRef.current;
+      loadPedidos(s, st, d);
     });
-    
-    const unsubCreate = subscribe('order-created', (data: any) => {
-      console.log('🆕 [WebSocket] Novo pedido criado:', data);
-      loadPedidos(debouncedSearch, statusFilter, dateFilter);
+
+    const unsubCreate = subscribe('order-created', () => {
+      const { debouncedSearch: s, statusFilter: st, dateFilter: d } = filtersRef.current;
+      loadPedidos(s, st, d);
     });
-    
+
     return () => {
       unsubUpdate?.();
       unsubCreate?.();
     };
-  }, [connected, subscribe, loadPedidos, debouncedSearch, statusFilter, dateFilter]);
+  }, [connected, subscribe, loadPedidos]);
 
   // --- Derivações ---
   const getStatusDisplay = useCallback((pedido: Pedido) => {
@@ -156,7 +161,8 @@ export function usePedidos() {
              (numericTerm.length >= 3 && pedido.customer.document.replace(/\D/g, '').includes(numericTerm))
           ));
         const matchesStatus = !statusFilter || pedido.status === statusFilter;
-        const matchesDate = !dateFilter || (pedido?.createdAt && new Date(pedido.createdAt).toISOString().split('T')[0] === dateFilter);
+        // Backend envia dateFrom como gte: comparar se a data do pedido é >= dateFilter
+        const matchesDate = !dateFilter || (pedido?.createdAt && new Date(pedido.createdAt).toISOString().split('T')[0] >= dateFilter);
         return matchesSearch && matchesStatus && matchesDate;
       })
       .sort((a, b) => {

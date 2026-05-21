@@ -2,6 +2,7 @@ import React from 'react';
 import { Input } from '@/components/ui/Input';
 import CurrencyInput from '@/components/ui/CurrencyInput';
 import { Unlock, Edit3, AlertCircle } from 'lucide-react';
+import { resolveDisplayUnit, isUnitaryUnit } from '@/lib/units';
 
 interface PriceQuantitySectionProps {
     quantity: number;
@@ -18,6 +19,8 @@ interface PriceQuantitySectionProps {
     setDiscountItem?: (d: number | string) => void;
     discountValidation?: { ok: boolean; percent: number; exceedsGross: boolean; exceedsThreshold: boolean };
     maxDiscountThreshold?: number;
+    quantityHasError?: boolean;
+    stockBottleneck?: { kind: 'product' | 'material'; name: string; available: number; needed: number; unit?: string; ok: boolean } | null;
 }
 
 export const PriceQuantitySection: React.FC<PriceQuantitySectionProps> = ({
@@ -34,20 +37,53 @@ export const PriceQuantitySection: React.FC<PriceQuantitySectionProps> = ({
     discountItem,
     setDiscountItem,
     discountValidation,
-    maxDiscountThreshold = 0.15
+    maxDiscountThreshold = 0.15,
+    quantityHasError = false,
+    stockBottleneck = null
 }) => {
     return (
         <>
+            {/* Estoque Disponível (sempre renderizado para evitar saltos de layout) */}
+            <div className="space-y-1 w-24 shrink-0" title={stockBottleneck?.name || 'Estoque disponível'}>
+                <label className="text-[10px] font-bold uppercase text-slate-500">Disponível</label>
+                <div className={`h-9 flex items-center justify-center rounded-md border bg-white font-black text-sm shadow-sm ${
+                    !stockBottleneck
+                        ? 'border-slate-200 text-slate-300'
+                        : stockBottleneck.ok
+                            ? 'border-emerald-300 text-emerald-700'
+                            : 'border-red-400 text-red-600 bg-red-50'
+                }`}>
+                    {stockBottleneck ? (() => {
+                        const v = stockBottleneck.available;
+                        const isUnitary = isUnitaryUnit(stockBottleneck.unit);
+                        const formatted = isUnitary || Number.isInteger(v) ? String(Math.trunc(v)) : v.toFixed(2);
+                        const displayUnit = resolveDisplayUnit({ unit: stockBottleneck.unit });
+                        return (
+                            <>
+                                {formatted}
+                                <span className="text-[10px] font-semibold ml-1 opacity-70">{displayUnit}</span>
+                            </>
+                        );
+                    })() : (
+                        <span className="text-slate-300">—</span>
+                    )}
+                </div>
+            </div>
+
             {/* Quantity */}
             <div className="space-y-1 w-20 shrink-0">
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Qtde</label>
-                <Input 
-                    type="number" 
-                    value={quantity || ''} 
-                    onChange={(e) => setQuantity(Number(e.target.value))} 
-                    placeholder="1" 
-                    min="1" 
-                    className="h-9 border-slate-300 bg-white text-center font-black text-sm shadow-sm" 
+                <label className={`text-[10px] font-bold uppercase ${quantityHasError ? 'text-red-600' : 'text-slate-500'}`}>Qtde</label>
+                <Input
+                    type="number"
+                    value={quantity || ''}
+                    onChange={(e) => setQuantity(Number(e.target.value))}
+                    placeholder="1"
+                    min="1"
+                    className={`h-9 bg-white text-center font-black text-sm shadow-sm ${
+                        quantityHasError
+                            ? 'border-2 border-red-500 text-red-600 focus:ring-red-300 ring-2 ring-red-200'
+                            : 'border-slate-300'
+                    }`}
                 />
             </div>
 

@@ -1,4 +1,5 @@
 import { Order } from '../../domain/entities/Order';
+import { StockReservationService } from '../../../wms/services/StockReservationService';
 import { OrderStatus, OrderStatusEnum } from '../../domain/value-objects/OrderStatus';
 import { OrderRepository } from '../../domain/repositories/OrderRepository';
 import { NotFoundError, ValidationError } from '../../../../shared/infrastructure/errors/AppError';
@@ -19,7 +20,7 @@ export class UpdateOrderStatusUseCase {
     }
   }
 
-  async execute(id: string, status: string, details?: { userId?: string, reason?: string, paymentAction?: string, refundAmount?: number }): Promise<Order> {
+  async execute(id: string, status: string, details?: { userId?: string, reason?: string, paymentAction?: string, refundAmount?: number, materiaisConsumidos?: string[] }): Promise<Order> {
     console.log(`[UpdateOrderStatus] Iniciando atualização do pedido ${id} para status ${status}`, { details });
 
     // Validar status (pode ser um Enum ou um UUID de status customizado)
@@ -57,6 +58,48 @@ export class UpdateOrderStatusUseCase {
       console.log(`[UpdateOrderStatus] Processando cancelamento do pedido ${id}. Ação: ${details?.paymentAction}`);
       order.cancel(details);
 
+      // Liberar reservas de estoque
+      const reservationService = new StockReservationService(this.prisma);
+      await reservationService.releaseForOrder(id).catch(e =>
+        console.error('[UpdateOrderStatus] Erro ao liberar reservas:', e)
+      );
+
+      // Se o pedido já foi aprovado, a baixa real de materiais foi feita pelo ApproveOrderService.
+      // Restaurar materiais que NÃO foram consumidos fisicamente (o usuário marca no modal).
+      const jaAprovado = ['APPROVED', 'IN_PRODUCTION', 'FINISHED', 'DELIVERED'].includes(previousStatus);
+
+      if (jaAprovado) {
+        const materiaisConsumidosSet = new Set(details?.materiaisConsumidos || []);
+
+        try {
+          const orderWithItems = await this.prisma.order.findUnique({
+            where: { id },
+            include: { items: true }
+          });
+          if (orderWithItems) {
+            for (const item of orderWithItems.items) {
+              const snap: any[] = (item as any).attributes?.insumos_snapshot || [];
+              for (const insumo of snap) {
+                if (!insumo?.id || !insumo.quantidade || insumo.quantidade <= 0) continue;
+
+                if (materiaisConsumidosSet.has(insumo.id)) {
+                  console.log(`[UpdateOrderStatus] Material "${insumo.nome || insumo.id}" NÃO restaurado (marcado como consumido)`);
+                  continue;
+                }
+
+                await this.prisma.material.update({
+                  where: { id: insumo.id },
+                  data: { currentStock: { increment: insumo.quantidade } }
+                }).catch((e: any) => console.error(`[UpdateOrderStatus] Erro ao restaurar material ${insumo.id}:`, e));
+                console.log(`[UpdateOrderStatus] Material restaurado: ${insumo.nome || insumo.id} +${insumo.quantidade}`);
+              }
+            }
+          }
+        } catch (e) {
+          console.error('[UpdateOrderStatus] Erro ao restaurar estoque de materiais:', e);
+        }
+      }
+
       // Lógica Financeira do Cancelamento
       if (details?.paymentAction && details?.paymentAction !== 'NONE' && details?.refundAmount && Number(details.refundAmount) > 0) {
         await this.processFinancialAction(order, details);
@@ -64,7 +107,32 @@ export class UpdateOrderStatusUseCase {
     } else {
       // Atualização de Status Normal
       const statusEnumValue = targetStatusBehavior as OrderStatusEnum;
-      order.changeStatus(new OrderStatus(statusEnumValue));
+
+      // Consultar modo de workflow da organização
+      const settings = await this.prisma.organizationSettings.findUnique({
+        where: { organizationId: order.organizationId },
+        select: { workflowMode: true }
+      });
+      const workflowMode = settings?.workflowMode || 'FREE';
+
+      if (workflowMode === 'STRICT') {
+        // Modo estrito: respeitar máquina de estados sequencial
+        order.changeStatus(new OrderStatus(statusEnumValue));
+      } else if (workflowMode === 'SKIP') {
+        // Modo skip: permitir avançar (não recuar), mas pular etapas
+        const ORDER_WEIGHT: Record<string, number> = {
+          DRAFT: 1, APPROVED: 2, IN_PRODUCTION: 3, FINISHED: 4, DELIVERED: 5
+        };
+        const currentWeight = ORDER_WEIGHT[order.status.value] ?? 0;
+        const targetWeight = ORDER_WEIGHT[statusEnumValue] ?? 0;
+        if (targetWeight <= currentWeight && statusEnumValue !== OrderStatusEnum.CANCELLED) {
+          throw new Error(`No modo "Pular Etapas", só é possível avançar. Use o modo "Livre" para retroceder.`);
+        }
+        order.forceStatus(new OrderStatus(statusEnumValue));
+      } else {
+        // Modo FREE: qualquer transição permitida
+        order.forceStatus(new OrderStatus(statusEnumValue));
+      }
       
       // --- INÍCIO DA INTEGRAÇÃO FINANCEIRA ---
       if (statusEnumValue === OrderStatusEnum.APPROVED) {
@@ -216,20 +284,28 @@ export class UpdateOrderStatusUseCase {
         });
       }
 
-      const receivableService = new ReceivableService(this.prisma);
-      await receivableService.createReceivableFromOrder({
-        organizationId: order.organizationId,
-        customerId: order.customerId,
-        orderId: order.id,
-        amount: totalAmount,
-        dueDate: (order as any).deliveryDate || new Date(),
-        receivableAccountId: receivableAccount.id,
-        splits,
-        notes: `Apropriação automática - Pedido ${(order as any).orderNumber?.value || (order as any).orderNumber}`,
-        userId: details?.userId || 'SYSTEM'
+      // Evitar duplicatas: só cria o recebível se ainda não existe um PENDING para este pedido
+      const existingReceivable = await this.prisma.accountReceivable.findFirst({
+        where: { orderId: order.id, status: 'PENDING' }
       });
 
-      console.log(`[UpdateOrderStatus] Apropriação concluída para o pedido ${order.id}`);
+      if (existingReceivable) {
+        console.log(`[UpdateOrderStatus] Recebível PENDING já existe para o pedido ${order.id}. Apropriação ignorada para evitar duplicata.`);
+      } else {
+        const receivableService = new ReceivableService(this.prisma);
+        await receivableService.createReceivableFromOrder({
+          organizationId: order.organizationId,
+          customerId: order.customerId,
+          orderId: order.id,
+          amount: totalAmount,
+          dueDate: (order as any).deliveryDate || new Date(),
+          receivableAccountId: receivableAccount.id,
+          splits,
+          notes: `Apropriação automática - Pedido ${(order as any).orderNumber?.value || (order as any).orderNumber}`,
+          userId: details?.userId || 'SYSTEM'
+        });
+        console.log(`[UpdateOrderStatus] Apropriação concluída para o pedido ${order.id}`);
+      }
     } catch (error) {
       console.error('[UpdateOrderStatus] Erro na apropriação financeira:', error);
     }

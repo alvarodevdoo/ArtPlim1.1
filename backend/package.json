@@ -22,7 +22,8 @@
     "seed:products": "tsx scripts/seed-products.ts",
     "seed:artplim": "tsx scripts/seed-ArtPlim.ts",
     "db:clear-orders": "tsx scripts/clear-orders.ts",
-    "clear:vendas": "node scripts/clear_vendas.js"
+    "clear:vendas": "node scripts/clear_vendas.js",
+    "check:orphan-routes": "node scripts/check-orphan-routes.js"
   },
   "prisma": {
     "seed": "tsx scripts/seed-ArtPlim.ts"
@@ -72,7 +73,7 @@
     "fast-check": "^4.5.3",
     "jest": "^30.2.0",
     "pino-pretty": "^13.1.3",
-    "prisma": "^7.6.0",
+    "prisma": "^7.8.0",
     "ts-jest": "^29.4.6",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"

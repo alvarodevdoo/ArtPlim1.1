@@ -3,7 +3,9 @@ import { Building, Award, MapPin, Phone, Mail, Loader2, Search } from 'lucide-re
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
-import { toast } from 'sonner';
+import { maskCnpj, maskCep, toTitleCaseBR } from '@/services/lookup';
+import { useCnpjLookup } from '@/hooks/useCnpjLookup';
+import { useCepLookup } from '@/hooks/useCepLookup';
 
 interface OrganizationData {
   name: string;
@@ -34,128 +36,54 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   handleSaveOrganization,
   loading
 }) => {
-  const [fetchingCnpj, setFetchingCnpj] = React.useState(false);
-  const [fetchingCep, setFetchingCep] = React.useState(false);
-
   // Referência para o campo número para focar após buscar CEP
   const addressNumberRef = React.useRef<HTMLInputElement>(null);
 
-  // Máscara para CNPJ: 00.000.000/0000-00
-  const maskCnpj = (value: string) => {
-    return value
-      .replace(/\D/g, '')
-      .replace(/^(\d{2})(\d)/, '$1.$2')
-      .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
-      .replace(/\.(\d{3})(\d)/, '.$1/$2')
-      .replace(/(\d{4})(\d)/, '$1-$2')
-      .substring(0, 18);
-  };
-
-  // Máscara para CEP: 00000-000
-  const maskCep = (value: string) => {
-    return value
-      .replace(/\D/g, '')
-      .replace(/^(\d{5})(\d)/, '$1-$2')
-      .substring(0, 9);
-  };
-
-  // Capitalização de nomes
-  const toTitleCaseBR = (str: string) => {
-    if (!str) return str;
-    const lowerExceptions = ['de', 'da', 'do', 'dos', 'das', 'e'];
-    return str.toLowerCase().split(' ').map((word, index) => {
-      if (index !== 0 && lowerExceptions.includes(word)) {
-        return word;
-      }
-      return word.charAt(0).toUpperCase() + word.slice(1);
-    }).join(' ');
-  };
-
-  const fetchCepData = async (cepRaw: string) => {
-    const cep = cepRaw.replace(/\D/g, '');
-    if (cep.length !== 8) return;
-
-    setFetchingCep(true);
-    try {
-      const response = await fetch(`https://brasilapi.com.br/api/cep/v1/${cep}`);
-      if (!response.ok) throw new Error('CEP não encontrado');
-      
-      const data = await response.json();
-      
+  const { loading: fetchingCnpj, fetchDebounced: fetchCnpjDebounced } = useCnpjLookup({
+    onSuccess: (data) => {
       setOrganizationData(prev => ({
         ...prev,
-        zipCode: maskCep(cep),
-        address: toTitleCaseBR(data.street) || prev.address,
+        cnpj: data.cnpjFormatted,
+        name: toTitleCaseBR(data.nomeFantasia || data.razaoSocial) || prev.name,
+        razaoSocial: toTitleCaseBR(data.razaoSocial) || prev.razaoSocial,
+        email: data.email || prev.email,
+        phone: data.phone || prev.phone,
+        zipCode: data.zipCode || prev.zipCode,
+        address: toTitleCaseBR(data.address) || prev.address,
+        addressNumber: data.addressNumber || prev.addressNumber,
+        complement: toTitleCaseBR(data.complement) || prev.complement,
         neighborhood: toTitleCaseBR(data.neighborhood) || prev.neighborhood,
         city: toTitleCaseBR(data.city) || prev.city,
-        state: data.state || prev.state
+        state: data.state || prev.state,
       }));
+    },
+  });
 
-      toast.success('Endereço localizado!');
-      // Focar no campo número para agilizar a digitação
-      setTimeout(() => addressNumberRef.current?.focus(), 100);
-    } catch (error) {
-      console.error('Erro CEP:', error);
-      toast.error('Não foi possível localizar este CEP');
-    } finally {
-      setFetchingCep(false);
-    }
-  };
-
-  const fetchCnpjData = async (cnpjRaw: string) => {
-    const cnpj = cnpjRaw.replace(/\D/g, '');
-    if (cnpj.length !== 14) return;
-
-    setFetchingCnpj(true);
-    try {
-      const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
-      if (!response.ok) throw new Error('CNPJ não encontrado ou erro na busca');
-      
-      const data = await response.json();
-      
-      // Mapear dados da BrasilAPI para o nosso estado
+  const { loading: fetchingCep, fetchDebounced: fetchCepDebounced } = useCepLookup({
+    onSuccess: (data) => {
       setOrganizationData(prev => ({
         ...prev,
-        cnpj: maskCnpj(cnpj),
-        name: toTitleCaseBR(data.nome_fantasia || data.razao_social) || prev.name,
-        razaoSocial: toTitleCaseBR(data.razao_social) || prev.razaoSocial,
-        email: data.email ? data.email.toLowerCase() : prev.email,
-        phone: data.ddd_telefone_1 || prev.phone,
-        zipCode: data.cep || prev.zipCode,
-        address: toTitleCaseBR(data.logradouro) || prev.address,
-        addressNumber: data.numero || prev.addressNumber,
-        complement: toTitleCaseBR(data.complemento) || prev.complement,
-        neighborhood: toTitleCaseBR(data.bairro) || prev.neighborhood,
-        city: toTitleCaseBR(data.municipio) || prev.city,
-        state: data.uf || prev.state
+        zipCode: data.cepFormatted,
+        address: toTitleCaseBR(data.address) || prev.address,
+        neighborhood: toTitleCaseBR(data.neighborhood) || prev.neighborhood,
+        city: toTitleCaseBR(data.city) || prev.city,
+        state: data.state || prev.state,
       }));
-
-      toast.success('Dados recuperados com sucesso!');
-    } catch (error) {
-      console.error('Erro CNPJ:', error);
-      toast.error('Não foi possível recuperar dados deste CNPJ');
-    } finally {
-      setFetchingCnpj(false);
-    }
-  };
+      // Focar no campo número para agilizar a digitação
+      setTimeout(() => addressNumberRef.current?.focus(), 100);
+    },
+  });
 
   const handleCnpjChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const masked = maskCnpj(e.target.value);
     setOrganizationData(prev => ({ ...prev, cnpj: masked }));
-
-    // Se atingiu o tamanho do CNPJ completo, dispara a busca
-    if (masked.replace(/\D/g, '').length === 14) {
-      fetchCnpjData(masked);
-    }
+    fetchCnpjDebounced(masked);
   };
 
   const handleCepChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const masked = maskCep(e.target.value);
     setOrganizationData(prev => ({ ...prev, zipCode: masked }));
-
-    if (masked.replace(/\D/g, '').length === 8) {
-      fetchCepData(masked);
-    }
+    fetchCepDebounced(masked);
   };
 
   return (

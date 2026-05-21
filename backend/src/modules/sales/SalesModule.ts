@@ -10,6 +10,7 @@ import { CancelOrderItemsUseCase } from './application/use-cases/CancelOrderItem
 import { CreateDeliveryUseCase } from './application/use-cases/CreateDeliveryUseCase';
 import { OrderController } from './presentation/http/OrderController';
 import { AuthorizationController } from './presentation/http/AuthorizationController';
+import { SalesReportController } from './presentation/http/SalesReportController';
 import { orderRoutes } from './presentation/http/routes';
 import { PricingEngine } from '../../shared/application/pricing/PricingEngine';
 import { ProcessStatusService } from '../organization/services/ProcessStatusService';
@@ -53,6 +54,7 @@ export class SalesModule {
   private processStatusService!: ProcessStatusService;
   private authorizationService!: AuthorizationService;
   private authorizationController!: AuthorizationController;
+  private salesReportController!: SalesReportController;
 
   // Serviços Adicionais
   private approveOrderService!: ApproveOrderService;
@@ -146,10 +148,11 @@ export class SalesModule {
 
     this.authorizationService = new AuthorizationService();
     this.authorizationController = new AuthorizationController(this.authorizationService);
+    this.salesReportController = new SalesReportController();
   }
 
   async registerRoutes(fastify: FastifyInstance): Promise<void> {
-    await orderRoutes(fastify, this.orderController, this.authorizationController);
+    await orderRoutes(fastify, this.orderController, this.authorizationController, this.salesReportController);
   }
 
   getCreateOrderUseCase(): CreateOrderUseCase {

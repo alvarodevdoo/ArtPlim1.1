@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Lock, AlertTriangle, Eye, EyeOff, CheckCircle2, XCircle, FileDown, QrCode, Calendar } from 'lucide-react';
+import { Shield, Lock, AlertTriangle, Eye, EyeOff, CheckCircle2, XCircle, FileDown, QrCode, Calendar, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -9,6 +9,7 @@ import QRCode from 'qrcode';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import api from '@/lib/api';
 
 interface SecurityManagerProps {
   settings: any;
@@ -27,7 +28,39 @@ export const SecurityManager: React.FC<SecurityManagerProps> = ({
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [showPassword, setShowPassword] = React.useState(false);
   const [downloading, setDownloading] = React.useState(false);
-  
+  const [removingCert, setRemovingCert] = React.useState(false);
+
+  const handleRemoveCertificate = async () => {
+    if (!window.confirm('Tem certeza que deseja remover o Certificado Digital A1?\n\nA emissão de NF-e ficará indisponível até que um novo certificado seja configurado.')) {
+      return;
+    }
+    setRemovingCert(true);
+    try {
+      // Envia diretamente os campos nulos para o backend (evita race com setSettings async)
+      const cleared = {
+        ...settings,
+        nfeCertificate: null,
+        nfeCertificatePassword: null,
+        nfeCertificateFileName: null,
+        nfeCertificateSubject: null,
+        nfeCertificateExpiry: null,
+      };
+      await api.put('/api/organization/settings', cleared);
+      setSettings(cleared);
+      // Confirma com o servidor que a remoção persistiu
+      try {
+        const fresh = await api.get('/api/organization/settings');
+        setSettings(fresh.data.data);
+      } catch { /* ignore reload errors */ }
+      toast.success('Certificado removido com sucesso.');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Erro ao remover o certificado.';
+      toast.error(msg);
+    } finally {
+      setRemovingCert(false);
+    }
+  };
+
   const passwordsMatch = newPassword !== '' && newPassword === confirmPassword;
   const isPasswordValid = newPassword.length >= 8;
   const canSave = passwordsMatch && isPasswordValid && !loading;
@@ -233,9 +266,20 @@ export const SecurityManager: React.FC<SecurityManagerProps> = ({
                   </h3>
                 </div>
                 
-                <div className="flex items-center gap-6 mt-4 text-[10px] font-bold opacity-80 border-t border-white/10 pt-4">
-                  <div className="flex items-center gap-1"><Lock className="w-3 h-3" /> Senha Armazenada</div>
-                  <div className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Transmissão Segura</div>
+                <div className="flex items-center justify-between mt-4 border-t border-white/10 pt-4">
+                  <div className="flex items-center gap-6 text-[10px] font-bold opacity-80">
+                    <div className="flex items-center gap-1"><Lock className="w-3 h-3" /> Senha Armazenada</div>
+                    <div className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Transmissão Segura</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemoveCertificate}
+                    disabled={removingCert || loading}
+                    className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg bg-white/10 hover:bg-rose-500 transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    {removingCert ? 'Removendo...' : 'Remover Certificado'}
+                  </button>
                 </div>
               </div>
             </div>

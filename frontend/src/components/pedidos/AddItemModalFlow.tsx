@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { ItemType } from '@/types/item-types';
-import ProductSelectionModal from './ProductSelectionModal';
+import ProductSelectionModal, { SelectionPresets } from './ProductSelectionModal';
 import ItemConfigurationModal from './ItemConfigurationModal';
 
 import { Produto as SalesProduct } from '@/types/sales';
@@ -27,8 +27,8 @@ interface ItemPedido {
 
 interface AddItemModalFlowProps {
     produtos: SalesProduct[];
-    onAddItem: (item: ItemPedido) => void;
-    onUpdateItem?: (item: ItemPedido) => void;
+    onAddItem: (item: ItemPedido) => void | boolean | Promise<void | boolean>;
+    onUpdateItem?: (item: ItemPedido) => void | boolean | Promise<void | boolean>;
     editingItem?: ItemPedido | null;
     isOpen: boolean;
     onClose: () => void;
@@ -50,6 +50,7 @@ const AddItemModalFlow: React.FC<AddItemModalFlowProps> = ({
 }) => {
     const [currentStep, setCurrentStep] = useState<ModalStep>('selection');
     const [selectedProduct, setSelectedProduct] = useState<SelectableProduct | null>(null);
+    const [selectionPresets, setSelectionPresets] = useState<SelectionPresets | undefined>(undefined);
 
     // Adicionar contadores de uso simulados aos produtos
     // Em produção, isso viria do backend baseado no histórico real de uso
@@ -95,35 +96,44 @@ const AddItemModalFlow: React.FC<AddItemModalFlowProps> = ({
     // pois o produto do item pode ter dados extras (pricingRule) que a lista genérica não tem
     // Removed the second useEffect that was overwriting the selectedProduct
 
-    const handleProductSelect = (produto: SelectableProduct) => {
+    const handleProductSelect = (produto: SelectableProduct, presets?: SelectionPresets) => {
         setSelectedProduct(produto);
+        setSelectionPresets(presets);
         setCurrentStep('configuration');
     };
 
     const handleBackToSelection = () => {
         setCurrentStep('selection');
         setSelectedProduct(null);
+        setSelectionPresets(undefined);
     };
 
-    const handleItemSubmit = (item: ItemPedido) => {
+    const handleItemSubmit = async (item: ItemPedido) => {
+        let ok = true;
         if (editingItem && onUpdateItem) {
-            onUpdateItem(item);
-            toast.success('Item atualizado com sucesso!');
+            const result = await onUpdateItem(item);
+            ok = result !== false;
+            if (ok) toast.success('Item atualizado com sucesso!');
         } else {
-            onAddItem(item);
-            toast.success('Item adicionado ao pedido!');
+            const result = await onAddItem(item);
+            ok = result !== false;
+            if (ok) toast.success('Item adicionado ao pedido!');
         }
+
+        if (!ok) return; // Mantém o modal aberto para o usuário corrigir
 
         // Fechar modal e resetar estado
         onClose();
         setCurrentStep('selection');
         setSelectedProduct(null);
+        setSelectionPresets(undefined);
     };
 
     const handleCancel = () => {
         onClose();
         setCurrentStep('selection');
         setSelectedProduct(null);
+        setSelectionPresets(undefined);
     };
 
     // Verificar se há produtos disponíveis
@@ -162,6 +172,7 @@ const AddItemModalFlow: React.FC<AddItemModalFlowProps> = ({
                     isOpen={isOpen && currentStep === 'configuration'}
                     maxDiscountThreshold={maxDiscountThreshold}
                     isPriceUnlocked={isPriceUnlocked}
+                    selectionPresets={selectionPresets}
                 />
             )}
         </>

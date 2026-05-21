@@ -15,6 +15,7 @@ interface Props {
   value: ProductiveIntelligenceData;
   onChange: (data: ProductiveIntelligenceData) => void;
   format?: string;
+  isNew?: boolean;
 }
 
 const CONTROL_UNIT_LABELS: Record<ControlUnit, string> = {
@@ -41,10 +42,11 @@ const PURCHASE_UNIT_OPTIONS = [
   { value: 'KG', label: 'Quilograma (kg)' },
 ];
 
-export const ProductiveIntelligence: React.FC<Props> = ({ 
-  value, 
-  onChange, 
-  format 
+export const ProductiveIntelligence: React.FC<Props> = ({
+  value,
+  onChange,
+  format,
+  isNew = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'logistics' | 'consumption'>('logistics');
   
@@ -54,6 +56,7 @@ export const ProductiveIntelligence: React.FC<Props> = ({
     toDisplayValue,
     handleWidthChange,
     handleHeightChange,
+    handleMultiplicadorChange,
     feedbackMessage,
   } = useProductiveIntelligence(value, onChange);
 
@@ -62,21 +65,39 @@ export const ProductiveIntelligence: React.FC<Props> = ({
     return true;
   });
 
-  const availableRules = (Object.keys(RULE_LABELS) as ConsumptionRule[]).filter(r => {
-    if (format === 'UNIT') return r === 'FIXED_UNIT';
-    return true;
-  });
+  // Regras de consumo válidas por unidade de controle.
+  // Se a unidade interna é UN, faz sentido apenas "Fixo por Unidade" —
+  // você não pode consumir "área" de um insumo contado em unidades.
+  const RULES_BY_CONTROL_UNIT: Record<ControlUnit, ConsumptionRule[]> = {
+    UN: ['FIXED_UNIT'],
+    M2: ['PRODUCT_AREA', 'FIXED_UNIT'],
+    M:  ['PERIMETER', 'FIXED_UNIT'],
+    ML: ['PERIMETER', 'SPACING', 'FIXED_UNIT'],
+  };
 
-  // Sincronizar caso o formato mude pra restringir a valores incompatíveis
+  const availableRules = (RULES_BY_CONTROL_UNIT[value.controlUnit] || (Object.keys(RULE_LABELS) as ConsumptionRule[]))
+    .filter(r => {
+      if (format === 'UNIT') return r === 'FIXED_UNIT';
+      return true;
+    });
+
+  // Sincronizar caso formato/unidade mudem para combinações incompatíveis
   useEffect(() => {
-    if (format === 'UNIT' && value.controlUnit !== 'UN') {
-      onChange({ 
-        ...value, 
-        controlUnit: 'UN', 
-        defaultConsumptionRule: 'FIXED_UNIT' 
-      });
+    let next = { ...value };
+    let changed = false;
+    // Forçar UN/FIXED_UNIT quando formato é UNIT
+    if (format === 'UNIT') {
+      if (next.controlUnit !== 'UN') { next.controlUnit = 'UN'; changed = true; }
+      if (next.defaultConsumptionRule !== 'FIXED_UNIT') { next.defaultConsumptionRule = 'FIXED_UNIT'; changed = true; }
     }
-  }, [format, value.controlUnit, onChange, value]);
+    // Se a regra atual não é válida para a unidade de controle, snap pra primeira válida
+    const validRules = RULES_BY_CONTROL_UNIT[next.controlUnit] || [];
+    if (validRules.length > 0 && !validRules.includes(next.defaultConsumptionRule)) {
+      next.defaultConsumptionRule = validRules[0];
+      changed = true;
+    }
+    if (changed) onChange(next);
+  }, [format, value.controlUnit, value.defaultConsumptionRule]);
 
   return (
     <div className={styles.container}>
@@ -118,7 +139,23 @@ export const ProductiveIntelligence: React.FC<Props> = ({
                 <label>Unidade de Compra</label>
                 <select
                   value={value.purchaseUnit || 'UN'}
-                  onChange={e => onChange({ ...value, purchaseUnit: e.target.value })}
+                  onChange={e => {
+                    const purchaseUnit = e.target.value;
+                    // Em novo cadastro, ao escolher "Unidade" como compra,
+                    // espelha automaticamente para a unidade interna (UN / Fixo por Unidade),
+                    // evitando que o usuário precise ajustar a aba Consumo/Venda.
+                    if (isNew && purchaseUnit === 'UN') {
+                      onChange({
+                        ...value,
+                        purchaseUnit,
+                        controlUnit: 'UN',
+                        defaultConsumptionRule: 'FIXED_UNIT',
+                        conversionFactor: 1,
+                      });
+                    } else {
+                      onChange({ ...value, purchaseUnit });
+                    }
+                  }}
                 >
                   {PURCHASE_UNIT_OPTIONS.map(opt => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>

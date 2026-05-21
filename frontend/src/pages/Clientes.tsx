@@ -3,9 +3,12 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Plus, Search, Edit, Trash2, Phone, Mail, Users, MapPin, Building2, Hash } from 'lucide-react';
-import axios from 'axios';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { toTitleCaseBR } from '@/services/lookup';
+import { useCnpjLookup } from '@/hooks/useCnpjLookup';
+import { useCepLookup } from '@/hooks/useCepLookup';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 interface Cliente {
   id: string;
@@ -32,6 +35,7 @@ const Clientes: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
+  const [requiredFields, setRequiredFields] = useState<string[]>([]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -52,80 +56,47 @@ const Clientes: React.FC = () => {
 
   useEffect(() => {
     loadClientes();
+    api.get('/api/organization/settings').then(res => {
+      const fields = res.data.data?.requiredCustomerFields;
+      setRequiredFields(Array.isArray(fields) ? fields : []);
+    }).catch(() => {});
   }, []);
 
-  const handleCepSearch = async () => {
-    const cep = formData.zipCode.replace(/\D/g, '');
-    if (cep.length !== 8) {
-      toast.error('CEP inválido (precisa de 8 dígitos)');
-      return;
-    }
+  const isReq = (key: string) => requiredFields.includes(key);
+  const reqMark = (key: string) => isReq(key) ? ' *' : '';
 
-    try {
-      const response = await axios.get(`https://viacep.com.br/ws/${cep}/json/`);
-      const data = response.data;
+  const toTitleCase = toTitleCaseBR;
 
-      if (data.erro) {
-        toast.error('CEP não encontrado');
-        return;
-      }
-
+  const { fetch: handleCepSearchFetch } = useCepLookup({
+    onSuccess: (data) => {
       setFormData(prev => ({
         ...prev,
-        address: toTitleCase(data.logradouro),
-        city: toTitleCase(data.localidade),
-        state: (data.uf || '').toUpperCase()
+        address: toTitleCase(data.address),
+        city: toTitleCase(data.city),
+        state: (data.state || '').toUpperCase(),
       }));
-      toast.success('Endereço preenchido!');
-    } catch (error) {
-      toast.error('Erro ao buscar CEP');
-    }
-  };
+    },
+  });
 
-  const toTitleCase = (text: string) => {
-    if (!text) return '';
-    const prepositions = ['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'para', 'com'];
-    return text
-      .toLowerCase()
-      .split(' ')
-      .filter(word => word.length > 0)
-      .map((word, index) => {
-        if (index > 0 && prepositions.includes(word)) {
-          return word;
-        }
-        return word.charAt(0).toUpperCase() + word.slice(1);
-      })
-      .join(' ');
-  };
-
-  const handleCnpjSearch = async () => {
-    const cnpj = formData.document.replace(/\D/g, '');
-    if (cnpj.length !== 14) {
-      toast.error('CNPJ inválido (precisa de 14 dígitos)');
-      return;
-    }
-
-    try {
-      const response = await axios.get(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
-      const data = response.data;
-
+  const { fetch: handleCnpjSearchFetch } = useCnpjLookup({
+    onSuccess: (data) => {
       setFormData(prev => ({
         ...prev,
-        name: toTitleCase(data.razao_social || data.nome_fantasia || prev.name),
+        name: toTitleCase(data.razaoSocial || data.nomeFantasia || prev.name),
         email: (data.email || prev.email || '').toLowerCase(),
-        phone: data.ddd_telefone_1 || prev.phone,
-        address: toTitleCase(data.logradouro || prev.address),
-        addressNumber: data.numero || prev.addressNumber,
-        city: toTitleCase(data.municipio || prev.city),
-        state: (data.uf || prev.state || '').toUpperCase(),
-        zipCode: data.cep || prev.zipCode,
-        type: 'COMPANY'
+        phone: data.phone || prev.phone,
+        address: toTitleCase(data.address || prev.address),
+        addressNumber: data.addressNumber || prev.addressNumber,
+        city: toTitleCase(data.city || prev.city),
+        state: (data.state || prev.state || '').toUpperCase(),
+        zipCode: data.zipCode || prev.zipCode,
+        type: 'COMPANY',
       }));
-      toast.success('Dados da empresa carregados!');
-    } catch (error) {
-      toast.error('Erro ao buscar CNPJ');
-    }
-  };
+    },
+  });
+
+  const handleCepSearch = () => handleCepSearchFetch(formData.zipCode);
+  const handleCnpjSearch = () => handleCnpjSearchFetch(formData.document);
 
   const handleDocumentChange = (value: string) => {
     const cleanValue = value.replace(/\D/g, '');
@@ -183,6 +154,22 @@ const Clientes: React.FC = () => {
           handleEdit(duplicate);
           return;
         }
+      }
+    }
+
+    // Validar campos obrigatórios configurados
+    if (formData.isCustomer && requiredFields.length > 0) {
+      const LABELS: Record<string, string> = {
+        document: 'CPF/CNPJ', phone: 'Telefone', email: 'E-mail',
+        tradeName: 'Nome Fantasia', stateRegistration: 'Inscrição Estadual',
+        municipalRegistration: 'Inscrição Municipal', address: 'Logradouro',
+        addressNumber: 'Número', addressComplement: 'Complemento',
+        neighborhood: 'Bairro', city: 'Cidade', state: 'Estado', zipCode: 'CEP',
+      };
+      const missing = requiredFields.filter(f => !(formData as any)[f]);
+      if (missing.length > 0) {
+        toast.error(`Campos obrigatórios: ${missing.map(f => LABELS[f] || f).join(', ')}`);
+        return;
       }
     }
 
@@ -302,8 +289,8 @@ const Clientes: React.FC = () => {
 
       {/* Form Modal */}
       {showForm && (
-        <div className="modal-overlay">
-          <Card className="modal-content-card max-w-2xl">
+        <ModalPortal>
+          <Card className="modal-content-card max-w-5xl">
             <CardHeader>
               <CardTitle>
                 {editingCliente ? 'Editar Cliente' : 'Novo Cliente'}
@@ -315,8 +302,8 @@ const Clientes: React.FC = () => {
             <CardContent className="flex-1 overflow-y-auto">
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  <div className="md:col-span-5 space-y-2">
                     <label className="text-sm font-medium">Nome *</label>
                     <Input
                       value={formData.name}
@@ -325,7 +312,7 @@ const Clientes: React.FC = () => {
                     />
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="md:col-span-3 space-y-2">
                     <label className="text-sm font-medium">Tipo</label>
                     <select
                       value={formData.type}
@@ -337,9 +324,9 @@ const Clientes: React.FC = () => {
                     </select>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="md:col-span-4 space-y-2">
                     <label className="text-sm font-medium">
-                      {formData.type === 'INDIVIDUAL' ? 'CPF' : 'CNPJ'}
+                      {formData.type === 'INDIVIDUAL' ? 'CPF' : 'CNPJ'}{reqMark('document')}
                     </label>
                     <div className="flex space-x-2">
                       <Input
@@ -362,8 +349,8 @@ const Clientes: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Email</label>
+                  <div className="md:col-span-5 space-y-2">
+                    <label className="text-sm font-medium">Email{reqMark('email')}</label>
                     <Input
                       type="email"
                       value={formData.email}
@@ -372,8 +359,8 @@ const Clientes: React.FC = () => {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Telefone</label>
+                  <div className="md:col-span-3 space-y-2">
+                    <label className="text-sm font-medium">Telefone{reqMark('phone')}</label>
                     <Input
                       value={formData.phone}
                       onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
@@ -381,71 +368,8 @@ const Clientes: React.FC = () => {
                     />
                   </div>
 
-                  {/* Papéis no Sistema */}
-                  <div className="md:col-span-2 space-y-2 border-t pt-2 mt-2">
-                    <label className="text-sm font-medium block mb-2">Papéis no Sistema</label>
-                    <div className="flex flex-wrap gap-4">
-                      <label className="flex items-center space-x-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formData.isCustomer}
-                          onChange={(e) => setFormData(prev => ({ ...prev, isCustomer: e.target.checked }))}
-                          className="rounded border-input h-4 w-4"
-                        />
-                        <span className="text-sm">Cliente</span>
-                      </label>
-                      <label className="flex items-center space-x-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formData.isSupplier}
-                          onChange={(e) => setFormData(prev => ({ 
-                            ...prev, 
-                            isSupplier: e.target.checked,
-                            isEmployee: e.target.checked ? false : prev.isEmployee
-                          }))}
-                          className="rounded border-input h-4 w-4"
-                        />
-                        <span className="text-sm">Fornecedor</span>
-                      </label>
-                      <label className="flex items-center space-x-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formData.isEmployee}
-                          onChange={(e) => setFormData(prev => ({ 
-                            ...prev, 
-                            isEmployee: e.target.checked,
-                            isSupplier: e.target.checked ? false : prev.isSupplier
-                          }))}
-                          className="rounded border-input h-4 w-4"
-                        />
-                        <span className="text-sm">Colaborador</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Financeiro */}
-                  <div className="md:col-span-2 space-y-2 border-t pt-2 mt-2">
-                    <label className="text-sm font-medium block mb-2 text-primary">Financeiro</label>
-                    <div className="bg-primary/5 p-3 rounded-md border border-primary/20">
-                      <label className="flex items-center space-x-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formData.exemptFromDeposit}
-                          onChange={(e) => setFormData(prev => ({ ...prev, exemptFromDeposit: e.target.checked }))}
-                          className="rounded border-input h-4 w-4 text-primary"
-                        />
-                        <div className="space-y-0.5">
-                          <span className="text-sm font-semibold text-primary">Isento de Sinal Mínimo</span>
-                          <p className="text-xs text-muted-foreground">
-                            Ative esta opção para permitir que este cliente crie pedidos sem o pagamento de entrada obrigatório (50%).
-                          </p>
-                        </div>
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">CEP</label>
+                  <div className="md:col-span-4 space-y-2">
+                    <label className="text-sm font-medium">CEP{reqMark('zipCode')}</label>
                     <div className="flex space-x-2">
                       <Input
                         value={formData.zipCode}
@@ -465,40 +389,99 @@ const Clientes: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Cidade</label>
-                    <Input
-                      value={formData.city}
-                      onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Estado</label>
-                    <Input
-                      value={formData.state}
-                      onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))}
-                      placeholder="UF"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-4 gap-4">
-                  <div className="col-span-3 space-y-2">
-                    <label className="text-sm font-medium">Endereço</label>
+                  <div className="md:col-span-6 space-y-2">
+                    <label className="text-sm font-medium">Endereço{reqMark('address')}</label>
                     <Input
                       value={formData.address}
                       onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
                       placeholder="Rua, Avenida, etc."
                     />
                   </div>
-                  <div className="col-span-1 space-y-2">
-                    <label className="text-sm font-medium">Número</label>
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="text-sm font-medium">Número{reqMark('addressNumber')}</label>
                     <Input
                       value={formData.addressNumber}
                       onChange={(e) => setFormData(prev => ({ ...prev, addressNumber: e.target.value }))}
                       placeholder="Nº"
                     />
+                  </div>
+                  <div className="md:col-span-3 space-y-2">
+                    <label className="text-sm font-medium">Cidade{reqMark('city')}</label>
+                    <Input
+                      value={formData.city}
+                      onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
+                    />
+                  </div>
+                  <div className="md:col-span-1 space-y-2">
+                    <label className="text-sm font-medium">Estado{reqMark('state')}</label>
+                    <Input
+                      value={formData.state}
+                      onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))}
+                      placeholder="UF"
+                    />
+                  </div>
+
+                  {/* Papéis no Sistema */}
+                  <div className="md:col-span-6 space-y-2 border-t pt-3 mt-1">
+                    <label className="text-sm font-medium block mb-2">Papéis no Sistema</label>
+                    <div className="flex flex-wrap gap-4">
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.isCustomer}
+                          onChange={(e) => setFormData(prev => ({ ...prev, isCustomer: e.target.checked }))}
+                          className="rounded border-input h-4 w-4"
+                        />
+                        <span className="text-sm">Cliente</span>
+                      </label>
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.isSupplier}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            isSupplier: e.target.checked,
+                            isEmployee: e.target.checked ? false : prev.isEmployee
+                          }))}
+                          className="rounded border-input h-4 w-4"
+                        />
+                        <span className="text-sm">Fornecedor</span>
+                      </label>
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.isEmployee}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            isEmployee: e.target.checked,
+                            isSupplier: e.target.checked ? false : prev.isSupplier
+                          }))}
+                          className="rounded border-input h-4 w-4"
+                        />
+                        <span className="text-sm">Colaborador</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Financeiro */}
+                  <div className="md:col-span-6 space-y-2 border-t pt-3 mt-1">
+                    <label className="text-sm font-medium block mb-2 text-primary">Financeiro</label>
+                    <div className="bg-primary/5 p-3 rounded-md border border-primary/20">
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.exemptFromDeposit}
+                          onChange={(e) => setFormData(prev => ({ ...prev, exemptFromDeposit: e.target.checked }))}
+                          className="rounded border-input h-4 w-4 text-primary mt-0.5"
+                        />
+                        <div className="space-y-0.5">
+                          <span className="text-sm font-semibold text-primary">Isento de Sinal Mínimo</span>
+                          <p className="text-xs text-muted-foreground">
+                            Ative esta opção para permitir que este cliente crie pedidos sem o pagamento de entrada obrigatório (50%).
+                          </p>
+                        </div>
+                      </label>
+                    </div>
                   </div>
                 </div>
 
@@ -521,7 +504,7 @@ const Clientes: React.FC = () => {
               </form>
             </CardContent>
           </Card>
-        </div>
+        </ModalPortal>
       )}
 
       {/* Clientes List */}

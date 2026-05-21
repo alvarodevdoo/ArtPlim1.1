@@ -13,6 +13,7 @@ import { Pedido, ProcessStatus, statusConfig } from '@/types/pedidos';
 import { OrderFinancialStatus } from '../../sales/OrderFinancialStatus';
 import { PaymentSelection } from '../../sales/PaymentSelection';
 import { CustomerBalanceAlert } from '../../sales/CustomerBalanceAlert';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 import PartialCancelModal from './PartialCancelModal';
 import PartialDeliveryModal from './PartialDeliveryModal';
 import { WasteModal } from './WasteModal';
@@ -151,7 +152,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   };
 
   return (
-    <div className="modal-overlay">
+    <ModalPortal>
       <Card className="modal-content-card max-w-6xl">
 
         <CardHeader>
@@ -577,7 +578,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           // Aqui no futuro poderia forçar recarregamento das linhas.
         }}
       />
-    </div>
+    </ModalPortal>
   );
 };
 

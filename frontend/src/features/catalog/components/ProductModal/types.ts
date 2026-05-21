@@ -59,13 +59,29 @@ export interface DraftOption {
   materialName?: string | null;
   isAvailable: boolean;
   displayOrder: number;
+  /** Quantidade padrão consumida (usado em ACABAMENTOS — ex: 8 ilhos, 2 cabos) */
+  defaultQuantity?: number | null;
+  minQuantity?: number | null;
+  maxQuantity?: number | null;
+  /** Permite ao vendedor ajustar a quantidade no pedido */
+  allowCustomQty?: boolean;
+  /** Cascata: IDs de opções de grupos posteriores habilitadas por esta opção */
+  allowedChildIds?: string[] | null;
 }
+
+export type ConfigurationKind = 'VARIATION' | 'FINISHING';
 
 export interface DraftVariationGroup {
   /** UUID from DB if persisted, otherwise a temp ID */
   id: string;
   name: string;
   type: 'SELECT' | 'NUMBER' | 'BOOLEAN' | 'TEXT';
+  /**
+   * Papel do grupo no cálculo:
+   * - VARIATION: identidade (cor/tamanho/papel) — exclusivo, expande SKUs.
+   * - FINISHING: acabamento — aditivo (multi-select), soma materiais ao item.
+   */
+  kind: ConfigurationKind;
   required: boolean;
   displayOrder: number;
   options: DraftOption[];

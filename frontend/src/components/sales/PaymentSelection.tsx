@@ -73,7 +73,7 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
         const fetchMethods = async () => {
             try {
                 setIsLoading(true);
-                const response = await api.get('/api/payment-methods');
+                const response = await api.get('/api/payment-methods?scope=SALES');
                 if (response.data?.data) {
                     const fetchedMethods = response.data.data.filter((m: PaymentMethod) => m.active);
                     

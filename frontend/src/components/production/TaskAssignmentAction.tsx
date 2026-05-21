@@ -4,7 +4,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Palette, Settings, Package, Loader2, CheckCircle2 } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from 'sonner';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth } from '@/contexts/AuthContext';
 
 export type TaskType = 'art' | 'prod' | 'finish';
 

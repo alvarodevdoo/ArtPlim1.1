@@ -336,11 +336,19 @@ export async function financeRoutes(fastify: FastifyInstance) {
   // ========== CONTAS A PAGAR (FORNECEDORES) ==========
   const payBillSchema = z.object({
     paymentAccountId: z.string().uuid('Conta bancária inválida'),
-    supplierAccountId: z.string().uuid('Conta do fornecedor inválida'),
+    supplierAccountId: z.string().uuid().optional(), // auto-resolvido se omitido
     paymentMethodId: z.string().optional(),
     amountPaid: z.number().positive(),
     notes: z.string().optional(),
     categoryId: z.string().optional()
+  });
+
+  const createDirectPayableSchema = z.object({
+    supplierId: z.string().uuid('Fornecedor inválido').optional(),
+    amount: z.number().positive('Valor deve ser positivo'),
+    dueDate: z.string(),
+    notes: z.string().optional(),
+    categoryId: z.string().uuid().optional().nullable()
   });
 
   fastify.get('/payables', { preHandler: [fastify.authenticate] }, async (request, reply) => {
@@ -348,6 +356,41 @@ export async function financeRoutes(fastify: FastifyInstance) {
     const payableService = new AccountPayableService(prisma);
     const payables = await payableService.listPayables(request.user!.organizationId);
     return reply.send({ success: true, data: payables });
+  });
+
+  fastify.get('/payables/stats', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const prisma = getTenantClient(request.user!.organizationId);
+    const payableService = new AccountPayableService(prisma);
+    const stats = await payableService.getStats(request.user!.organizationId);
+    return reply.send({ success: true, data: stats });
+  });
+
+  fastify.get('/payables/gl-defaults', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const prisma = getTenantClient(request.user!.organizationId);
+    const payableService = new AccountPayableService(prisma);
+    const defaults = await payableService.getGLDefaults(request.user!.organizationId);
+    return reply.send({ success: true, data: defaults });
+  });
+
+  fastify.post('/payables/direct', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const body = createDirectPayableSchema.parse(request.body);
+    const prisma = getTenantClient(request.user!.organizationId);
+
+    const payable = await prisma.accountPayable.create({
+      data: {
+        organizationId: request.user!.organizationId,
+        ...(body.supplierId ? { supplierId: body.supplierId } : {}),
+        amount: body.amount,
+        dueDate: new Date(body.dueDate),
+        status: 'PENDING',
+        notes: body.notes
+      },
+      include: {
+        supplier: { select: { id: true, name: true, document: true } }
+      }
+    });
+
+    return reply.code(201).send({ success: true, data: payable });
   });
 
   fastify.post('/payables/:id/pay', { preHandler: [fastify.authenticate] }, async (request, reply) => {
@@ -398,7 +441,7 @@ export async function financeRoutes(fastify: FastifyInstance) {
       receivableAccountId: body.receivableAccountId,
       splits: [{
         revenueAccountId: body.revenueAccountId,
-        categoryId: body.categoryId || '',
+        categoryId: body.categoryId ?? undefined,
         amount: body.amount
       }],
       notes: body.notes,
@@ -654,12 +697,87 @@ export async function financeRoutes(fastify: FastifyInstance) {
     const prisma = getTenantClient(request.user!.organizationId);
     const service = new FinancialReportService(prisma);
 
+    const end = new Date(query.endDate);
+    end.setUTCHours(23, 59, 59, 999);
+
     const commissions = await service.generateCommissionReport({
       organizationId: request.user!.organizationId,
       startDate: new Date(query.startDate),
-      endDate: new Date(query.endDate)
+      endDate: end
     });
 
     return reply.send({ success: true, data: commissions });
+  });
+
+  // ========== REGRA DE COMISSÃO (COMMISSION RULES) ==========
+  const commissionRuleSchema = z.object({
+    roleId: z.string().uuid(),
+    rate: z.number().min(0).max(100),
+    description: z.string().optional(),
+    categoryId: z.string().uuid().optional()
+  });
+
+  fastify.get('/commission-rules', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const prisma = getTenantClient(request.user!.organizationId);
+    const rules = await prisma.commissionRule.findMany({
+      where: { organizationId: request.user!.organizationId, active: true },
+      include: { role: true, category: true }
+    });
+    return reply.send({ success: true, data: rules });
+  });
+
+  fastify.post('/commission-rules', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const data = commissionRuleSchema.parse(request.body);
+    const prisma = getTenantClient(request.user!.organizationId);
+
+    const existing = await prisma.commissionRule.findFirst({
+      where: { organizationId: request.user!.organizationId, roleId: data.roleId, active: true }
+    });
+
+    if (existing) {
+      await prisma.commissionRule.update({
+        where: { id: existing.id },
+        data: { active: false }
+      });
+    }
+
+    const rule = await prisma.commissionRule.create({
+      data: {
+        organizationId: request.user!.organizationId,
+        roleId: data.roleId,
+        rate: data.rate,
+        description: data.description,
+        categoryId: data.categoryId ?? null
+      },
+      include: { role: true, category: true }
+    });
+
+    return reply.code(201).send({ success: true, data: rule });
+  });
+
+  fastify.patch('/commission-rules/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const data = commissionRuleSchema.partial().parse(request.body);
+    const prisma = getTenantClient(request.user!.organizationId);
+    const rule = await prisma.commissionRule.update({
+      where: { id, organizationId: request.user!.organizationId },
+      data: {
+        ...(data.rate !== undefined ? { rate: data.rate } : {}),
+        ...(data.description !== undefined ? { description: data.description } : {}),
+        ...(data.categoryId !== undefined ? { categoryId: data.categoryId || null } : {})
+      },
+      include: { role: true, category: true }
+    });
+    return reply.send({ success: true, data: rule });
+  });
+
+  fastify.delete('/commission-rules/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const prisma = getTenantClient(request.user!.organizationId);
+    await prisma.commissionRule.update({
+      where: { id, organizationId: request.user!.organizationId },
+      data: { active: false }
+    });
+    return reply.send({ success: true, message: 'Regra de comissão inativada' });
   });
 }

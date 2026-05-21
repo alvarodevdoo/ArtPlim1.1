@@ -16,6 +16,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import api from '@/lib/api';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 interface User {
   id: string;
@@ -302,7 +303,7 @@ const UserManagement: React.FC = () => {
 
       {/* Modal de Convite */}
       {showInviteModal && (
-        <div className="modal-overlay">
+        <ModalPortal>
           <Card className="modal-content-card max-w-md">
 
             <CardHeader>
@@ -365,12 +366,12 @@ const UserManagement: React.FC = () => {
               </form>
             </CardContent>
           </Card>
-        </div>
+        </ModalPortal>
       )}
 
       {/* Modal de Edição */}
       {showEditModal && editingUser && (
-        <div className="modal-overlay">
+        <ModalPortal>
           <Card className="modal-content-card max-w-md">
 
             <CardHeader>
@@ -452,7 +453,7 @@ const UserManagement: React.FC = () => {
               </form>
             </CardContent>
           </Card>
-        </div>
+        </ModalPortal>
       )}
     </div>
   );

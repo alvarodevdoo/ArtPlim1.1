@@ -9,6 +9,7 @@ import { FichaTecnicaService } from './services/FichaTecnicaService';
 import { PricingRuleService } from './services/PricingRuleService';
 import { getTenantClient } from '../../shared/infrastructure/database/tenant';
 import { QueryOptimizer } from '../../shared/infrastructure/database/QueryOptimizer';
+import { StockReservationService } from '../wms/services/StockReservationService';
 
 const listQuerySchema = z.object({
   limit: z.string().transform(val => parseInt(val) || 50).optional(),
@@ -68,6 +69,8 @@ const createMaterialSchema = z.object({
   purchasePrice: z.preprocess((val) => (val === '' || val === null || val === undefined) ? null : isNaN(Number(val)) ? null : Number(val), z.number().min(0).nullable().optional()),
   trackStock: z.boolean().optional().default(true),
   sellWithoutStock: z.boolean().optional().default(true),
+  sourcingMode: z.enum(['STOCK', 'ON_DEMAND']).optional().default('STOCK'),
+  primarySupplierId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   ncm: z.coerce.string().optional().nullable(),
   ean: z.coerce.string().optional().nullable(),
   spedType: z.coerce.string().optional().nullable(),
@@ -95,6 +98,7 @@ const createConfigurationSchema = z.object({
   description: z.string().optional(),
   helpText: z.string().optional(),
   type: z.enum(['SELECT', 'NUMBER', 'BOOLEAN', 'TEXT']),
+  kind: z.enum(['VARIATION', 'FINISHING']).optional(),
   required: z.boolean().optional(),
   defaultValue: z.string().optional(),
   affectsComponents: z.boolean().optional(),
@@ -130,6 +134,12 @@ const createOptionSchema = z.object({
   priceOverride: z.preprocess((val) => (val === '' || val === null || val === undefined) ? null : isNaN(Number(val)) ? null : Number(val), z.number().nullable().optional()),
   fixedValue: z.preprocess((val) => (val === '' || val === null || val === undefined) ? null : isNaN(Number(val)) ? null : Number(val), z.number().nullable().optional()),
   materialId: z.preprocess((val) => val === '' ? null : val, z.string().uuid().optional().nullable()),
+  // Qty editável (acabamentos)
+  defaultQuantity: z.preprocess((val) => (val === '' || val === null || val === undefined) ? null : isNaN(Number(val)) ? null : Number(val), z.number().nullable().optional()),
+  minQuantity: z.preprocess((val) => (val === '' || val === null || val === undefined) ? null : isNaN(Number(val)) ? null : Number(val), z.number().nullable().optional()),
+  maxQuantity: z.preprocess((val) => (val === '' || val === null || val === undefined) ? null : isNaN(Number(val)) ? null : Number(val), z.number().nullable().optional()),
+  allowCustomQty: z.boolean().optional(),
+  allowedChildIds: z.array(z.string()).nullable().optional(),
 });
 
 const createTemplateSchema = z.object({
@@ -169,10 +179,20 @@ export async function catalogRoutes(fastify: FastifyInstance) {
       query.limit || 50,
       query.offset || 0
     );
-    
+
+    // Enriquecer com estoque disponível (stockQuantity - reservas ativas)
+    const reservationService = new StockReservationService(prisma);
+    const productIds = (products as any[]).map((p: any) => p.id);
+    const availableMap = await reservationService.getAvailableStockBatch(productIds, request.user!.organizationId);
+
+    const enriched = (products as any[]).map((p: any) => ({
+      ...p,
+      availableStock: availableMap.get(p.id) ?? null
+    }));
+
     return reply.send({
       success: true,
-      data: products
+      data: enriched
     });
   });
 
@@ -205,9 +225,12 @@ export async function catalogRoutes(fastify: FastifyInstance) {
 
     const product = await productService.findById(id);
 
+    const reservationService = new StockReservationService(prisma);
+    const availableStock = await reservationService.getAvailableStock(id, request.user!.organizationId);
+
     return reply.send({
       success: true,
-      data: product
+      data: { ...product, availableStock }
     });
   });
 

@@ -58,6 +58,11 @@ export class ReopenOrderService {
       dataToReset.finishedAt = null;
     }
 
+    // Se estamos desfazendo a Produção, limpamos o inProductionAt
+    if (currentStatus === 'IN_PRODUCTION') {
+      dataToReset.inProductionAt = null;
+    }
+
     // Se estamos desfazendo uma Aprovação, limpamos o approvedAt
     if (currentStatus === 'APPROVED') {
       dataToReset.approvedAt = null;

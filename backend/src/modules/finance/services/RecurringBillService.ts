@@ -111,7 +111,7 @@ export class RecurringBillService {
         const payable = await tx.accountPayable.create({
           data: {
             organizationId,
-            supplierId: bill.supplierId || organizationId, // fallback para org se sem fornecedor
+            ...(bill.supplierId ? { supplierId: bill.supplierId } : {}),
             amount: bill.amount,
             dueDate,
             status: PayableStatus.PENDING,

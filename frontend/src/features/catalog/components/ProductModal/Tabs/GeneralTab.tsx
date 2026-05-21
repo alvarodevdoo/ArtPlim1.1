@@ -250,20 +250,29 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({ draft, setDraft, pricing
               </div>
               
               {draft.trackStock && (
-                 <div className="grid grid-cols-2 gap-4 pt-4 border-t animate-in fade-in">
+                 <div className="grid grid-cols-3 gap-4 pt-4 border-t animate-in fade-in">
+                    <div className="space-y-2">
+                       <Label className="text-[10px] font-black text-slate-400">Estoque Atual</Label>
+                       <Input
+                        type="number"
+                        value={draft.stockQuantity ?? ''}
+                        onChange={(e) => handleChange('stockQuantity', parseFloat(e.target.value) || 0)}
+                        className="bg-white font-bold h-10"
+                       />
+                    </div>
                     <div className="space-y-2">
                        <Label className="text-[10px] font-black text-slate-400">Estoque Mínimo</Label>
-                       <Input 
+                       <Input
                         type="number"
-                        value={draft.stockMinQuantity}
+                        value={draft.stockMinQuantity ?? ''}
                         onChange={(e) => handleChange('stockMinQuantity', parseFloat(e.target.value) || 0)}
                         className="bg-white font-bold h-10"
                        />
                     </div>
                     <div className="space-y-2">
                        <Label className="text-[10px] font-black text-slate-400">Unidade</Label>
-                       <Input 
-                        value={draft.stockUnit}
+                       <Input
+                        value={draft.stockUnit ?? ''}
                         onChange={(e) => handleChange('stockUnit', e.target.value)}
                         placeholder="un, m2, m..."
                         className="bg-white font-bold h-10"

@@ -23,6 +23,8 @@ interface CreateMaterialInput {
   minStockQuantity?: number | null;
   sellWithoutStock?: boolean;
   trackStock?: boolean;
+  sourcingMode?: 'STOCK' | 'ON_DEMAND';
+  primarySupplierId?: string | null;
   ncm?: string | null;
   ean?: string | null;
   spedType?: string | null;
@@ -76,7 +78,15 @@ export class MaterialService {
         expenseAccountId: finalExpenseAccountId,
         minStockQuantity: data.minStockQuantity,
         sellWithoutStock: data.sellWithoutStock,
-        trackStock: data.trackStock,
+        // trackStock e sourcingMode são mutuamente exclusivos:
+        // ON_DEMAND ⇒ não monitora estoque; STOCK ⇒ monitora.
+        trackStock: data.sourcingMode === 'ON_DEMAND'
+            ? false
+            : (data.trackStock ?? true),
+        sourcingMode: data.sourcingMode ?? (data.trackStock === false ? 'ON_DEMAND' : 'STOCK'),
+        ...(data.primarySupplierId
+            ? { primarySupplier: { connect: { id: data.primarySupplierId } } }
+            : {}),
         ncm: data.ncm,
         ean: data.ean,
         spedType: data.spedType,
@@ -251,7 +261,27 @@ export class MaterialService {
 
       if (data.minStockQuantity !== undefined)        updateFields.minStockQuantity = data.minStockQuantity;
       if (data.sellWithoutStock !== undefined)        updateFields.sellWithoutStock = data.sellWithoutStock;
-      if (data.trackStock !== undefined)              updateFields.trackStock = data.trackStock;
+      if (data.trackStock !== undefined) {
+        updateFields.trackStock = data.trackStock;
+        // Sincronização: ligar monitoramento → STOCK; desligar → ON_DEMAND
+        // (a menos que sourcingMode esteja sendo setado explicitamente)
+        if (data.sourcingMode === undefined) {
+          updateFields.sourcingMode = data.trackStock ? 'STOCK' : 'ON_DEMAND';
+        }
+      }
+      if (data.sourcingMode !== undefined) {
+        updateFields.sourcingMode = data.sourcingMode;
+        // Sincronização inversa: ON_DEMAND → trackStock = false; STOCK → true
+        // (se trackStock não veio explicitamente no payload)
+        if (data.trackStock === undefined) {
+          updateFields.trackStock = data.sourcingMode === 'ON_DEMAND' ? false : true;
+        }
+      }
+      if (data.primarySupplierId !== undefined) {
+        updateFields.primarySupplier = data.primarySupplierId
+          ? { connect: { id: data.primarySupplierId } }
+          : { disconnect: true };
+      }
       if (data.ncm !== undefined)                     updateFields.ncm = data.ncm;
       if (data.ean !== undefined)                     updateFields.ean = data.ean;
       if (data.spedType !== undefined)                updateFields.spedType = data.spedType;

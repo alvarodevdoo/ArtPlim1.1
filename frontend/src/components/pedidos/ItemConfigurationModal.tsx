@@ -1,10 +1,12 @@
 import React from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { ArrowLeft, Save, Plus, X } from 'lucide-react';
+import { ArrowLeft, Save, Plus, X, Package, Zap } from 'lucide-react';
 import { ItemType, ITEM_TYPE_CONFIGS } from '@/types/item-types';
 import ProductItemForm from './item-forms/ProductItemForm';
 import ServiceItemForm from './item-forms/ServiceItemForm';
+import { SelectionPresets } from './ProductSelectionModal';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 interface Produto {
     id: string;
@@ -14,6 +16,10 @@ interface Produto {
     salePrice?: number;
     minPrice?: number;
     productType?: ItemType; // Corrigido para usar ItemType
+    stockQuantity?: number | null;
+    availableStock?: number | null;
+    stockUnit?: string | null;
+    sellWithoutStock?: boolean;
 }
 
 interface ItemPedido {
@@ -40,6 +46,7 @@ interface ItemConfigurationModalProps {
     isOpen: boolean;
     maxDiscountThreshold?: number;
     isPriceUnlocked?: boolean;
+    selectionPresets?: SelectionPresets;
 }
 
 const ItemConfigurationModal: React.FC<ItemConfigurationModalProps> = ({
@@ -50,7 +57,8 @@ const ItemConfigurationModal: React.FC<ItemConfigurationModalProps> = ({
     editingItem,
     isOpen,
     maxDiscountThreshold = 0.15,
-    isPriceUnlocked = false
+    isPriceUnlocked = false,
+    selectionPresets
 }) => {
     // Obter informações do tipo de produto
     const productType = produto.productType || ItemType.PRODUCT;
@@ -93,7 +101,7 @@ const ItemConfigurationModal: React.FC<ItemConfigurationModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="modal-overlay">
+        <ModalPortal>
             <Card className="modal-content-card max-w-4xl">
 
                 <CardHeader>
@@ -110,7 +118,7 @@ const ItemConfigurationModal: React.FC<ItemConfigurationModalProps> = ({
                             </Button>
                             <div>
                                 <CardTitle className="flex items-center space-x-2">
-                                    <span className="text-2xl">{productConfig?.icon || '📦'}</span>
+                                    {React.createElement(productConfig?.icon ?? Package, { className: 'w-6 h-6 text-muted-foreground' })}
                                     <div>
                                         {editingItem ? (
                                             <>
@@ -139,6 +147,23 @@ const ItemConfigurationModal: React.FC<ItemConfigurationModalProps> = ({
                                         {productConfig?.label || 'Produto'} - {produto.pricingMode === 'SIMPLE_AREA' ? 'Por m²' :
                                             produto.pricingMode === 'SIMPLE_UNIT' ? 'Por unidade' : 'Dinâmico'}
                                     </div>
+                                    {produto.stockQuantity != null && (
+                                        <div className={`inline-flex items-center gap-1.5 ml-2 text-xs px-2 py-1 rounded-full mt-2 ${
+                                            produto.availableStock != null && produto.availableStock <= 0
+                                                ? 'bg-red-100 text-red-700 border border-red-300'
+                                                : produto.availableStock != null && produto.availableStock < produto.stockQuantity
+                                                ? 'bg-amber-100 text-amber-700 border border-amber-300'
+                                                : 'bg-slate-100 text-slate-700'
+                                        }`}>
+                                            <Package className="w-3 h-3" />
+                                            Estoque: {produto.stockQuantity} {produto.stockUnit || 'un.'}
+                                            {produto.availableStock != null && produto.availableStock !== produto.stockQuantity && (
+                                                <span className="font-bold">
+                                                    · Disponível: {produto.availableStock}
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -153,6 +178,14 @@ const ItemConfigurationModal: React.FC<ItemConfigurationModalProps> = ({
                 </CardHeader>
 
                 <CardContent className="overflow-y-auto flex-1">
+                    {selectionPresets?.favoriteName && (
+                        <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800">
+                            <Zap className="w-4 h-4 shrink-0" fill="currentColor" />
+                            <span className="text-xs font-bold uppercase tracking-wider">SKU rápido:</span>
+                            <span className="text-sm font-semibold truncate">{selectionPresets.favoriteName}</span>
+                            <span className="text-[10px] text-amber-600 italic ml-auto">parâmetros pré-aplicados — basta informar quantidade e Enter</span>
+                        </div>
+                    )}
                     {isService ? (
                         <ServiceItemForm
                             produto={produto}
@@ -170,11 +203,12 @@ const ItemConfigurationModal: React.FC<ItemConfigurationModalProps> = ({
                             isEditing={!!editingItem}
                             maxDiscountThreshold={maxDiscountThreshold}
                             isPriceUnlocked={isPriceUnlocked}
+                            selectionPresets={selectionPresets}
                         />
                     )}
                 </CardContent>
             </Card>
-        </div>
+        </ModalPortal>
     );
 };
 

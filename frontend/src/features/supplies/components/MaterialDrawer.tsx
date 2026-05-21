@@ -3,9 +3,11 @@ import { useForm, Controller } from 'react-hook-form';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { X, Package, ArrowUpCircle, History, Save, ChevronRight, Info } from 'lucide-react';
+import { resolveDisplayUnit } from '@/lib/units';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { Combobox } from '@/components/ui/Combobox';
+import { createPortal } from 'react-dom';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { 
   ProductiveIntelligence, 
@@ -43,6 +45,8 @@ export interface Material {
   minStockQuantity?: number | null;
   sellWithoutStock?: boolean;
   trackStock: boolean;
+  sourcingMode?: 'STOCK' | 'ON_DEMAND';
+  primarySupplierId?: string | null;
   ncm?: string;
   ean?: string;
   currentStock?: number;
@@ -73,6 +77,7 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
   const [batches, setBatches] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string; paymentMode?: string; paymentTerms?: number | null; paymentDayOfMonth?: number | null }>>([]);
 
   const { control, handleSubmit, register, reset, watch, setValue } = useForm({
     defaultValues: {
@@ -85,16 +90,21 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
       minStockQuantity: '',
       sellWithoutStock: true,
       trackStock: true,
+      sourcingMode: 'STOCK',
+      primarySupplierId: '',
       ncm: '',
       ean: '',
       // Campos de Inteligência Integrados
+      // Defaults coerentes para novo cadastro: compra por Unidade espelha
+      // controle interno por Unidade (Fixo por Unidade). Ao alterar a
+      // Unidade de Compra em /novo, o espelhamento acontece automaticamente.
       purchaseUnit: 'UN',
       multiplicador_padrao_entrada: 1,
       largura_unitaria: 0,
       altura_unitaria: 0,
       purchasePrice: 0,
-      controlUnit: 'M2' as ControlUnit,
-      defaultConsumptionRule: 'PRODUCT_AREA' as ConsumptionRule,
+      controlUnit: 'UN' as ControlUnit,
+      defaultConsumptionRule: 'FIXED_UNIT' as ConsumptionRule,
       conversionFactor: 1,
     }
   });
@@ -137,12 +147,23 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
     }
   };
 
-  // Carregar categorias financeiras
+  // Carregar categorias financeiras e fornecedores
   useEffect(() => {
     const loadSelectData = async () => {
       try {
         const catsResp = await api.get('/api/finance/categories?type=EXPENSE');
         setCategories(catsResp.data.data || []);
+      } catch (e) {}
+      try {
+        const supResp = await api.get('/api/profiles?isSupplier=true');
+        const list = supResp.data?.data || supResp.data || [];
+        setSuppliers(Array.isArray(list) ? list.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          paymentMode: s.paymentMode,
+          paymentTerms: s.paymentTerms,
+          paymentDayOfMonth: s.paymentDayOfMonth
+        })) : []);
       } catch (e) {}
     };
     if (isOpen) loadSelectData();
@@ -163,6 +184,8 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
             minStockQuantity: initialData.minStockQuantity?.toString() || '',
             sellWithoutStock: initialData.sellWithoutStock ?? true,
             trackStock: initialData.trackStock ?? true,
+            sourcingMode: initialData.sourcingMode ?? 'STOCK',
+            primarySupplierId: initialData.primarySupplierId ?? '',
             ncm: initialData.ncm || '',
             ean: initialData.ean || '',
             purchaseUnit: initialData.purchaseUnit || 'UN',
@@ -224,6 +247,8 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
           minStockQuantity: full.minStockQuantity?.toString() || '',
           sellWithoutStock: full.sellWithoutStock ?? true,
           trackStock: full.trackStock ?? true,
+          sourcingMode: full.sourcingMode ?? 'STOCK',
+          primarySupplierId: full.primarySupplierId ?? '',
           ncm: full.ncm || '',
           ean: full.ean || '',
           purchaseUnit: full.purchaseUnit || 'UN',
@@ -295,8 +320,8 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-[60] flex justify-end">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex justify-end">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity animate-in fade-in" onClick={onClose} />
       <div className="relative w-full max-w-xl bg-background shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
         <div className="p-6 border-b flex justify-between items-center bg-card">
@@ -381,10 +406,11 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
                     <Settings2 className="w-4 h-4 text-primary" />
                     <h3 className="text-xs font-black uppercase tracking-tighter">Inteligência de Cálculo</h3>
                   </div>
-                  <ProductiveIntelligence 
-                     value={productiveData} 
-                     onChange={setProductiveData} 
-                     format={watch('format')} 
+                  <ProductiveIntelligence
+                     value={productiveData}
+                     onChange={setProductiveData}
+                     format={watch('format')}
+                     isNew={!materialId && !selectedMaterial}
                    />
                 </div>
 
@@ -401,9 +427,77 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
                       <p className="text-[9px] text-muted-foreground leading-tight">Gerir saldo no WMS e Financeiro.</p>
                     </div>
                     <Controller control={control} name="trackStock" render={({ field }) => (
-                      <input type="checkbox" className="w-5 h-5 rounded border-primary transition-all cursor-pointer" checked={field.value} onChange={e => field.onChange(e.target.checked)} />
+                      <input
+                        type="checkbox"
+                        className="w-5 h-5 rounded border-primary transition-all cursor-pointer"
+                        checked={field.value}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          field.onChange(checked);
+                          // Auto: desligou monitoramento → vira sob demanda
+                          // Ligou monitoramento → volta para STOCK (mutuamente exclusivo)
+                          setValue('sourcingMode', checked ? 'STOCK' : 'ON_DEMAND');
+                        }}
+                      />
                     )} />
                   </div>
+                </div>
+
+                {/* Fornecedor Primário — todo material tem fornecedor */}
+                <div className="space-y-1.5 p-4 bg-blue-50/40 rounded-2xl border border-blue-100">
+                  <label className="text-[10px] font-black uppercase text-blue-700">Fornecedor Primário</label>
+                  <Controller control={control} name="primarySupplierId" render={({ field }) => (
+                    <select
+                      {...field}
+                      value={field.value || ''}
+                      className="w-full h-10 px-3 rounded-lg border border-blue-200 bg-white text-sm font-medium text-slate-700 focus:outline-none focus:border-blue-400"
+                    >
+                      <option value="">— selecione um fornecedor —</option>
+                      {suppliers.map((s: any) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  )} />
+                  {(() => {
+                    const trackingStock = watch('trackStock');
+                    const supplierId = watch('primarySupplierId');
+                    const supplier = suppliers.find(s => s.id === supplierId);
+                    if (trackingStock) {
+                      return (
+                        <p className="text-[9px] text-muted-foreground italic">
+                          Em estoque: fornecedor é referência para notas de entrada e relatórios.
+                        </p>
+                      );
+                    }
+                    // Sob demanda — descreve o comportamento conforme a config do fornecedor
+                    if (!supplier) {
+                      return (
+                        <p className="text-[9px] text-muted-foreground italic">
+                          ✦ Sob demanda: selecione um fornecedor para que o sistema saiba como tratar o pagamento ao aprovar o pedido.
+                        </p>
+                      );
+                    }
+                    const mode = supplier.paymentMode || 'ON_PURCHASE';
+                    const effect = (() => {
+                      switch (mode) {
+                        case 'ON_PURCHASE':
+                          return `Pagamento na hora: ao aprovar pedido, a conta já nasce QUITADA neste fornecedor.`;
+                        case 'DAYS_AFTER':
+                          return `Pagamento em ${supplier.paymentTerms || 30} dias após a compra: gera conta a pagar PENDENTE.`;
+                        case 'MONTH_DAY':
+                          return `Pagamento no dia ${supplier.paymentDayOfMonth || '?'} do mês: gera conta a pagar PENDENTE.`;
+                        case 'END_OF_MONTH':
+                          return `Pagamento no fim do mês: gera conta a pagar PENDENTE com vencimento no último dia.`;
+                        default:
+                          return `Comportamento de pagamento conforme cadastro do fornecedor.`;
+                      }
+                    })();
+                    return (
+                      <p className="text-[9px] text-muted-foreground italic">
+                        ✦ Sob demanda · <span className="font-semibold text-blue-700">{supplier.name}</span>: {effect}
+                      </p>
+                    );
+                  })()}
                 </div>
                 {/* Filas de Consumo PEPS (Informativo no Cadastro) - Movido para o final */}
                 {batches.length > 0 && (
@@ -456,7 +550,7 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
           {activeTab === 'movimentar' && selectedMaterial && (
             <InventoryAdjustment 
               materialId={selectedMaterial.id}
-              unit={selectedMaterial.unit}
+              unit={resolveDisplayUnit(selectedMaterial)}
               purchaseUnit={selectedMaterial.purchaseUnit || 'UN'}
               multiplier={selectedMaterial.multiplicador_padrao_entrada || 1}
               conversionFactor={selectedMaterial.conversionFactor || 1}
@@ -478,7 +572,7 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
           {activeTab === 'historico' && selectedMaterial && (
             <MovementHistory 
               materialId={selectedMaterial.id} 
-              unit={selectedMaterial.unit} 
+              unit={resolveDisplayUnit(selectedMaterial)} 
               conversionFactor={selectedMaterial.conversionFactor || 1}
               limit={50}
               onRefresh={() => {
@@ -512,7 +606,8 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

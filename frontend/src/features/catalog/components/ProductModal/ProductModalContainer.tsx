@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  X, Package, Wrench, Settings,
+  X, Package, Wrench, Settings, Layers,
   BarChart3, Workflow, Info, Save,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -53,7 +53,7 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
   onClose,
   onSave,
 }) => {
-  type TabId = 'geral' | 'bom' | 'variations' | 'pricing' | 'production';
+  type TabId = 'geral' | 'bom' | 'variations' | 'finishing' | 'pricing' | 'production';
   const [activeTab, setActiveTab] = useState<TabId>('geral');
   const [loading, setLoading] = useState(!!productId);
   const [submitting, setSubmitting] = useState(false);
@@ -124,11 +124,19 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
         });
 
         // 2. Variation groups
+        // Heurística de retrocompatibilidade: para grupos antigos sem `kind`,
+        // inferimos FINISHING por palavras-chave no nome (acabamento, extras, etc.).
+        // Backend já default-a VARIATION em registros novos; isso só cobre
+        // dados pré-migration que ainda não foram editados.
+        const FINISHING_HINTS = /\b(acabamento|acabamentos|acess[oó]rio|acess[oó]rios|extras?|adiciona(l|is)|opciona(l|is)|complementar(es)?)\b/i;
         const configs: DraftVariationGroup[] = (configRes.data.data?.configurations || []).map(
           (g: any) => ({
             id: g.id,
             name: g.name,
             type: g.type,
+            kind: (g.kind === 'FINISHING' || g.kind === 'VARIATION')
+              ? g.kind
+              : (FINISHING_HINTS.test(g.name || '') ? 'FINISHING' : 'VARIATION'),
             required: g.required ?? true,
             displayOrder: g.displayOrder ?? 1,
             options: (g.options || []).map((o: any) => ({
@@ -139,9 +147,14 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
               priceModifierType: o.priceModifierType || 'FIXED',
               fixedValue: o.fixedValue != null ? Number(o.fixedValue) : (o.priceOverride != null ? Number(o.priceOverride) : null),
               materialId: o.materialId || null,
-              materialName: o.materialName || null,
+              materialName: o.material?.name || o.materialName || null,
               isAvailable: o.isAvailable ?? true,
               displayOrder: o.displayOrder ?? 1,
+              defaultQuantity: o.defaultQuantity != null ? Number(o.defaultQuantity) : null,
+              minQuantity: o.minQuantity != null ? Number(o.minQuantity) : null,
+              maxQuantity: o.maxQuantity != null ? Number(o.maxQuantity) : null,
+              allowCustomQty: o.allowCustomQty ?? false,
+              allowedChildIds: Array.isArray(o.allowedChildIds) ? o.allowedChildIds : null,
             })),
           })
         );
@@ -311,22 +324,39 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
         await api.delete(`/api/catalog/products/${savedId}/configurations/${delGroupId}`);
       }
 
-      // 2. Save Variation Groups & Options
+      // 2. Save Variation Groups & Options (two-pass for allowedChildIds with temp IDs)
+      const tempToRealOptionId = new Map<string, string>();
+      const groupIdMap = new Map<string, string>();
+      const optionsWithChildren: Array<{ realId: string; groupId: string; allowedChildIds: string[] }> = [];
+
+      // Pass 1: Create/update all groups and options (without allowedChildIds)
       for (const group of varGroups) {
         let groupId = group.id;
 
-        if (isTemp(group.id)) {
-          // Garantir que o type seja sempre um valor válido antes de enviar
-          const validType = (['SELECT', 'NUMBER', 'BOOLEAN', 'TEXT'] as const)
-            .includes(group.type as any) ? group.type : 'SELECT';
+        const validType = (['SELECT', 'NUMBER', 'BOOLEAN', 'TEXT'] as const)
+          .includes(group.type as any) ? group.type : 'SELECT';
+        const validKind: 'VARIATION' | 'FINISHING' =
+          group.kind === 'FINISHING' ? 'FINISHING' : 'VARIATION';
 
+        if (isTemp(group.id)) {
           const res = await api.post(`/api/catalog/products/${savedId}/configurations`, {
             name: group.name,
             type: validType,
+            kind: validKind,
             required: group.required,
             displayOrder: group.displayOrder,
           });
           groupId = res.data.data.id;
+          groupIdMap.set(group.id, groupId);
+        } else {
+          await api.put(`/api/catalog/products/${savedId}/configurations/${group.id}`, {
+            name: group.name,
+            type: validType,
+            kind: validKind,
+            required: group.required,
+            displayOrder: group.displayOrder,
+          });
+          groupIdMap.set(group.id, group.id);
         }
 
         for (const opt of group.options) {
@@ -335,18 +365,40 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
             value: opt.value,
             priceModifier: opt.priceModifier,
             priceModifierType: opt.priceModifierType,
-            priceOverride: opt.fixedValue, // Envia para o campo antigo por compatibilidade
-            fixedValue: opt.fixedValue,    // Envia para o novo campo
+            priceOverride: opt.fixedValue,
+            fixedValue: opt.fixedValue,
             materialId: opt.materialId,
             displayOrder: opt.displayOrder,
+            defaultQuantity: opt.defaultQuantity ?? null,
+            minQuantity: opt.minQuantity ?? null,
+            maxQuantity: opt.maxQuantity ?? null,
+            allowCustomQty: opt.allowCustomQty ?? false,
+            allowedChildIds: null,
           };
 
+          let realOptId = opt.id;
           if (isTemp(opt.id)) {
-            await api.post(`/api/catalog/configurations/${groupId}/options`, payload);
+            const res = await api.post(`/api/catalog/configurations/${groupId}/options`, payload);
+            realOptId = res.data.data.id;
+            tempToRealOptionId.set(opt.id, realOptId);
           } else {
             await api.put(`/api/catalog/configurations/${groupId}/options/${opt.id}`, payload);
           }
+
+          if (opt.allowedChildIds && opt.allowedChildIds.length > 0) {
+            optionsWithChildren.push({ realId: realOptId, groupId, allowedChildIds: opt.allowedChildIds });
+          }
         }
+      }
+
+      // Pass 2: Update allowedChildIds with resolved real IDs
+      for (const entry of optionsWithChildren) {
+        const resolvedIds = entry.allowedChildIds.map(id =>
+          tempToRealOptionId.get(id) || id
+        );
+        await api.put(`/api/catalog/configurations/${entry.groupId}/options/${entry.realId}`, {
+          allowedChildIds: resolvedIds,
+        });
       }
 
       // 3. Save BOM (ficha-técnica) as a full replace
@@ -380,11 +432,12 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
 
   // ── Tabs config ────────────────────────────────────────────────────────────
   const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
-    { id: 'geral',      label: 'Cadastro',       icon: Package  },
-    { id: 'bom',        label: 'Ficha Técnica',  icon: Wrench   },
-    { id: 'variations', label: 'Variações',      icon: Settings },
+    { id: 'geral',      label: 'Cadastro',       icon: Package   },
+    { id: 'bom',        label: 'Ficha Técnica',  icon: Settings  },
+    { id: 'variations', label: 'Variações',      icon: Layers    },
+    { id: 'finishing',   label: 'Acabamentos',    icon: Wrench    },
     { id: 'pricing',    label: 'Precificação',   icon: BarChart3 },
-    { id: 'production', label: 'Produção',       icon: Workflow },
+    { id: 'production', label: 'Produção',       icon: Workflow  },
   ];
 
   if (loading) return (
@@ -471,10 +524,26 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
               )}
               {activeTab === 'variations' && (
                 <VariationsTab
-                  groups={varGroups}
+                  groups={varGroups.filter(g => g.kind !== 'FINISHING')}
                   selectedOptionIds={selectedOptionIds}
-                  onChange={handleUpdateGroups}
+                  onChange={(updated) => {
+                    const finishing = varGroups.filter(g => g.kind === 'FINISHING');
+                    handleUpdateGroups([...updated, ...finishing]);
+                  }}
                   onSelectOption={handleSelectOption}
+                  forcedKind="VARIATION"
+                />
+              )}
+              {activeTab === 'finishing' && (
+                <VariationsTab
+                  groups={varGroups.filter(g => g.kind === 'FINISHING')}
+                  selectedOptionIds={selectedOptionIds}
+                  onChange={(updated) => {
+                    const variations = varGroups.filter(g => g.kind !== 'FINISHING');
+                    handleUpdateGroups([...variations, ...updated]);
+                  }}
+                  onSelectOption={handleSelectOption}
+                  forcedKind="FINISHING"
                 />
               )}
               {activeTab === 'pricing' && (

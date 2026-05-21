@@ -23,7 +23,7 @@ interface TimelineEntry {
   inflow: number;
   outflow: number;
   balance: number;
-  isProjeted: boolean;
+  isProjected: boolean;
 }
 
 interface CashFlowData {
@@ -92,7 +92,7 @@ export function RelatorioFluxoCaixa() {
     Entradas: t.inflow,
     Saídas: t.outflow,
     Saldo: t.balance,
-    projetado: t.isProjeted
+    projetado: t.isProjected
   })) ?? [];
 
   return (

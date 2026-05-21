@@ -7,36 +7,41 @@ datasource db {
 }
 
 model Organization {
-  id          String  @id @default(uuid())
-  name        String // Nome Fantasia
-  razaoSocial String? // Razão Social (Legal Name)
-  cnpj        String? @unique
-  slug        String  @unique
-  plan        String  @default("basic")
-  active      Boolean @default(true)
-
-  // Contato e Endereço
-  email         String?
-  phone         String?
-  zipCode       String? // CEP
-  address       String? // Logradouro
-  addressNumber String? // Número
-  complement    String? // Complemento
-  neighborhood  String? // Bairro
-  city          String? // Cidade
-  state         String? // UF (Ex: SP)
-
-  createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @updatedAt
+  id                     String                   @id @default(uuid())
+  name                   String
+  razaoSocial            String?
+  cnpj                   String?                  @unique
+  slug                   String                   @unique
+  plan                   String                   @default("basic")
+  active                 Boolean                  @default(true)
+  email                  String?
+  phone                  String?
+  zipCode                String?
+  address                String?
+  addressNumber          String?
+  complement             String?
+  neighborhood           String?
+  city                   String?
+  state                  String?
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  defaultCommissionRate  Decimal                  @default(0) @db.Decimal(10, 2)
+  maxDiscountThreshold   Decimal                  @default(0) @db.Decimal(10, 2)
+  materialTypes          MaterialType[]
+  spedAccountMappings    SpedAccountMapping[]
   accounts               Account[]
   accountsPayable        AccountPayable[]
   accountsReceivable     AccountReceivable[]
   auditLogs              AuditLog[]
+  authorizationRequests  AuthorizationRequest[]
   automationRules        AutomationRule[]
   budgets                Budget[]
   categories             Category[]
   chartOfAccounts        ChartOfAccount[]
+  commissionEntries      CommissionEntry[]
+  commissionRules        CommissionRule[]
   configurationTemplates ConfigurationTemplate[]
+  deliveries             Delivery[]
   fichasTecnicas         FichaTecnicaInsumo[]
   finishes               Finish[]
   inventoryAlerts        InventoryAlert[]
@@ -45,133 +50,121 @@ model Organization {
   materialReceipts       MaterialReceipt[]
   materials              Material[]
   notifications          Notifications[]
+  orderSequence          OrderSequence?
   orders                 Order[]
-  deliveries             Delivery[]
   settings               OrganizationSettings?
   PaymentMethod          PaymentMethod[]
   pendingChanges         PendingChanges[]
   pricingRules           PricingRule[]
   processStatuses        ProcessStatus[]
   productionMaterials    ProductionMaterial[]
+  productionOrders       ProductionOrder[]
   productionQueue        ProductionQueue[]
   products               Product[]
-  profiles               Profile[]
-  standardSizes          StandardSize[]
-  transactions           Transaction[]
-  commissionRules        CommissionRule[]
-  commissionEntries      CommissionEntry[]
-
   balanceMovements       ProfileBalanceMovement[]
-  users                  User[]
-  roles                  Role[]
-  stockMovements         StockMovement[]
-  spedAccountMappings    SpedAccountMapping[]
-  materialTypes          MaterialType[]
-  productionOrders       ProductionOrder[]
+  profiles               Profile[]
   recurringBills         RecurringBill[]
-  authorizationRequests  AuthorizationRequest[]
-
-  defaultCommissionRate  Decimal @default(0) @db.Decimal(10, 2)
-  maxDiscountThreshold   Decimal @default(0) @db.Decimal(10, 2)
+  roles                  Role[]
+  standardSizes          StandardSize[]
+  stockMovements         StockMovement[]
+  stockReservations      StockReservation[]
+  transactions           Transaction[]
+  users                  User[]
 
   @@map("organizations")
 }
 
 model OrganizationSettings {
-  id                         String  @id @default(uuid())
-  organizationId             String  @unique
-  enableWMS                  Boolean @default(false)
-  enableProduction           Boolean @default(false)
-  enableFinance              Boolean @default(true)
-  enableAutomation           Boolean @default(true)
-  defaultMarkup              Float   @default(2.0)
-  taxRate                    Float   @default(0.0)
-  validadeOrcamento          Int     @default(7)
-  enableFinanceReports       Boolean @default(true)
-  allowDuplicatePhones       Boolean @default(true)
-  requireDocumentKeyForEntry Boolean @default(false)
-  enableCategoryAppropriation Boolean @default(true)
-  defaultSalesUnit           String  @default("MM")
-
-  // Configurações de Apropriação Financeira (Plano de Contas)
+  id                          String       @id @default(uuid())
+  organizationId              String       @unique
+  enableWMS                   Boolean      @default(false)
+  enableProduction            Boolean      @default(false)
+  enableFinance               Boolean      @default(true)
+  enableAutomation            Boolean      @default(true)
+  defaultMarkup               Float        @default(2.0)
+  taxRate                     Float        @default(0.0)
+  validadeOrcamento           Int          @default(7)
+  enableFinanceReports        Boolean      @default(true)
+  allowDuplicatePhones        Boolean      @default(true)
+  requireDocumentKeyForEntry  Boolean      @default(false)
+  enableCategoryAppropriation Boolean      @default(true)
+  defaultSalesUnit            String       @default("MM")
   defaultReceivableCategoryId String?
   defaultRevenueCategoryId    String?
   freightExpenseAccountId     String?
   taxExpenseAccountId         String?
+  inventoryValuationMethod    String       @default("AVERAGE")
 
-  // Método de Valoração de Estoque (AVERAGE_COST ou PEPS)
-  inventoryValuationMethod String @default("AVERAGE")
+  // Senha Mestre de Backup / Recuperação
+  defaultBackupPassword       String?
+  recoveryToken               String?
 
   // Certificado Digital NF-e (A1)
-  nfeCertificate         String? // Conteúdo .pfx em Base64
-  nfeCertificatePassword String? // Senha criptografada
-  nfeCertificateSubject  String?
-  nfeCertificateFileName String?
-  nfeCertificateExpiry   DateTime? // Data de expiração capturada no upload
-  
-  // Regras de Pedidos e Faturamento
-  requireOrderDeposit        Boolean @default(false)
-  minDepositPercent          Float   @default(0.0)
-  allowDeliveryWithBalance   Boolean @default(true)
-  defaultDueDateDays         Int     @default(0)
+  nfeCertificate              String?
+  nfeCertificatePassword      String?
+  nfeCertificateSubject       String?
+  nfeCertificateFileName      String?
+  nfeCertificateExpiry        DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Regras de Pedidos e Faturamento
+  requireOrderDeposit         Boolean      @default(false)
+  minDepositPercent           Float        @default(0.0)
+  allowDeliveryWithBalance    Boolean      @default(true)
+  defaultDueDateDays          Int          @default(0)
+  enableCommissions           Boolean      @default(true)
+  workflowMode                String       @default("FREE")
+  requiredCustomerFields      Json         @default("[]")
+  organization                Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("organization_settings")
 }
 
 model User {
-  id                 String               @id @default(uuid())
+  id                 String                 @id @default(uuid())
   organizationId     String
   email              String
   password           String
   name               String
-  role               UserRole             @default(USER) // Mantido para retrocompatibilidade
-  roleId             String? // Novo: Relacionamento com Role (Departamento) customizado
-  customRole         Role?                @relation(fields: [roleId], references: [id])
-  active             Boolean              @default(true)
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+  role               UserRole               @default(USER)
+  roleId             String?
+  active             Boolean                @default(true)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
   auditLogs          AuditLog[]
+  approvedAuths      AuthorizationRequest[] @relation("ApprovedAuths")
+  requestedAuths     AuthorizationRequest[] @relation("RequestedAuths")
+  commissionEntries  CommissionEntry[]
   inventoryMovements InventoryMovement[]
   notifications      Notifications[]
   statusHistory      OrderStatusHistory[]
-  cancelledOrders    Order[]              @relation("OrderCancelledBy")
-  requestedChanges   PendingChanges[]     @relation("RequestedBy")
-  reviewedChanges    PendingChanges[]     @relation("ReviewedBy")
+  artDesignerOrders  Order[]                @relation("OrderArtDesigner")
+  cancelledOrders    Order[]                @relation("OrderCancelledBy")
+  packagingOrders    Order[]                @relation("OrderPacker")
+  productionOrders   Order[]                @relation("OrderProducer")
+  soldOrders         Order[]                @relation("OrderSeller")
+  requestedChanges   PendingChanges[]       @relation("RequestedBy")
+  reviewedChanges    PendingChanges[]       @relation("ReviewedBy")
   profile            Profile?
+  cancelledMovements StockMovement[]        @relation("CancelledMovements")
+  stockMovements     StockMovement[]        @relation("UserMovements")
   transactions       Transaction[]
-  stockMovements     StockMovement[]      @relation("UserMovements")
-  cancelledMovements StockMovement[]      @relation("CancelledMovements")
-  requestedAuths     AuthorizationRequest[] @relation("RequestedAuths")
-  approvedAuths      AuthorizationRequest[] @relation("ApprovedAuths")
-  commissionEntries  CommissionEntry[]
-  soldOrders         Order[]              @relation("OrderSeller")
-  artDesignerOrders  Order[]              @relation("OrderArtDesigner")
-  productionOrders   Order[]              @relation("OrderProducer")
-  packagingOrders    Order[]              @relation("OrderPacker")
-
-  organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization       Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customRole         Role?                  @relation(fields: [roleId], references: [id])
 
   @@unique([organizationId, email])
   @@map("users")
 }
 
-enum SpedAccountType {
-  INVENTORY
-  EXPENSE
-}
-
 model MaterialType {
   id             String               @id @default(uuid())
-  name           String // Nome amigável (ex: Tintas, Chapas, etc)
-  spedCode       String // Código SPED base (00, 01, 07...)
+  name           String
+  spedCode       String
   organizationId String
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
   organization   Organization         @relation(fields: [organizationId], references: [id])
   mappings       SpedAccountMapping[]
   materials      Material[]
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
 
   @@index([organizationId])
 }
@@ -179,14 +172,14 @@ model MaterialType {
 model SpedAccountMapping {
   id             String          @id @default(uuid())
   organizationId String
-  organization   Organization    @relation(fields: [organizationId], references: [id])
-  materialTypeId String? // Agora vinculado ao tipo dinâmico
-  materialType   MaterialType?   @relation(fields: [materialTypeId], references: [id], onDelete: Cascade)
-  spedType       String // Mantido para compatibilidade legado (valor do spedCode do tipo)
+  materialTypeId String?
+  spedType       String
   accountId      String
-  account        ChartOfAccount  @relation(fields: [accountId], references: [id])
-  mappingType    SpedAccountType @default(EXPENSE) // INVENTORY ou EXPENSE
+  mappingType    SpedAccountType @default(EXPENSE)
   createdAt      DateTime        @default(now())
+  account        ChartOfAccount  @relation(fields: [accountId], references: [id])
+  materialType   MaterialType?   @relation(fields: [materialTypeId], references: [id], onDelete: Cascade)
+  organization   Organization    @relation(fields: [organizationId], references: [id])
 
   @@index([organizationId, materialTypeId])
 }
@@ -210,41 +203,52 @@ model AuditLog {
 }
 
 model Profile {
-  id                 String              @id @default(uuid())
-  organizationId     String
-  type               ProfileType
-  name               String
-  document           String?
-  email              String?
-  phone              String?
-  address            String?
-  city               String?
-  state              String?
-  zipCode            String?
-  isCustomer         Boolean             @default(false)
-  isSupplier         Boolean             @default(false)
-  isEmployee         Boolean             @default(false)
-  creditLimit        Decimal?            @db.Decimal(10, 2)
-  paymentTerms       Int?
-  active             Boolean             @default(true)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  addressNumber      String?
-  balance            Decimal             @default(0) @db.Decimal(15, 2)
-  userId             String?             @unique
-  exemptFromDeposit  Boolean             @default(false) // Cliente isento do sinal obrigatório
-  AccountPayable     AccountPayable[]
-  AccountReceivable  AccountReceivable[] @relation("CustomerReceivables")
-  budgets            Budget[]
-  insumoFornecedores InsumoFornecedor[]
-  MaterialReceipt    MaterialReceipt[]
-  materialSuppliers  MaterialSupplier[]
-  orders             Order[]
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user               User?               @relation(fields: [userId], references: [id])
-  transactions       Transaction[]
-  stockMovements     StockMovement[]     @relation("SupplierMovements")
-  balanceMovements   ProfileBalanceMovement[]
+  id                     String                   @id @default(uuid())
+  organizationId         String
+  type                   ProfileType
+  name                   String
+  document               String?
+  email                  String?
+  phone                  String?
+  address                String?
+  city                   String?
+  state                  String?
+  zipCode                String?
+  isCustomer             Boolean                  @default(false)
+  isSupplier             Boolean                  @default(false)
+  isEmployee             Boolean                  @default(false)
+  creditLimit            Decimal?                 @db.Decimal(10, 2)
+  paymentTerms           Int?
+  paymentMode            SupplierPaymentMode      @default(ON_PURCHASE)
+  paymentDayOfMonth      Int?
+  defaultPaymentMethodId String?
+  active                 Boolean                  @default(true)
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  addressNumber          String?
+  addressComplement      String?
+  neighborhood           String?
+  tradeName              String?
+  stateRegistration      String?
+  municipalRegistration  String?
+  savedBillingContacts   Json?
+  balance                Decimal                  @default(0) @db.Decimal(15, 2)
+  userId                 String?                  @unique
+  exemptFromDeposit      Boolean                  @default(false)
+  AccountPayable         AccountPayable[]
+  AccountReceivable      AccountReceivable[]      @relation("CustomerReceivables")
+  budgets                Budget[]
+  insumoFornecedores     InsumoFornecedor[]
+  MaterialReceipt        MaterialReceipt[]
+  materialSuppliers      MaterialSupplier[]
+  onDemandMaterials      Material[]               @relation("MaterialPrimarySupplier")
+  orders                 Order[]
+  balanceMovements       ProfileBalanceMovement[]
+  defaultPaymentMethod   PaymentMethod?           @relation("ProfileDefaultPaymentMethod", fields: [defaultPaymentMethodId], references: [id])
+  organization           Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                   User?                    @relation(fields: [userId], references: [id])
+  stockMovements         StockMovement[]          @relation("SupplierMovements")
+  transactions           Transaction[]
 
   @@unique([organizationId, name], name: "organizationId_name")
   @@unique([organizationId, document], name: "organizationId_document")
@@ -252,72 +256,74 @@ model Profile {
 }
 
 model ProfileBalanceMovement {
-  id             String   @id @default(uuid())
+  id             String       @id @default(uuid())
   organizationId String
   profileId      String
-  amount         Decimal  @db.Decimal(15, 2)
-  type           String   // 'CREDIT' ou 'DEBIT'
+  amount         Decimal      @db.Decimal(15, 2)
+  type           String
   description    String
-  orderId        String?  // Referência ao pedido que gerou ou consumiu o crédito
-  createdAt      DateTime @default(now())
-
-  profile        Profile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  orderId        String?
+  createdAt      DateTime     @default(now())
   order          Order?       @relation(fields: [orderId], references: [id])
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  profile        Profile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   @@map("profile_balance_movements")
 }
 
 model Material {
-  id                       String                @id @default(uuid())
-  organizationId           String
-  name                     String
-  description              String?
-  format                   MaterialFormat
-  costPerUnit              Decimal               @db.Decimal(10, 4)
-  unit                     String
-  controlUnit              ControlUnit?
-  conversionFactor         Float                 @default(1.0)
-  width                    Float?
-  height                   Float?
-  purchaseWidth            Float?                // Largura de compra em metros
-  purchaseHeight           Float?                // Altura de compra em metros
-  purchaseUnit             String?               // Unidade de compra (Ex: UN, PAC, CX)
-  multiplicador_padrao_entrada Int?              @default(1) // Fator de Embalagem Sugerido
-  active                   Boolean               @default(true)
-  createdAt                DateTime              @default(now())
-  updatedAt                DateTime              @updatedAt
-  categoryId               String // Nova chave estrangeira
-  category                 Category              @relation(fields: [categoryId], references: [id])
-  defaultConsumptionFactor Decimal               @default(1.0) @db.Decimal(10, 4)
-  defaultConsumptionRule   ConsumptionRule       @default(FIXED_UNIT)
-  expenseAccountId         String?
-  inventoryAccountId       String?
-  minStockQuantity         Float?
-  sellWithoutStock         Boolean               @default(true)
-  trackStock               Boolean               @default(true)
-  ncm                      String?
-  ean                      String?
-  spedType                 String? // Legado: código do tipo (00, 01...)
-  materialTypeId           String? // Dinâmico: ID da classificação criada pelo usuário
-  materialType             MaterialType?         @relation(fields: [materialTypeId], references: [id])
-  fichasTecnicas           FichaTecnicaInsumo[]
-  fornecedores             InsumoFornecedor[]
-  inventoryAlerts          InventoryAlert[]
-  inventoryItems           InventoryItem[]
-  receiptItems             MaterialReceiptItem[]
-  suppliers                MaterialSupplier[]
-  stockMovements           StockMovement[]
-  expenseAccount           ChartOfAccount?       @relation("MaterialExpenseAccount", fields: [expenseAccountId], references: [id])
-  inventoryAccount         ChartOfAccount?       @relation("MaterialInventoryAccount", fields: [inventoryAccountId], references: [id])
-  organization             Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  components               ProductComponent[]
-  productionWastes         ProductionWaste[]
-  averageCost              Decimal               @default(0) @db.Decimal(10, 4)
-  purchasePrice            Decimal?              @db.Decimal(10, 2)
-  currentStock             Decimal               @default(0) @db.Decimal(15, 4)
-  // Motor de Composição: opções de variação vinculadas a este insumo
-  optionSlots              ConfigurationOption[] @relation("OptionMaterial")
+  id                           String                @id @default(uuid())
+  organizationId               String
+  name                         String
+  description                  String?
+  format                       MaterialFormat
+  costPerUnit                  Decimal               @db.Decimal(10, 4)
+  unit                         String
+  controlUnit                  ControlUnit?
+  conversionFactor             Float                 @default(1.0)
+  width                        Float?
+  height                       Float?
+  purchaseWidth                Float?
+  purchaseHeight               Float?
+  purchaseUnit                 String?
+  multiplicador_padrao_entrada Int?                  @default(1)
+  active                       Boolean               @default(true)
+  createdAt                    DateTime              @default(now())
+  updatedAt                    DateTime              @updatedAt
+  categoryId                   String
+  defaultConsumptionFactor     Decimal               @default(1.0) @db.Decimal(10, 4)
+  defaultConsumptionRule       ConsumptionRule       @default(FIXED_UNIT)
+  expenseAccountId             String?
+  inventoryAccountId           String?
+  minStockQuantity             Float?
+  sellWithoutStock             Boolean               @default(true)
+  trackStock                   Boolean               @default(true)
+  sourcingMode                 SourcingMode          @default(STOCK)
+  primarySupplierId            String?
+  ncm                          String?
+  ean                          String?
+  spedType                     String?
+  materialTypeId               String?
+  averageCost                  Decimal               @default(0) @db.Decimal(10, 4)
+  purchasePrice                Decimal?              @db.Decimal(10, 2)
+  currentStock                 Decimal               @default(0) @db.Decimal(15, 4)
+  optionSlots                  ConfigurationOption[] @relation("OptionMaterial")
+  fichasTecnicas               FichaTecnicaInsumo[]
+  fornecedores                 InsumoFornecedor[]
+  inventoryAlerts              InventoryAlert[]
+  inventoryItems               InventoryItem[]
+  receiptItems                 MaterialReceiptItem[]
+  suppliers                    MaterialSupplier[]
+  category                     Category              @relation(fields: [categoryId], references: [id])
+  expenseAccount               ChartOfAccount?       @relation("MaterialExpenseAccount", fields: [expenseAccountId], references: [id])
+  inventoryAccount             ChartOfAccount?       @relation("MaterialInventoryAccount", fields: [inventoryAccountId], references: [id])
+  materialType                 MaterialType?         @relation(fields: [materialTypeId], references: [id])
+  organization                 Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  primarySupplier              Profile?              @relation("MaterialPrimarySupplier", fields: [primarySupplierId], references: [id])
+  components                   ProductComponent[]
+  productionWastes             ProductionWaste[]
+  stockMovements               StockMovement[]
+  stockReservations            StockReservation[]
 
   @@unique([organizationId, name], name: "organizationId_name")
   @@index([organizationId])
@@ -345,52 +351,72 @@ model InventoryItem {
 }
 
 model Product {
-  id               String                 @id @default(uuid())
-  organizationId   String
-  name             String
-  description      String?
-  productType      ItemType               @default(PRODUCT)
-  pricingMode      PricingMode            @default(SIMPLE_AREA)
-  salePrice        Decimal?               @db.Decimal(10, 2)
-  minPrice         Decimal?               @db.Decimal(10, 2)
-  costPrice        Decimal?               @db.Decimal(10, 2)
-  markup           Float                  @default(2.0)
-  active           Boolean                @default(true)
-  priceLocked      Boolean                @default(false)
-  createdAt        DateTime               @default(now())
-  updatedAt        DateTime               @updatedAt
-  pricingRuleId    String?
-  stockMinQuantity Float?
-  stockQuantity    Float?
-  stockUnit        String?
-  trackStock       Boolean                @default(false)
-  formulaData      Json?
-  localFormulaId   String?
-  customFormula    String?
-  sellWithoutStock Boolean                @default(true)
-  // Motor de Composição: markup alvo para sugestão de preço
-  targetMarkup     Float?                 // Multiplicador sobre custo (ex: 2.5 = 250%)
-  targetMargin     Float?                 // Margem alvo alternativa 0.0–1.0 (ex: 0.40 = 40%)
-  budgetItems      BudgetItem[]
-  fichasTecnicas   FichaTecnicaInsumo[]
-  orderItems       OrderItem[]
-  components       ProductComponent[]
-  configurations   ProductConfiguration[]
-  operations       ProductOperation[]
-  standardSizes    ProductStandardSize[]
-  productionWastes ProductionWaste[]
-  organization     Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  pricingRule      PricingRule?           @relation(fields: [pricingRuleId], references: [id])
-  categoryId       String?
-  category         Category?              @relation(fields: [categoryId], references: [id])
-  revenueAccountId String?
-  revenueAccount   ChartOfAccount?        @relation("ProductRevenueAccount", fields: [revenueAccountId], references: [id])
+  id                     String                 @id @default(uuid())
+  organizationId         String
+  name                   String
+  description            String?
+  productType            ItemType               @default(PRODUCT)
+  pricingMode            PricingMode            @default(SIMPLE_AREA)
+  salePrice              Decimal?               @db.Decimal(10, 2)
+  minPrice               Decimal?               @db.Decimal(10, 2)
+  costPrice              Decimal?               @db.Decimal(10, 2)
+  markup                 Float                  @default(2.0)
+  active                 Boolean                @default(true)
+  priceLocked            Boolean                @default(false)
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  pricingRuleId          String?
+  stockMinQuantity       Float?
+  stockQuantity          Float?
+  stockUnit              String?
+  trackStock             Boolean                @default(false)
+  formulaData            Json?
+  localFormulaId         String?
+  customFormula          String?
+  sellWithoutStock       Boolean                @default(true)
+  targetMarkup           Float?
+  targetMargin           Float?
+  categoryId             String?
+  revenueAccountId       String?
   isCommissionable       Boolean                @default(true)
   specificCommissionRate Decimal?               @db.Decimal(10, 2)
   maxDiscountThreshold   Decimal?               @db.Decimal(10, 2)
+  operations             ProductOperation[]
+  budgetItems            BudgetItem[]
+  fichasTecnicas         FichaTecnicaInsumo[]
+  orderItems             OrderItem[]
+  components             ProductComponent[]
+  configurations         ProductConfiguration[]
+  standardSizes          ProductStandardSize[]
+  productionWastes       ProductionWaste[]
+  category               Category?              @relation(fields: [categoryId], references: [id])
+  organization           Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  pricingRule            PricingRule?           @relation(fields: [pricingRuleId], references: [id])
+  revenueAccount         ChartOfAccount?        @relation("ProductRevenueAccount", fields: [revenueAccountId], references: [id])
+  stockReservations      StockReservation[]
 
   @@unique([organizationId, name], name: "organizationId_name")
   @@map("products")
+}
+
+model StockReservation {
+  id             String       @id @default(uuid())
+  organizationId String
+  orderId        String
+  productId      String?
+  materialId     String?
+  quantity       Decimal      @db.Decimal(15, 4)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  material       Material?    @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  order          Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product        Product?     @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, organizationId])
+  @@index([materialId, organizationId])
+  @@index([orderId])
+  @@map("stock_reservations")
 }
 
 model ProductConfiguration {
@@ -400,6 +426,7 @@ model ProductConfiguration {
   description       String?
   helpText          String?
   type              ConfigurationType
+  kind              ConfigurationKind        @default(VARIATION)
   required          Boolean                  @default(true)
   defaultValue      String?
   affectsComponents Boolean                  @default(false)
@@ -425,8 +452,8 @@ model ConfigurationOption {
   description          String?
   priceModifier        Decimal                  @default(0) @db.Decimal(10, 2)
   priceModifierType    String                   @default("FIXED")
-  priceOverride        Decimal?                 @db.Decimal(10, 2) // Sobrescreve o preço global se definido
-  fixedValue           Decimal?                 @db.Decimal(10, 2) // Novo campo para Valor Fixo de Venda
+  priceOverride        Decimal?                 @db.Decimal(10, 2)
+  fixedValue           Decimal?                 @db.Decimal(10, 2)
   additionalComponents Json?
   removedComponents    Json?
   componentModifiers   Json?
@@ -434,25 +461,28 @@ model ConfigurationOption {
   displayOrder         Int                      @default(1)
   createdAt            DateTime                 @default(now())
   updatedAt            DateTime                 @updatedAt
-  // Motor de Composição: vínculo direto com insumo do estoque ("slot de variável")
-  materialId           String?                  // FK para Material — custo lido de averageCost
-  slotQuantity         Decimal?                 @db.Decimal(10, 4) // Qtd padrão deste insumo
+  materialId           String?
+  slotQuantity         Decimal?                 @db.Decimal(10, 4)
+  defaultQuantity      Decimal?                 @db.Decimal(10, 4)
+  minQuantity          Decimal?                 @db.Decimal(10, 4)
+  maxQuantity          Decimal?                 @db.Decimal(10, 4)
+  allowCustomQty       Boolean                  @default(false)
+  allowedChildIds      Json?
   configuration        ProductConfiguration     @relation(fields: [configurationId], references: [id], onDelete: Cascade)
   material             Material?                @relation("OptionMaterial", fields: [materialId], references: [id])
   fichasTecnicas       FichaTecnicaInsumo[]
-  orderItemConfigs     OrderItemConfiguration[]
   incompatibilitiesA   OptionIncompatibility[]  @relation("IncompatA")
   incompatibilitiesB   OptionIncompatibility[]  @relation("IncompatB")
+  orderItemConfigs     OrderItemConfiguration[]
 
   @@map("configuration_options")
 }
 
-// Motor de Composição: pares de opções mutuamente exclusivas
 model OptionIncompatibility {
   id        String              @id @default(uuid())
   optionAId String
   optionBId String
-  reason    String?             // Explicação exibida ao usuário
+  reason    String?
   createdAt DateTime            @default(now())
   optionA   ConfigurationOption @relation("IncompatA", fields: [optionAId], references: [id], onDelete: Cascade)
   optionB   ConfigurationOption @relation("IncompatB", fields: [optionBId], references: [id], onDelete: Cascade)
@@ -484,6 +514,7 @@ model OrderItemConfiguration {
   configurationId  String
   selectedValue    String
   selectedOptionId String?
+  customQuantity   Decimal?             @db.Decimal(10, 4)
   createdAt        DateTime             @default(now())
   configuration    ProductConfiguration @relation(fields: [configurationId], references: [id])
   orderItem        OrderItem            @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
@@ -493,7 +524,7 @@ model OrderItemConfiguration {
 }
 
 model ProductionWaste {
-  id              String           @id @default(uuid())
+  id              String            @id @default(uuid())
   orderId         String
   productId       String
   materialId      String
@@ -503,11 +534,11 @@ model ProductionWaste {
   wasteQuantity   Float
   wasteReason     String
   reportedBy      String
-  reportedAt      DateTime         @default(now())
+  reportedAt      DateTime          @default(now())
   component       ProductComponent? @relation(fields: [componentId], references: [id])
-  material        Material         @relation(fields: [materialId], references: [id])
-  order           Order            @relation(fields: [orderId], references: [id])
-  product         Product          @relation(fields: [productId], references: [id])
+  material        Material          @relation(fields: [materialId], references: [id])
+  order           Order             @relation(fields: [orderId], references: [id])
+  product         Product           @relation(fields: [productId], references: [id])
 
   @@map("production_wastes")
 }
@@ -557,73 +588,72 @@ model ProductOperation {
   product       Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 }
 
-enum DiscountStatus {
-  NONE
-  PENDING
-  APPROVED
-  REJECTED
-}
-
 model Order {
-  id                        String                 @id @default(uuid())
+  id                        String                   @id @default(uuid())
   organizationId            String
   customerId                String
   orderNumber               String
-  status                    OrderStatus            @default(DRAFT)
-  subtotal                  Decimal                @db.Decimal(10, 2)
-  discount                  Decimal                @default(0) @db.Decimal(10, 2)
-  tax                       Decimal                @default(0) @db.Decimal(10, 2)
-  total                     Decimal                @db.Decimal(10, 2)
+  status                    OrderStatus              @default(DRAFT)
+  subtotal                  Decimal                  @db.Decimal(10, 2)
+  discount                  Decimal                  @default(0) @db.Decimal(10, 2)
+  tax                       Decimal                  @default(0) @db.Decimal(10, 2)
+  total                     Decimal                  @db.Decimal(10, 2)
   deliveryDate              DateTime?
-  createdAt                 DateTime               @default(now())
+  createdAt                 DateTime                 @default(now())
   validUntil                DateTime?
-  updatedAt                 DateTime               @updatedAt
+  updatedAt                 DateTime                 @updatedAt
   notes                     String?
   approvedAt                DateTime?
   cancellationPaymentAction String?
   cancellationReason        String?
-  cancellationRefundAmount  Decimal?               @db.Decimal(10, 2)
+  cancellationRefundAmount  Decimal?                 @db.Decimal(10, 2)
   cancelledAt               DateTime?
   cancelledById             String?
   deliveredAt               DateTime?
   finishedAt                DateTime?
   inProductionAt            DateTime?
   processStatusId           String?
-  discountStatus            DiscountStatus         @default(NONE)
+  discountStatus            DiscountStatus           @default(NONE)
   authorizationRequestId    String?
-  authorizationRequest      AuthorizationRequest?  @relation(fields: [authorizationRequestId], references: [id])
+  sellerId                  String?
+  artDesignerId             String?
+  artAssignedAt             DateTime?
+  productionUserId          String?
+  productionAssignedAt      DateTime?
+  packagingUserId           String?
+  packagingAssignedAt       DateTime?
   accountsReceivable        AccountReceivable[]
+  commissionEntries         CommissionEntry[]
+  deliveries                Delivery[]
   inventoryMovements        InventoryMovement[]
   items                     OrderItem[]
   statusHistory             OrderStatusHistory[]
-  cancelledBy               User?                  @relation("OrderCancelledBy", fields: [cancelledById], references: [id])
-  customer                  Profile                @relation(fields: [customerId], references: [id])
-  organization              Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  processStatus             ProcessStatus?         @relation(fields: [processStatusId], references: [id])
-  sellerId                  String?
-  seller                    User?                  @relation("OrderSeller", fields: [sellerId], references: [id])
-  artDesignerId             String?
-  artDesigner               User?                  @relation("OrderArtDesigner", fields: [artDesignerId], references: [id])
-  artAssignedAt             DateTime?
-  
-  productionUserId          String?
-  producer                  User?                  @relation("OrderProducer", fields: [productionUserId], references: [id])
-  productionAssignedAt      DateTime?
-  
-  packagingUserId           String?
-  packer                    User?                  @relation("OrderPacker", fields: [packagingUserId], references: [id])
-  packagingAssignedAt       DateTime?
-
-  commissionEntries         CommissionEntry[]
+  artDesigner               User?                    @relation("OrderArtDesigner", fields: [artDesignerId], references: [id])
+  authorizationRequest      AuthorizationRequest?    @relation(fields: [authorizationRequestId], references: [id])
+  cancelledBy               User?                    @relation("OrderCancelledBy", fields: [cancelledById], references: [id])
+  customer                  Profile                  @relation(fields: [customerId], references: [id])
+  organization              Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  packer                    User?                    @relation("OrderPacker", fields: [packagingUserId], references: [id])
+  processStatus             ProcessStatus?           @relation(fields: [processStatusId], references: [id])
+  producer                  User?                    @relation("OrderProducer", fields: [productionUserId], references: [id])
+  seller                    User?                    @relation("OrderSeller", fields: [sellerId], references: [id])
   pendingChanges            PendingChanges[]
   productionQueue           ProductionQueue[]
   productionWastes          ProductionWaste[]
-  transactions              Transaction[]
-  deliveries                Delivery[]
   balanceMovements          ProfileBalanceMovement[]
+  stockReservations         StockReservation[]
+  transactions              Transaction[]
 
   @@unique([organizationId, orderNumber])
   @@map("orders")
+}
+
+model OrderSequence {
+  organizationId String       @id
+  lastValue      Int          @default(0)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("order_sequences")
 }
 
 model OrderStatusHistory {
@@ -645,58 +675,56 @@ model OrderStatusHistory {
 }
 
 model OrderItem {
-  id              String                   @id @default(uuid())
-  orderId         String
-  productId       String
-  itemType        ItemType                 @default(PRODUCT)
-  width           Decimal?                 @db.Decimal(10, 3)
-  height          Decimal?                 @db.Decimal(10, 3)
-  quantity        Int
-  totalArea       Decimal?                 @db.Decimal(10, 6)
-  attributes      Json?
-  area            Float?
-  paperSize       String?
-  paperType       String?
-  printColors     String?
-  finishing       String?
-  customSizeName  String?
-  isCustomSize    Boolean                  @default(false)
-  machineTime     Float?
-  setupTime       Float?
-  complexity      String?
-  costPrice            Decimal                  @db.Decimal(10, 2)
-  calculatedPrice      Decimal                  @db.Decimal(10, 2)
-  unitPrice            Decimal                  @db.Decimal(10, 2)
-  totalPrice           Decimal                  @db.Decimal(10, 2)
-  notes                String?
-  processStatusId      String?
-  status               OrderStatus              @default(DRAFT)
-  pricingRuleId        String?
-  // Motor de Composição: campos de snapshot (imutáveis após APPROVED)
-  unitCostAtSale       Decimal?                 @db.Decimal(10, 4) // Custo médio ponderado no momento da venda
-  unitPriceAtSale      Decimal?                 @db.Decimal(10, 2) // Preço negociado confirmado
-  profitAtSale         Decimal?                 @db.Decimal(10, 4) // Lucro líquido: unitPriceAtSale – unitCostAtSale
-  compositionSnapshot  Json?                    // BOM completa congelada: [{materialId, quantity, costPerUnit, subtotal}]
-  confirmedAt          DateTime?                // Timestamp da confirmação (APPROVED)
-  
+  id                     String                   @id @default(uuid())
+  orderId                String
+  productId              String
+  itemType               ItemType                 @default(PRODUCT)
+  width                  Decimal?                 @db.Decimal(10, 3)
+  height                 Decimal?                 @db.Decimal(10, 3)
+  quantity               Int
+  totalArea              Decimal?                 @db.Decimal(10, 6)
+  attributes             Json?
+  area                   Float?
+  paperSize              String?
+  paperType              String?
+  printColors            String?
+  finishing              String?
+  customSizeName         String?
+  isCustomSize           Boolean                  @default(false)
+  machineTime            Float?
+  setupTime              Float?
+  complexity             String?
+  costPrice              Decimal                  @db.Decimal(10, 2)
+  calculatedPrice        Decimal                  @db.Decimal(10, 2)
+  unitPrice              Decimal                  @db.Decimal(10, 2)
+  totalPrice             Decimal                  @db.Decimal(10, 2)
+  notes                  String?
+  processStatusId        String?
+  status                 OrderStatus              @default(DRAFT)
+  pricingRuleId          String?
+  unitCostAtSale         Decimal?                 @db.Decimal(10, 4)
+  unitPriceAtSale        Decimal?                 @db.Decimal(10, 2)
+  profitAtSale           Decimal?                 @db.Decimal(10, 4)
+  compositionSnapshot    Json?
+  confirmedAt            DateTime?
   discountStatus         DiscountStatus           @default(NONE)
   discountItem           Decimal                  @default(0) @db.Decimal(10, 2)
   discountGlobal         Decimal                  @default(0) @db.Decimal(10, 2)
   commissionRateApplied  Decimal                  @default(0) @db.Decimal(10, 2)
   commissionAmount       Decimal                  @default(0) @db.Decimal(10, 2)
   authorizationRequestId String?
+  deliveryItems          DeliveryItem[]
+  configurations         OrderItemConfiguration[]
   authorizationRequest   AuthorizationRequest?    @relation(fields: [authorizationRequestId], references: [id])
-
-  configurations       OrderItemConfiguration[]
-  order                Order                    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  pricingRule          PricingRule?             @relation(fields: [pricingRuleId], references: [id])
-  processStatus        ProcessStatus?           @relation(fields: [processStatusId], references: [id])
-  product              Product                  @relation(fields: [productId], references: [id])
-  deliveryItems        DeliveryItem[]
-  productionOrder      ProductionOrder?
+  order                  Order                    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  pricingRule            PricingRule?             @relation(fields: [pricingRuleId], references: [id])
+  processStatus          ProcessStatus?           @relation(fields: [processStatusId], references: [id])
+  product                Product                  @relation(fields: [productId], references: [id])
+  productionOrder        ProductionOrder?
 
   @@map("order_items")
 }
+
 model Delivery {
   id             String         @id @default(uuid())
   organizationId String
@@ -706,22 +734,20 @@ model Delivery {
   notes          String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
-
-  order        Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  items        DeliveryItem[]
+  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  items          DeliveryItem[]
 
   @@map("deliveries")
 }
 
 model DeliveryItem {
-  id          String @id @default(uuid())
+  id          String    @id @default(uuid())
   deliveryId  String
   orderItemId String
   quantity    Int
-
-  delivery  Delivery  @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
-  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  delivery    Delivery  @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
 
   @@map("delivery_items")
 }
@@ -931,52 +957,52 @@ model Transaction {
 }
 
 model Category {
-  id             String        @id @default(uuid())
-  organizationId String
-  name           String
-  type           CategoryType
-  color          String?
+  id                     String            @id @default(uuid())
+  organizationId         String
+  name                   String
+  type                   CategoryType
+  color                  String?
   parentId               String?
-  active                 Boolean       @default(true)
+  active                 Boolean           @default(true)
   defaultProductionSteps Json?
-  organization           Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  parent         Category?     @relation("CategoryHierarchy", fields: [parentId], references: [id])
-  children       Category[]    @relation("CategoryHierarchy")
-  transactions   Transaction[]
-
-  chartOfAccountId String?
-  chartOfAccount   ChartOfAccount? @relation(fields: [chartOfAccountId], references: [id])
-  Material         Material[]
-  Product          Product[]
-
-  // Novos relacionamentos para Material
-  inventoryAccountId String?
-  expenseAccountId   String?
-  inventoryAccount   ChartOfAccount? @relation("CategoryInventoryAccount", fields: [inventoryAccountId], references: [id])
-  expenseAccount     ChartOfAccount? @relation("CategoryExpenseAccount", fields: [expenseAccountId], references: [id])
+  chartOfAccountId       String?
+  inventoryAccountId     String?
+  expenseAccountId       String?
+  chartOfAccount         ChartOfAccount?   @relation(fields: [chartOfAccountId], references: [id])
+  expenseAccount         ChartOfAccount?   @relation("CategoryExpenseAccount", fields: [expenseAccountId], references: [id])
+  inventoryAccount       ChartOfAccount?   @relation("CategoryInventoryAccount", fields: [inventoryAccountId], references: [id])
+  organization           Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent                 Category?         @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children               Category[]        @relation("CategoryHierarchy")
+  commissionEntries      CommissionEntry[] @relation("CommissionEntryCategory")
+  commissionRules        CommissionRule[]
+  Material               Material[]
+  Product                Product[]
+  transactions           Transaction[]
 
   @@map("categories")
 }
 
 model PaymentMethod {
-  id               String            @id @default(uuid())
-  organizationId   String
-  name             String
-  type             PaymentMethodType
-  feePercentage    Decimal           @default(0) @db.Decimal(5, 2)
-  installmentRules Json?
-  active           Boolean           @default(true)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  accountId        String?
-  account          Account?          @relation(fields: [accountId], references: [id])
-
-  // Categoria/Conta para Taxas (Plano de Contas)
-  feeCategoryId String?
-  feeCategory   ChartOfAccount? @relation("PaymentMethodFee", fields: [feeCategoryId], references: [id])
-
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
+  id                  String            @id @default(uuid())
+  organizationId      String
+  name                String
+  type                PaymentMethodType
+  usageScope          PaymentScope      @default(SALES)
+  feePercentage       Decimal           @default(0) @db.Decimal(5, 2)
+  installmentRules    Json?
+  cardClosingDay      Int?
+  cardDueDay          Int?
+  active              Boolean           @default(true)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  accountId           String?
+  feeCategoryId       String?
+  account             Account?          @relation(fields: [accountId], references: [id])
+  feeCategory         ChartOfAccount?   @relation("PaymentMethodFee", fields: [feeCategoryId], references: [id])
+  organization        Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  defaultedByProfiles Profile[]         @relation("ProfileDefaultPaymentMethod")
+  transactions        Transaction[]
 
   @@map("payment_methods")
 }
@@ -1030,24 +1056,22 @@ model Notifications {
 }
 
 model AuthorizationRequest {
-  id              String           @id @default(uuid())
-  organizationId  String
-  requesterId     String
-  type            String           // 'DISCOUNT'
-  status          PendingChangeStatus @default(PENDING)
-  data            Json             // { productId, discount, unitPrice, etc }
-  authorizerId    String?
-  reviewedAt      DateTime?
-  notes           String?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-
-  orders          Order[]
-  orderItems      OrderItem[]
-
-  organization    Organization     @relation(fields: [organizationId], references: [id])
-  requester       User             @relation("RequestedAuths", fields: [requesterId], references: [id])
-  authorizer      User?            @relation("ApprovedAuths", fields: [authorizerId], references: [id])
+  id             String              @id @default(uuid())
+  organizationId String
+  requesterId    String
+  type           String
+  status         PendingChangeStatus @default(PENDING)
+  data           Json
+  authorizerId   String?
+  reviewedAt     DateTime?
+  notes          String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  authorizer     User?               @relation("ApprovedAuths", fields: [authorizerId], references: [id])
+  organization   Organization        @relation(fields: [organizationId], references: [id])
+  requester      User                @relation("RequestedAuths", fields: [requesterId], references: [id])
+  orderItems     OrderItem[]
+  orders         Order[]
 
   @@map("authorization_requests")
 }
@@ -1185,10 +1209,10 @@ model PricingRule {
 model FichaTecnicaInsumo {
   id                     String               @id @default(uuid())
   organizationId         String
-  insumoId               String? // Opcional para suportar Slots (Draft-to-Slot)
+  insumoId               String?
   productId              String?
   configurationOptionId  String?
-  configurationGroupId   String? // Vínculo com grupo de variáveis para slots
+  configurationGroupId   String?
   quantidade             Float
   width                  Float?
   height                 Float?
@@ -1234,8 +1258,8 @@ model MaterialReceipt {
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
   payableId      String?
-  orderId        String?               // Rastreabilidade: pedido que gerou este recibo
-  notes          String?               // Detalhamento dos materiais consumidos
+  orderId        String?
+  notes          String?
   items          MaterialReceiptItem[]
   organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   payable        AccountPayable?       @relation(fields: [payableId], references: [id])
@@ -1246,19 +1270,19 @@ model MaterialReceipt {
 
 /// Contas Recorrentes: despesas fixas mensais (aluguel, telefone, internet, etc.)
 model RecurringBill {
-  id             String       @id @default(uuid())
-  organizationId String
-  name           String       // Ex: "Aluguel", "Internet", "Telefone"
-  description    String?
-  amount         Decimal      @db.Decimal(15, 2)
-  dueDay         Int          // Dia do vencimento no mês (1–31)
-  categoryId     String?      // Categoria financeira para o DRE
-  supplierId     String?      // Fornecedor/Credor (opcional)
-  active         Boolean      @default(true)
-  lastGeneratedAt DateTime?   // Último mês em que foi gerado AccountPayable
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id              String       @id @default(uuid())
+  organizationId  String
+  name            String
+  description     String?
+  amount          Decimal      @db.Decimal(15, 2)
+  dueDay          Int
+  categoryId      String?
+  supplierId      String?
+  active          Boolean      @default(true)
+  lastGeneratedAt DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("recurring_bills")
 }
@@ -1301,7 +1325,7 @@ model MaterialReceiptItem {
 model AccountPayable {
   id             String            @id @default(uuid())
   organizationId String
-  supplierId     String
+  supplierId     String?
   amount         Decimal           @db.Decimal(15, 2)
   dueDate        DateTime
   status         PayableStatus     @default(PENDING)
@@ -1309,7 +1333,7 @@ model AccountPayable {
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
   organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  supplier       Profile           @relation(fields: [supplierId], references: [id])
+  supplier       Profile?          @relation(fields: [supplierId], references: [id])
   receipts       MaterialReceipt[]
   transactions   Transaction[]
 
@@ -1336,34 +1360,180 @@ model AccountReceivable {
 }
 
 model ChartOfAccount {
-  id              String            @id @default(uuid())
-  organizationId  String
-  name            String
-  code            String?
-  description     String?
-  nature          AccountNature
-  type            ChartAccountType
-  parentId        String?
-  active          Boolean           @default(true)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  parent          ChartOfAccount?   @relation("ChartAccountHierarchy", fields: [parentId], references: [id])
-  children        ChartOfAccount[]  @relation("ChartAccountHierarchy")
-  categories      Category[]
-  revenueProducts Product[]         @relation("ProductRevenueAccount")
-  systemRole      AccountSystemRole @default(GENERAL)
-
-  // Existing relations
-  expenseMaterials    Material[]           @relation("MaterialExpenseAccount")
-  inventoryMaterials  Material[]           @relation("MaterialInventoryAccount")
-  categoryInventoryAccounts Category[]     @relation("CategoryInventoryAccount")
-  categoryExpenseAccounts   Category[]     @relation("CategoryExpenseAccount")
-  spedAccountMappings SpedAccountMapping[]
-  paymentMethodsFee   PaymentMethod[]      @relation("PaymentMethodFee")
+  id                        String               @id @default(uuid())
+  organizationId            String
+  name                      String
+  code                      String?
+  description               String?
+  nature                    AccountNature
+  type                      ChartAccountType
+  parentId                  String?
+  active                    Boolean              @default(true)
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
+  systemRole                AccountSystemRole    @default(GENERAL)
+  spedAccountMappings       SpedAccountMapping[]
+  categories                Category[]
+  categoryExpenseAccounts   Category[]           @relation("CategoryExpenseAccount")
+  categoryInventoryAccounts Category[]           @relation("CategoryInventoryAccount")
+  organization              Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent                    ChartOfAccount?      @relation("ChartAccountHierarchy", fields: [parentId], references: [id])
+  children                  ChartOfAccount[]     @relation("ChartAccountHierarchy")
+  expenseMaterials          Material[]           @relation("MaterialExpenseAccount")
+  inventoryMaterials        Material[]           @relation("MaterialInventoryAccount")
+  paymentMethodsFee         PaymentMethod[]      @relation("PaymentMethodFee")
+  revenueProducts           Product[]            @relation("ProductRevenueAccount")
 
   @@unique([organizationId, code], name: "organizationId_code")
   @@map("chart_of_accounts")
+}
+
+model ProductionOrder {
+  id             String           @id @default(uuid())
+  organizationId String
+  orderItemId    String           @unique
+  status         ProductionStatus @default(WAITING)
+  priority       Priority         @default(NORMAL)
+  pickingList    Json?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  notes          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  orderItem      OrderItem        @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  steps          ProductionStep[]
+
+  @@map("production_orders")
+}
+
+model ProductionStep {
+  id                String          @id @default(uuid())
+  productionOrderId String
+  name              String
+  order             Int
+  status            StepStatus      @default(PENDING)
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  operatorId        String?
+  productionOrder   ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+
+  @@map("production_steps")
+}
+
+model StockMovement {
+  id                String            @id @default(uuid())
+  organizationId    String
+  materialId        String
+  userId            String?
+  type              StockMovementType
+  quantity          Decimal           @db.Decimal(15, 4)
+  unitCost          Decimal           @db.Decimal(10, 4)
+  totalCost         Decimal           @db.Decimal(10, 4)
+  oldQuantity       Decimal?          @db.Decimal(15, 4)
+  oldUnitCost       Decimal?          @db.Decimal(10, 4)
+  machineId         String?
+  machineCounter    Int?
+  notes             String?
+  justification     String?
+  movementNumber    String?           @unique
+  documentUrl       String?
+  supplierId        String?
+  documentKey       String?
+  isCancelled       Boolean           @default(false)
+  cancelledAt       DateTime?
+  cancelledById     String?
+  quantityRemaining Decimal?          @db.Decimal(15, 4)
+  createdAt         DateTime          @default(now())
+  cancelledBy       User?             @relation("CancelledMovements", fields: [cancelledById], references: [id])
+  machine           Machine?          @relation(fields: [machineId], references: [id])
+  material          Material          @relation(fields: [materialId], references: [id])
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier          Profile?          @relation("SupplierMovements", fields: [supplierId], references: [id])
+  user              User?             @relation("UserMovements", fields: [userId], references: [id])
+
+  @@index([organizationId])
+  @@index([materialId])
+  @@index([supplierId])
+  @@map("stock_movements")
+}
+
+model Role {
+  id                String            @id @default(uuid())
+  organizationId    String
+  name              String
+  description       String?
+  isSystem          Boolean           @default(false)
+  active            Boolean           @default(true)
+  createdAt         DateTime          @default(now())
+  commissionEntries CommissionEntry[]
+  commissionRules   CommissionRule[]
+  permissions       RolePermission[]
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  users             User[]
+
+  @@unique([organizationId, name])
+  @@map("roles")
+}
+
+model RolePermission {
+  id            String @id @default(uuid())
+  roleId        String
+  permissionKey String
+  role          Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionKey])
+  @@map("role_permissions")
+}
+
+model CommissionRule {
+  id             String       @id @default(uuid())
+  organizationId String
+  roleId         String
+  rate           Decimal      @db.Decimal(10, 2)
+  description    String?
+  active         Boolean      @default(true)
+  categoryId     String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  category       Category?    @relation(fields: [categoryId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  role           Role         @relation(fields: [roleId], references: [id])
+
+  @@map("commission_rules")
+}
+
+model CommissionEntry {
+  id             String       @id @default(uuid())
+  organizationId String
+  orderId        String
+  userId         String?
+  roleId         String?
+  amount         Decimal      @db.Decimal(10, 2)
+  rateApplied    Decimal      @db.Decimal(10, 2)
+  description    String
+  status         String       @default("PENDING")
+  categoryId     String?
+  createdAt      DateTime     @default(now())
+  category       Category?    @relation("CommissionEntryCategory", fields: [categoryId], references: [id])
+  order          Order        @relation(fields: [orderId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  role           Role?        @relation(fields: [roleId], references: [id])
+  user           User?        @relation(fields: [userId], references: [id])
+
+  @@map("commission_entries")
+}
+
+enum SpedAccountType {
+  INVENTORY
+  EXPENSE
+}
+
+enum DiscountStatus {
+  NONE
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum UserRole {
@@ -1410,6 +1580,11 @@ enum ConfigurationType {
   TEXT
 }
 
+enum ConfigurationKind {
+  VARIATION
+  FINISHING
+}
+
 enum OrderStatus {
   DRAFT
   APPROVED
@@ -1441,41 +1616,6 @@ enum MovementType {
   ADJUSTMENT
   WASTE
 }
-
-model ProductionOrder {
-  id                String            @id @default(uuid())
-  organizationId    String
-  orderItemId       String            @unique
-  orderItem         OrderItem         @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
-  status            ProductionStatus  @default(WAITING)
-  priority          Priority          @default(NORMAL)
-  pickingList       Json?             // Cópia do compositionSnapshot para o operador
-  startedAt         DateTime?
-  finishedAt        DateTime?
-  steps             ProductionStep[]
-  notes             String?
-  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-
-  @@map("production_orders")
-}
-
-model ProductionStep {
-  id                String            @id @default(uuid())
-  productionOrderId String
-  productionOrder   ProductionOrder   @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
-  name              String            // Ex: "Impressão", "Corte"
-  order             Int               // Sequência da etapa
-  status            StepStatus        @default(PENDING)
-  startedAt         DateTime?
-  finishedAt        DateTime?
-  operatorId        String?
-  
-  @@map("production_steps")
-}
-
 
 enum AlertType {
   LOW_STOCK
@@ -1573,6 +1713,7 @@ enum NotificationType {
   CHANGE_APPROVED
   CHANGE_REJECTED
   DISCOUNT_AUTH_REQUEST
+  CARD_BILL_DUE
 }
 
 enum StatusScope {
@@ -1642,113 +1783,26 @@ enum ControlUnit {
   ML
 }
 
-model StockMovement {
-  id              String            @id @default(uuid())
-  organizationId   String
-  materialId      String
-  userId          String?           // Usuário que realizou o ajuste
-  type            StockMovementType
-  quantity        Decimal           @db.Decimal(15, 4)
-  unitCost        Decimal           @db.Decimal(10, 4)
-  totalCost       Decimal           @db.Decimal(10, 4)
-  oldQuantity     Decimal?          @db.Decimal(15, 4) // Saldo antes do ajuste
-  oldUnitCost     Decimal?          @db.Decimal(10, 4) // Custo antes do ajuste
-  machineId       String?
-  machineCounter  Int?
-  notes           String?
-  justification   String?           // Justificativa do ajuste
-  movementNumber  String?           @unique // Número único da transação
-  documentUrl     String?           // Link para documento anexo
-  supplierId      String?
-  documentKey     String?
-  isCancelled     Boolean           @default(false)
-  cancelledAt     DateTime?
-  cancelledById   String?
-  quantityRemaining Decimal?          @db.Decimal(15, 4) // Saldo restante deste lote (para PEPS)
-  createdAt       DateTime          @default(now())
-  
-  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  material        Material          @relation(fields: [materialId], references: [id])
-  machine         Machine?          @relation(fields: [machineId], references: [id])
-  supplier        Profile?          @relation("SupplierMovements", fields: [supplierId], references: [id])
-  user            User?             @relation("UserMovements", fields: [userId], references: [id])
-  cancelledBy     User?             @relation("CancelledMovements", fields: [cancelledById], references: [id])
+enum SourcingMode {
+  STOCK
+  ON_DEMAND
+}
 
-  @@index([organizationId])
-  @@index([materialId])
-  @@index([supplierId])
-  @@map("stock_movements")
+enum SupplierPaymentMode {
+  ON_PURCHASE
+  DAYS_AFTER
+  MONTH_DAY
+  END_OF_MONTH
+}
+
+enum PaymentScope {
+  SALES
+  PURCHASES
+  BOTH
 }
 
 enum StockMovementType {
   ENTRY
   INTERNAL_CONSUMPTION
   ADJUSTMENT
-}
-
-model Role {
-  id             String   @id @default(uuid())
-  organizationId String
-  name           String
-  description    String?
-  isSystem       Boolean  @default(false)
-  active         Boolean  @default(true)
-  createdAt      DateTime @default(now())
-
-  users             User[]
-  permissions       RolePermission[]
-  commissionRules   CommissionRule[]
-  commissionEntries CommissionEntry[]
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@unique([organizationId, name])
-  @@map("roles")
-}
-
-model RolePermission {
-  id            String @id @default(uuid())
-  roleId        String
-  permissionKey String
-
-  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
-
-  @@unique([roleId, permissionKey])
-  @@map("role_permissions")
-}
-
-model CommissionRule {
-  id              String   @id @default(uuid())
-  organizationId  String
-  roleId          String
-  rate            Decimal  @db.Decimal(10, 2)
-  description     String?
-  active          Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  organization    Organization @relation(fields: [organizationId], references: [id])
-  role            Role         @relation(fields: [roleId], references: [id])
-
-  @@map("commission_rules")
-}
-
-model CommissionEntry {
-  id              String   @id @default(uuid())
-  organizationId  String
-  orderId         String
-  userId          String?
-  roleId          String?
-  amount          Decimal  @db.Decimal(10, 2)
-  rateApplied     Decimal  @db.Decimal(10, 2)
-  description     String
-  status          String   @default("PENDING")
-  createdAt       DateTime @default(now())
-
-  organization    Organization @relation(fields: [organizationId], references: [id])
-  order           Order        @relation(fields: [orderId], references: [id])
-  user            User?        @relation(fields: [userId], references: [id])
-  role            Role?        @relation(fields: [roleId], references: [id])
-
-  @@map("commission_entries")
 }

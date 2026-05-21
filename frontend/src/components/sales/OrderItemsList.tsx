@@ -2,7 +2,7 @@ import React from 'react';
 import { statusConfig } from '@/types/pedidos';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Plus, Edit, Trash2, AlertCircle, Ban } from 'lucide-react';
+import { Plus, Edit, Trash2, AlertCircle, Ban, Package } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { ItemPedido, Produto } from '@/types/sales';
 import { ITEM_TYPE_CONFIGS } from '@/types/item-types';
@@ -52,7 +52,7 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({
         if (item.product?.pricingMode === 'DYNAMIC_ENGINEER' && (attributes.complexity || attributes.machineTime || attributes.setupTime)) {
             return (
                 <div className="mt-2 p-2 bg-gray-50 border border-gray-200 rounded text-sm">
-                    <p className="font-medium text-gray-800 mb-1">📦 Especificações do Produto:</p>
+                    <p className="font-medium text-gray-800 mb-1 flex items-center gap-1"><Package className="w-4 h-4" /> Especificações do Produto:</p>
                     <div className="grid grid-cols-2 gap-2">
                         {attributes.complexity && (
                             <p><span className="font-medium">Complexidade:</span> {attributes.complexity}</p>
@@ -229,9 +229,10 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({
                                                 };
                                                 const colorClass = colorClasses[typeConfig.color as keyof typeof colorClasses] || colorClasses.gray;
 
+                                                const TypeIcon = typeConfig.icon;
                                                 return (
-                                                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${colorClass}`}>
-                                                        <span className="mr-1">{typeConfig.icon}</span>
+                                                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${colorClass}`}>
+                                                        <TypeIcon className="w-3 h-3" />
                                                         {typeConfig.label}
                                                     </span>
                                                 );

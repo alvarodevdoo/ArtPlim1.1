@@ -52,38 +52,44 @@ const DashboardSimple: React.FC = () => {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      
-      // Carregar estatísticas básicas
-      const [ordersResponse, productsResponse] = await Promise.allSettled([
-        api.get('/api/sales/orders?limit=5'),
-        api.get('/api/catalog/products?limit=1')
+
+      const [ordersResponse, productsResponse, customersResponse, budgetsResponse] = await Promise.allSettled([
+        api.get('/api/sales/orders'),
+        api.get('/api/catalog/products'),
+        api.get('/api/profiles', { params: { isCustomer: true, limit: 1000 } }),
+        api.get('/api/sales/budgets'),
       ]);
 
-      // Processar pedidos recentes
+      // Pedidos: recentes + contagem de hoje
       if (ordersResponse.status === 'fulfilled') {
         const orders = ordersResponse.value.data.data || [];
         setRecentOrders(orders.slice(0, 5));
-        
-        // Contar pedidos de hoje
+
         const today = new Date().toDateString();
-        const todayOrders = orders.filter((order: any) => 
+        const todayOrders = orders.filter((order: any) =>
           new Date(order.createdAt).toDateString() === today
         );
         setStats(prev => ({ ...prev, pedidosHoje: todayOrders.length }));
       }
 
-      // Processar produtos
+      // Produtos disponíveis
       if (productsResponse.status === 'fulfilled') {
         const products = productsResponse.value.data.data || [];
         setStats(prev => ({ ...prev, produtosDisponiveis: products.length }));
       }
 
-      // Dados simulados para outras estatísticas (podem ser implementados depois)
-      setStats(prev => ({
-        ...prev,
-        clientesAtivos: 25,
-        orcamentosAbertos: 8
-      }));
+      // Clientes ativos
+      if (customersResponse.status === 'fulfilled') {
+        const customers = customersResponse.value.data.data || [];
+        setStats(prev => ({ ...prev, clientesAtivos: customers.length }));
+      }
+
+      // Orçamentos aguardando aprovação (DRAFT ou SENT)
+      if (budgetsResponse.status === 'fulfilled') {
+        const budgets = budgetsResponse.value.data.data || [];
+        const aguardando = budgets.filter((b: any) => b.status === 'DRAFT' || b.status === 'SENT').length;
+        setStats(prev => ({ ...prev, orcamentosAbertos: aguardando }));
+      }
 
     } catch (error) {
       console.error('Erro ao carregar dados do dashboard:', error);

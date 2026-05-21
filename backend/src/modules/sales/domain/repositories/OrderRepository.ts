@@ -27,7 +27,7 @@ export interface OrderRepository {
   findByOrderNumber(orderNumber: OrderNumber): Promise<Order | null>;
   findAll(filters?: OrderFilters): Promise<Order[]>;
   delete(id: string): Promise<void>;
-  getNextSequence(): Promise<number>;
+  getNextSequence(organizationId: string): Promise<number>;
   getStats(organizationId: string): Promise<OrderStats>;
   findExpiredOrders(organizationId: string): Promise<Order[]>;
 }

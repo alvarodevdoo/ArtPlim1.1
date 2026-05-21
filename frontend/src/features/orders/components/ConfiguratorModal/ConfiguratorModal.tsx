@@ -151,7 +151,6 @@ export const ConfiguratorModal: React.FC<ConfiguratorModalProps> = ({
         composition={composition}
         loading={loading}
         negotiatedPrice={negotiatedPrice}
-        onNegotiatedPriceChange={setNegotiatedPrice}
         quantity={quantity}
       />
 

@@ -2,7 +2,8 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Eye, Edit, Package, Phone, Plus, Printer, RotateCcw, Clock, CheckCircle2, AlertCircle, User as UserIcon, X, ChevronDown, ChevronUp, RefreshCcw, Wrench, Copy } from 'lucide-react';
+import { Eye, Edit, Package, Phone, Plus, Printer, RotateCcw, Clock, CheckCircle2, AlertCircle, User as UserIcon, X, ChevronDown, ChevronUp, RefreshCcw, Wrench, Copy, MoreHorizontal } from 'lucide-react';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { DatasOrcamento } from '@/components/ui/DatasOrcamento';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import { Pedido, ProcessStatus, statusConfig, shouldShowDimensions } from '@/types/pedidos';
@@ -310,32 +311,46 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
                       <Copy className="w-4 h-4" />
                     </Button>
 
-                    {/* Botão Reabrir — para pedidos FINISHED ou DELIVERED */}
+                    {/* Menu de ações para pedidos FINISHED ou DELIVERED */}
                     {(pedido?.status === 'FINISHED' || pedido?.status === 'DELIVERED') && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                        title="Reabrir pedido (corrigir clique acidental)"
-                        disabled={loadingAction === pedido.id + '_reopen'}
-                        onClick={(e) => { e.stopPropagation(); handleReopen(pedido); }}
-                      >
-                        <RefreshCcw className={`w-4 h-4 ${loadingAction === pedido.id + '_reopen' ? 'animate-spin' : ''}`} />
-                      </Button>
-                    )}
-
-                    {/* Botão Regerar Produção — para pedidos que precisam ser refeitos */}
-                    {(pedido?.status === 'FINISHED' || pedido?.status === 'DELIVERED') && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
-                        title="Regerar produção (produto com defeito)"
-                        disabled={loadingAction === pedido.id + '_regenerate'}
-                        onClick={(e) => { e.stopPropagation(); handleRegenerate(pedido); }}
-                      >
-                        <Wrench className={`w-4 h-4 ${loadingAction === pedido.id + '_regenerate' ? 'animate-spin' : ''}`} />
-                      </Button>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title="Ações do pedido finalizado"
+                            disabled={loadingAction === pedido.id + '_reopen' || loadingAction === pedido.id + '_regenerate'}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {(loadingAction === pedido.id + '_reopen' || loadingAction === pedido.id + '_regenerate')
+                              ? <RefreshCcw className="w-4 h-4 animate-spin" />
+                              : <MoreHorizontal className="w-4 h-4" />
+                            }
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-56 p-2" align="end">
+                          <button
+                            className="flex items-start gap-3 w-full rounded-md px-3 py-2 text-left text-sm hover:bg-blue-50 transition-colors"
+                            onClick={(e) => { e.stopPropagation(); handleReopen(pedido); }}
+                          >
+                            <RefreshCcw className="w-4 h-4 mt-0.5 text-blue-600 shrink-0" />
+                            <span>
+                              <span className="font-medium text-blue-700 block">Reabrir pedido</span>
+                              <span className="text-xs text-muted-foreground">Corrigir clique acidental, sem impacto financeiro</span>
+                            </span>
+                          </button>
+                          <button
+                            className="flex items-start gap-3 w-full rounded-md px-3 py-2 text-left text-sm hover:bg-orange-50 transition-colors"
+                            onClick={(e) => { e.stopPropagation(); handleRegenerate(pedido); }}
+                          >
+                            <Wrench className="w-4 h-4 mt-0.5 text-orange-600 shrink-0" />
+                            <span>
+                              <span className="font-medium text-orange-700 block">Regerar produção</span>
+                              <span className="text-xs text-muted-foreground">Produto com defeito — baixa estoque novamente</span>
+                            </span>
+                          </button>
+                        </PopoverContent>
+                      </Popover>
                     )}
                   </div>
                 </div>

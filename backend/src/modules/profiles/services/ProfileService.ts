@@ -19,6 +19,9 @@ interface CreateProfileInput {
   organizationId?: string;
   creditLimit?: number;
   paymentTerms?: number;
+  paymentMode?: 'ON_PURCHASE' | 'DAYS_AFTER' | 'MONTH_DAY' | 'END_OF_MONTH';
+  paymentDayOfMonth?: number | null;
+  defaultPaymentMethodId?: string | null;
   password?: string;
   role?: 'ADMIN' | 'MANAGER' | 'OPERATOR' | 'USER' | 'CUSTOMER';
   roleId?: string;
@@ -36,18 +39,45 @@ interface ListFilters {
 export class ProfileService {
   constructor(private prisma: any) { }
 
+  private readonly FIELD_LABELS: Record<string, string> = {
+    document: 'CPF/CNPJ', phone: 'Telefone', email: 'E-mail',
+    tradeName: 'Nome Fantasia', stateRegistration: 'Inscrição Estadual',
+    municipalRegistration: 'Inscrição Municipal', address: 'Logradouro',
+    addressNumber: 'Número', addressComplement: 'Complemento',
+    neighborhood: 'Bairro', city: 'Cidade', state: 'Estado', zipCode: 'CEP',
+  };
+
+  private async validateRequiredFields(organizationId: string, data: Record<string, any>, isCustomer: boolean) {
+    if (!isCustomer) return;
+    const settings = await this.prisma.organizationSettings.findUnique({
+      where: { organizationId },
+      select: { requiredCustomerFields: true }
+    });
+    const required = (settings?.requiredCustomerFields as string[]) || [];
+    const missing = required.filter(field => !data[field]);
+    if (missing.length > 0) {
+      const labels = missing.map(f => this.FIELD_LABELS[f] || f).join(', ');
+      throw new ValidationError(`Campos obrigatórios não preenchidos: ${labels}`);
+    }
+  }
+
   async create(data: CreateProfileInput) {
     // Normalizar campos opcionais (converter strings vazias para null)
     const normalizedData = {
       ...data,
-      document: data.document?.trim() || null,
-      email: data.email?.trim() || null,
-      phone: data.phone?.trim() || null,
-      address: data.address?.trim() || null,
-      city: data.city?.trim() || null,
-      state: data.state?.trim() || null,
-      zipCode: data.zipCode?.trim() || null,
-      addressNumber: data.addressNumber?.trim() || null
+      document:             data.document?.trim()             || null,
+      email:                data.email?.trim()                || null,
+      phone:                data.phone?.trim()                || null,
+      address:              data.address?.trim()              || null,
+      addressNumber:        data.addressNumber?.trim()        || null,
+      addressComplement:    (data as any).addressComplement?.trim()    || null,
+      neighborhood:         (data as any).neighborhood?.trim()         || null,
+      tradeName:            (data as any).tradeName?.trim()            || null,
+      stateRegistration:    (data as any).stateRegistration?.trim()    || null,
+      municipalRegistration:(data as any).municipalRegistration?.trim()|| null,
+      city:                 data.city?.trim()                 || null,
+      state:                data.state?.trim()                || null,
+      zipCode:              data.zipCode?.trim()              || null,
     };
 
     // Buscar configurações se organizationId estiver presente
@@ -101,6 +131,11 @@ export class ProfileService {
       }
     }
 
+    // Validar campos obrigatórios configurados pela organização
+    if (normalizedData.organizationId) {
+      await this.validateRequiredFields(normalizedData.organizationId, normalizedData, normalizedData.isCustomer ?? false);
+    }
+
     // Usar transação se for funcionário e tiver senha (para criar o usuário)
     const profile = await this.prisma.$transaction(async (tx: any) => {
       let userId = null;
@@ -147,6 +182,12 @@ export class ProfileService {
           email: normalizedData.email ? normalizedData.email.toLowerCase() : null,
           phone: normalizedData.phone,
           address: normalizedData.address,
+          addressNumber: normalizedData.addressNumber,
+          addressComplement: normalizedData.addressComplement,
+          neighborhood: normalizedData.neighborhood,
+          tradeName: normalizedData.tradeName,
+          stateRegistration: normalizedData.stateRegistration,
+          municipalRegistration: normalizedData.municipalRegistration,
           city: normalizedData.city,
           state: normalizedData.state,
           zipCode: normalizedData.zipCode,
@@ -154,9 +195,13 @@ export class ProfileService {
           isSupplier: normalizedData.isSupplier,
           isEmployee: normalizedData.isEmployee,
           organizationId: normalizedData.organizationId,
-          addressNumber: normalizedData.addressNumber,
           creditLimit: normalizedData.creditLimit,
           paymentTerms: normalizedData.paymentTerms,
+          paymentMode: normalizedData.paymentMode ?? undefined,
+          paymentDayOfMonth: normalizedData.paymentDayOfMonth ?? null,
+          ...(normalizedData.defaultPaymentMethodId
+              ? { defaultPaymentMethod: { connect: { id: normalizedData.defaultPaymentMethodId } } }
+              : {}),
           userId: userId,
           exemptFromDeposit: normalizedData.exemptFromDeposit
         }
@@ -248,18 +293,30 @@ export class ProfileService {
     return profile;
   }
 
-  async update(id: string, data: Partial<CreateProfileInput>) {
+  async update(id: string, data: Partial<CreateProfileInput> & {
+    tradeName?: string | null;
+    addressComplement?: string | null;
+    neighborhood?: string | null;
+    stateRegistration?: string | null;
+    municipalRegistration?: string | null;
+    savedBillingContacts?: any[];
+  }) {
     // Verificar se perfil existe
     await this.findById(id);
 
     // Normalizar campos opcionais
-    const normalizedData = {
+    const normalizedData: any = {
       ...data,
       document: data.document?.trim() || null,
       email: data.email?.trim() || null,
       phone: data.phone?.trim() || null,
       address: data.address?.trim() || null,
       addressNumber: data.addressNumber?.trim() || null,
+      addressComplement: (data as any).addressComplement?.trim() || null,
+      neighborhood: (data as any).neighborhood?.trim() || null,
+      tradeName: (data as any).tradeName?.trim() || null,
+      stateRegistration: (data as any).stateRegistration?.trim() || null,
+      municipalRegistration: (data as any).municipalRegistration?.trim() || null,
       city: data.city?.trim() || null,
       state: data.state?.trim() || null,
       zipCode: data.zipCode?.trim() || null,
@@ -320,6 +377,18 @@ export class ProfileService {
       }
     }
 
+    // Validar campos obrigatórios configurados pela organização
+    const orgId = data.organizationId;
+    if (orgId && normalizedData.isCustomer !== undefined) {
+      await this.validateRequiredFields(orgId, normalizedData, normalizedData.isCustomer ?? false);
+    } else if (orgId) {
+      // Buscar se é cliente para validar
+      const existing = await this.prisma.profile.findUnique({ where: { id }, select: { isCustomer: true } });
+      if (existing?.isCustomer) {
+        await this.validateRequiredFields(orgId, normalizedData, true);
+      }
+    }
+
     const profile = await this.prisma.$transaction(async (tx: any) => {
       // Atualizar ou criar usuário se for funcionário ou cliente
       if ((normalizedData.isEmployee || normalizedData.isCustomer) && (normalizedData.password || normalizedData.role)) {
@@ -369,18 +438,35 @@ export class ProfileService {
       }
 
       // Limpar campos que não pertencem ao Profile no Prisma
+      // (autenticação, role e FKs imutáveis como organizationId)
       const profileData = { ...normalizedData };
       delete (profileData as any).password;
       delete (profileData as any).role;
+      delete (profileData as any).roleId;
+      delete (profileData as any).organizationId;
+      delete (profileData as any).userId;
 
       if (profileData.email) {
         profileData.email = profileData.email.toLowerCase();
       }
 
+      // Prisma v7 não aceita defaultPaymentMethodId escalar — usar a relação.
+      // Removemos o FK direto e adicionamos a sintaxe de connect/disconnect.
+      const defaultPaymentMethodIdRaw = (profileData as any).defaultPaymentMethodId;
+      delete (profileData as any).defaultPaymentMethodId;
+      const defaultPaymentMethodRelation = defaultPaymentMethodIdRaw !== undefined
+          ? (defaultPaymentMethodIdRaw
+              ? { connect: { id: defaultPaymentMethodIdRaw } }
+              : { disconnect: true })
+          : undefined;
+
       return await tx.profile.update({
         where: { id },
         data: {
           ...profileData,
+          ...(defaultPaymentMethodRelation
+              ? { defaultPaymentMethod: defaultPaymentMethodRelation }
+              : {}),
           updatedAt: new Date()
         }
       });

@@ -24,6 +24,11 @@ export interface Produto {
         formula?: any;
     };
     pricingRuleId?: string;
+    trackStock?: boolean;
+    stockQuantity?: number | null;
+    stockMinQuantity?: number | null;
+    sellWithoutStock?: boolean;
+    availableStock?: number | null;
 }
 
 export interface Cliente {

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { MessageSquare, Send } from 'lucide-react';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 export interface PedidoCustomer {
   id: string;
@@ -44,7 +45,7 @@ const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
   };
 
   return (
-    <div className="modal-overlay">
+    <ModalPortal>
       <Card className="modal-content-card max-w-md">
 
         <CardHeader>
@@ -85,7 +86,7 @@ const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
           </div>
         </CardContent>
       </Card>
-    </div>
+    </ModalPortal>
   );
 };
 

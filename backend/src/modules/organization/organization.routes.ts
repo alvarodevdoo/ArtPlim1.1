@@ -53,6 +53,9 @@ const updateSettingsSchema = z.object({
   minDepositPercent: z.number().min(0).max(100).optional(),
   allowDeliveryWithBalance: z.boolean().optional(),
   defaultDueDateDays: z.number().int().min(0).optional(),
+  enableCommissions: z.boolean().optional(),
+  requiredCustomerFields: z.array(z.string()).optional(),
+  workflowMode: z.enum(['STRICT', 'SKIP', 'FREE']).optional(),
 });
 
 const createUserSchema = z.object({
@@ -145,6 +148,18 @@ export async function organizationRoutes(fastify: FastifyInstance) {
       });
       
       const updateData: any = { ...body };
+
+      // Remoção explícita do Certificado Digital: força todos os campos relacionados a null
+      const isClearingCertificate =
+        body.nfeCertificate === null &&
+        Object.prototype.hasOwnProperty.call(body, 'nfeCertificate');
+      if (isClearingCertificate) {
+        updateData.nfeCertificate = null;
+        updateData.nfeCertificatePassword = null;
+        updateData.nfeCertificateFileName = null;
+        updateData.nfeCertificateSubject = null;
+        updateData.nfeCertificateExpiry = null;
+      }
 
       // Lógica de Certificado Digital
       if (body.nfeCertificate && body.nfeCertificatePassword) {
@@ -294,6 +309,21 @@ export async function organizationRoutes(fastify: FastifyInstance) {
     return reply.send({
       success: true,
       message: 'Usuário desativado com sucesso'
+    });
+  });
+
+  // ========== PAPÉIS (ROLES) ==========
+  fastify.get('/roles', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const roles = await prisma.role.findMany({
+      where: { organizationId: request.user!.organizationId, active: true },
+      orderBy: { name: 'asc' }
+    });
+
+    return reply.send({
+      success: true,
+      data: roles
     });
   });
 }

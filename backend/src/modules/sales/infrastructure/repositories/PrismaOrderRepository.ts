@@ -24,10 +24,63 @@ export class PrismaOrderRepository implements OrderRepository {
 
       // Atualizar pedido existente
       const updatedOrder = await this.prisma.$transaction(async (tx: any) => {
-        // Remover itens existentes
-        await tx.orderItem.deleteMany({
-          where: { orderId: order.id }
+        // Mapear campos de item para evitar repetição
+        const buildItemData = (item: any) => ({
+          productId: item.productId,
+          width: item.width,
+          height: item.height,
+          quantity: item.quantity,
+          costPrice: item.costPrice,
+          calculatedPrice: item.calculatedPrice,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice,
+          notes: item.notes,
+          area: item.area,
+          paperSize: item.paperSize,
+          paperType: item.paperType,
+          printColors: item.printColors,
+          finishing: item.finishing,
+          machineTime: item.machineTime,
+          setupTime: item.setupTime,
+          complexity: item.complexity,
+          customSizeName: item.customSizeName,
+          isCustomSize: item.isCustomSize,
+          attributes: item.attributes,
+          status: item.status,
+          pricingRuleId: item.pricingRuleId,
+          unitCostAtSale: item.unitCostAtSale,
+          unitPriceAtSale: item.unitPriceAtSale,
+          profitAtSale: item.profitAtSale,
+          compositionSnapshot: item.compositionSnapshot,
+          confirmedAt: item.confirmedAt,
+          discountStatus: item.discountStatus,
+          discountItem: item.discountItem,
+          discountGlobal: item.discountGlobal,
+          authorizationRequestId: item.authorizationRequestId
         });
+
+        // Buscar IDs dos itens que existem no banco para preservar FKs
+        // (DeliveryItem, ProductionOrder, CommissionEntry referenciam OrderItem.id)
+        const currentDbItems = await tx.orderItem.findMany({
+          where: { orderId: order.id },
+          select: { id: true }
+        });
+        const currentDbIds = new Set(currentDbItems.map((i: any) => i.id));
+
+        const itemsToUpdate = data.items.filter((i: any) => i.id && currentDbIds.has(i.id));
+        const itemsToCreate = data.items.filter((i: any) => !i.id || !currentDbIds.has(i.id));
+        const idsToKeep = new Set(itemsToUpdate.map((i: any) => i.id));
+        const idsToDelete = [...currentDbIds].filter(id => !idsToKeep.has(id));
+
+        if (idsToDelete.length > 0) {
+          await tx.orderItem.deleteMany({ where: { id: { in: idsToDelete } } });
+        }
+        for (const item of itemsToUpdate) {
+          await tx.orderItem.update({ where: { id: item.id }, data: buildItemData(item) });
+        }
+        for (const item of itemsToCreate) {
+          await tx.orderItem.create({ data: { orderId: order.id, ...buildItemData(item) } });
+        }
 
         // Atualizar pedido
         const updated = await tx.order.update({
@@ -59,41 +112,6 @@ export class PrismaOrderRepository implements OrderRepository {
             artDesignerId: data.artDesignerId,
             productionUserId: data.productionUserId,
             packagingUserId: data.packagingUserId,
-            items: {
-              create: data.items.map((item: any) => ({
-                productId: item.productId,
-                width: item.width,
-                height: item.height,
-                quantity: item.quantity,
-                costPrice: item.costPrice,
-                calculatedPrice: item.calculatedPrice,
-                unitPrice: item.unitPrice,
-                totalPrice: item.totalPrice,
-                notes: item.notes,
-                area: item.area,
-                paperSize: item.paperSize,
-                paperType: item.paperType,
-                printColors: item.printColors,
-                finishing: item.finishing,
-                machineTime: item.machineTime,
-                setupTime: item.setupTime,
-                complexity: item.complexity,
-                customSizeName: item.customSizeName,
-                isCustomSize: item.isCustomSize,
-                attributes: item.attributes,
-                status: item.status,
-                pricingRuleId: item.pricingRuleId,
-                unitCostAtSale: item.unitCostAtSale,
-                unitPriceAtSale: item.unitPriceAtSale,
-                profitAtSale: item.profitAtSale,
-                compositionSnapshot: item.compositionSnapshot,
-                confirmedAt: item.confirmedAt,
-                discountStatus: item.discountStatus,
-                discountItem: item.discountItem,
-                discountGlobal: item.discountGlobal,
-                authorizationRequestId: item.authorizationRequestId
-              }))
-            }
           },
           include: {
             processStatus: true,
@@ -279,6 +297,7 @@ export class PrismaOrderRepository implements OrderRepository {
 
   async findAll(filters?: OrderFilters): Promise<Order[]> {
     const whereClause: any = {};
+    let shouldCheckHiddenWithPendingPayment = false;
 
     if (filters?.organizationId) {
       whereClause.organizationId = filters.organizationId;
@@ -294,7 +313,7 @@ export class PrismaOrderRepository implements OrderRepository {
       // Se não há filtro de status nem busca:
       // 1. Ocultar cancelados por padrão no fluxo diário
       // 2. Respeitar a flag hideFromFlow dos status customizados
-      // 3. Mostrar pedidos sem status customizado (processStatusId: null)
+      // 3. Pedidos com pendência financeira serão adicionados depois
       whereClause.AND = [
         { status: { not: 'CANCELLED' } },
         {
@@ -304,6 +323,7 @@ export class PrismaOrderRepository implements OrderRepository {
           ]
         }
       ];
+      shouldCheckHiddenWithPendingPayment = true;
     }
 
     if (filters?.search) {
@@ -329,41 +349,73 @@ export class PrismaOrderRepository implements OrderRepository {
       };
     }
 
-    const orders = await this.prisma.order.findMany({
-      where: whereClause,
-      include: {
-        processStatus: true,
-        items: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                name: true,
-                description: true
-              }
-            }
-          }
-        },
-        customer: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true
-          }
-        },
-        transactions: {
-          include: {
-            paymentMethod: {
-              select: { name: true }
+    const includeClause = {
+      processStatus: true,
+      items: {
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              description: true
             }
           }
         }
       },
-      orderBy: {
-        createdAt: 'desc'
+      customer: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true
+        }
+      },
+      transactions: {
+        include: {
+          paymentMethod: {
+            select: { name: true }
+          }
+        }
       }
+    };
+
+    const orders = await this.prisma.order.findMany({
+      where: whereClause,
+      include: includeClause,
+      orderBy: { createdAt: 'desc' }
     });
+
+    // Buscar pedidos ocultos (hideFromFlow=true) com pendência financeira
+    if (shouldCheckHiddenWithPendingPayment && filters?.organizationId) {
+      const hiddenOrders = await this.prisma.order.findMany({
+        where: {
+          organizationId: filters.organizationId,
+          status: { not: 'CANCELLED' },
+          processStatus: { hideFromFlow: true }
+        },
+        include: includeClause,
+        orderBy: { createdAt: 'desc' }
+      });
+
+      // Filtrar apenas os que TÊM pendência financeira
+      const pendingHidden = hiddenOrders.filter((order: any) => {
+        const totalPaid = (order.transactions || []).reduce((sum: number, t: any) => {
+          if ((t.type === 'INCOME' || t.type === 'CREDIT') && t.status === 'PAID') {
+            return sum + Number(t.amount || 0);
+          }
+          return sum;
+        }, 0);
+        return totalPaid < Number(order.total || 0) - 0.01;
+      });
+
+      if (pendingHidden.length > 0) {
+        const existingIds = new Set(orders.map((o: any) => o.id));
+        const newOrders = pendingHidden.filter((o: any) => !existingIds.has(o.id));
+        const merged = [...orders, ...newOrders];
+        merged.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        return merged.map((order: any) => this.toDomain(order));
+      }
+    }
 
     return orders.map((order: any) => this.toDomain(order));
   }
@@ -374,9 +426,17 @@ export class PrismaOrderRepository implements OrderRepository {
     });
   }
 
-  async getNextSequence(): Promise<number> {
-    const count = await this.prisma.order.count();
-    return count + 1;
+  async getNextSequence(organizationId: string): Promise<number> {
+    // INSERT ... ON CONFLICT DO UPDATE é atômico no PostgreSQL — sem advisory lock,
+    // sem race condition, isolado por organização.
+    const rows = await this.prisma.$queryRaw<[{ lastValue: number }]>`
+      INSERT INTO "order_sequences" ("organizationId", "lastValue")
+      VALUES (${organizationId}, 1)
+      ON CONFLICT ("organizationId") DO UPDATE
+        SET "lastValue" = "order_sequences"."lastValue" + 1
+      RETURNING "lastValue"
+    `;
+    return Number(rows[0].lastValue);
   }
 
   async getStats(organizationId: string): Promise<OrderStats> {

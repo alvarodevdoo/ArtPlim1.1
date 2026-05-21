@@ -1,389 +1,58 @@
 import React, { useState } from 'react';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
-import {
-  BarChart3,
-  TrendingUp,
-  DollarSign,
-  Users,
-  Package,
-  FileText,
-  Download,
-  Eye
-} from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { QuickStats } from '@/features/relatorios/components/QuickStats';
+import { RelatorioSelector } from '@/features/relatorios/components/RelatorioSelector';
+import { RelatorioFinanceiro } from '@/features/relatorios/components/RelatorioFinanceiro';
+import { RelatorioComissoes } from '@/features/relatorios/components/RelatorioComissoes';
+import { RelatorioVendas } from '@/features/relatorios/components/RelatorioVendas';
+import { RelatorioPendente } from '@/features/relatorios/components/RelatorioPendente';
+import { useRelatoriosStats } from '@/features/relatorios/hooks/useRelatoriosStats';
+import type { ReportId } from '@/features/relatorios/types';
+
+const PENDING_LABELS: Partial<Record<ReportId, string>> = {
+  clientes: 'Relatório de Clientes',
+  produtos: 'Relatório de Produtos',
+  producao: 'Relatório de Produção',
+  estoque: 'Relatório de Estoque',
+};
 
 const Relatorios: React.FC = () => {
   const { hasPermission } = useAuth();
-  const [dateRange, setDateRange] = useState({
-    startDate: '',
-    endDate: ''
-  });
+  const { stats, loading: statsLoading } = useRelatoriosStats();
+  const [selectedReport, setSelectedReport] = useState<ReportId | null>(null);
 
-  const [selectedReport, setSelectedReport] = useState('');
-  const [commissionsData, setCommissionsData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  function renderActiveReport() {
+    if (!selectedReport) return null;
+    if (selectedReport === 'financeiro') return <RelatorioFinanceiro />;
+    if (selectedReport === 'comissoes') return <RelatorioComissoes />;
+    if (selectedReport === 'vendas') return <RelatorioVendas />;
+    const label = PENDING_LABELS[selectedReport as keyof typeof PENDING_LABELS];
+    if (label) return <RelatorioPendente title={label} />;
+    return null;
+  }
 
-  // Mock data para demonstração
-  const reportData = {
-    vendas: {
-      total: 125430.50,
-      pedidos: 89,
-      ticketMedio: 1409.33,
-      crescimento: 12.5
-    },
-    clientes: {
-      total: 156,
-      novos: 23,
-      ativos: 134,
-      inativos: 22
-    },
-    produtos: {
-      maisVendidos: [
-        { nome: 'Adesivo Vinil', quantidade: 45, valor: 15230.00 },
-        { nome: 'Banner Lona', quantidade: 32, valor: 12450.00 },
-        { nome: 'Placa ACM', quantidade: 28, valor: 18900.00 }
-      ]
-    }
-  };
-
-  const reportTypes = [
-    {
-      id: 'vendas',
-      title: 'Relatório de Vendas',
-      description: 'Análise completa das vendas por período',
-      icon: DollarSign,
-      color: 'text-green-500',
-      setting: 'enableFinanceReports'
-    },
-    {
-      id: 'clientes',
-      title: 'Relatório de Clientes',
-      description: 'Estatísticas e análise da base de clientes',
-      icon: Users,
-      color: 'text-blue-500'
-    },
-    {
-      id: 'produtos',
-      title: 'Relatório de Produtos',
-      description: 'Performance e ranking dos produtos',
-      icon: Package,
-      color: 'text-purple-500'
-    },
-    {
-      id: 'financeiro',
-      title: 'Relatório Financeiro',
-      description: 'Fluxo de caixa e análise financeira',
-      icon: TrendingUp,
-      color: 'text-orange-500',
-      setting: 'enableFinanceReports'
-    },
-    {
-      id: 'producao',
-      title: 'Relatório de Produção',
-      description: 'Eficiência e capacidade produtiva',
-      icon: BarChart3,
-      color: 'text-indigo-500',
-      setting: 'enableProduction'
-    },
-    {
-      id: 'estoque',
-      title: 'Relatório de Estoque',
-      description: 'Movimentação e níveis de estoque',
-      icon: Package,
-      color: 'text-red-500',
-      setting: 'enableWMS'
-    },
-    {
-      id: 'comissoes',
-      title: 'Relatório de Comissões',
-      description: 'Cálculo de comissões por vendedor no período',
-      icon: DollarSign,
-      color: 'text-yellow-600',
-      setting: 'enableFinanceReports'
-    }
-  ].filter(report => {
-    if (report.setting === 'enableFinanceReports') return hasPermission('finance.reports');
-    if (report.setting === 'enableProduction') return hasPermission('production.view');
-    if (report.setting === 'enableWMS') return hasPermission('inventory.view');
-    return true;
-  });
-
-  const handleGenerateReport = async () => {
-    if (!selectedReport) {
-      toast.error('Selecione um tipo de relatório');
-      return;
-    }
-
-    if (!dateRange.startDate || !dateRange.endDate) {
-      toast.error('Selecione o período (data inicial e final)');
-      return;
-    }
-
-    if (selectedReport === 'comissoes') {
-      setLoading(true);
-      try {
-        const response = await api.get(`/api/finance/reports/commissions?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`);
-        setCommissionsData(response.data.data);
-        toast.success('Relatório de comissões gerado com sucesso!');
-      } catch (error) {
-        console.error('Erro ao gerar relatório de comissões:', error);
-        toast.error('Erro ao gerar relatório de comissões');
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
-    // Outros relatórios mockados
-    toast.info(`Funcionalidade de geração para "${reportTypes.find(r => r.id === selectedReport)?.title}" em desenvolvimento.`);
-  };
+  const showStats = hasPermission('finance.reports');
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Cabeçalho */}
       <div>
         <h1 className="text-3xl font-bold text-foreground">Relatórios</h1>
-        <p className="text-muted-foreground">
-          Análises e insights do seu negócio
-        </p>
+        <p className="text-muted-foreground">Análises e insights do seu negócio</p>
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {hasPermission('finance.reports') && (
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center space-x-2">
-                <DollarSign className="w-8 h-8 text-green-500" />
-                <div>
-                  <p className="text-2xl font-bold">{formatCurrency(reportData.vendas.total)}</p>
-                  <p className="text-sm text-muted-foreground">Vendas do Mês</p>
-                  <p className="text-xs text-green-600">+{reportData.vendas.crescimento}%</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+      {/* KPIs do mês atual — visíveis apenas para quem tem permissão financeira */}
+      {showStats && <QuickStats stats={stats} loading={statsLoading} />}
 
-        {hasPermission('finance.reports') && (
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center space-x-2">
-                <FileText className="w-8 h-8 text-blue-500" />
-                <div>
-                  <p className="text-2xl font-bold">{reportData.vendas.pedidos}</p>
-                  <p className="text-sm text-muted-foreground">Pedidos</p>
-                  <p className="text-xs text-muted-foreground">
-                    Ticket: {formatCurrency(reportData.vendas.ticketMedio)}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+      {/* Seletor de tipo de relatório */}
+      <RelatorioSelector
+        selected={selectedReport}
+        onSelect={setSelectedReport}
+        hasPermission={hasPermission}
+      />
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-2">
-              <Users className="w-8 h-8 text-purple-500" />
-              <div>
-                <p className="text-2xl font-bold">{reportData.clientes.total}</p>
-                <p className="text-sm text-muted-foreground">Clientes</p>
-                <p className="text-xs text-green-600">+{reportData.clientes.novos} novos</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-2">
-              <TrendingUp className="w-8 h-8 text-orange-500" />
-              <div>
-                <p className="text-2xl font-bold">{reportData.clientes.ativos}</p>
-                <p className="text-sm text-muted-foreground">Clientes Ativos</p>
-                <p className="text-xs text-muted-foreground">
-                  {((reportData.clientes.ativos / reportData.clientes.total) * 100).toFixed(1)}%
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Report Generator */}
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Gerador de Relatórios</CardTitle>
-              <CardDescription>
-                Selecione o tipo de relatório e período para análise
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Filters */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Data Inicial</label>
-                  <Input
-                    type="date"
-                    value={dateRange.startDate}
-                    onChange={(e) => setDateRange(prev => ({ ...prev, startDate: e.target.value }))}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Data Final</label>
-                  <Input
-                    type="date"
-                    value={dateRange.endDate}
-                    onChange={(e) => setDateRange(prev => ({ ...prev, endDate: e.target.value }))}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Formato</label>
-                  <select className="w-full h-10 px-3 py-2 border border-input rounded-md bg-background">
-                    <option value="pdf">PDF</option>
-                    <option value="excel">Excel</option>
-                    <option value="csv">CSV</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Report Types */}
-              <div className="space-y-4">
-                <h4 className="font-medium">Tipo de Relatório</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {reportTypes.map((report) => {
-                    const Icon = report.icon;
-                    return (
-                      <div
-                        key={report.id}
-                        className={`p-4 border rounded-lg cursor-pointer transition-colors ${selectedReport === report.id
-                          ? 'border-primary bg-primary/5'
-                          : 'border-border hover:border-primary/50'
-                          }`}
-                        onClick={() => setSelectedReport(report.id)}
-                      >
-                        <div className="flex items-start space-x-3">
-                          <Icon className={`w-5 h-5 ${report.color} mt-0.5`} />
-                          <div>
-                            <h5 className="font-medium text-sm">{report.title}</h5>
-                            <p className="text-xs text-muted-foreground">{report.description}</p>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="flex space-x-2">
-                <Button onClick={handleGenerateReport} className="flex-1">
-                  <Download className="w-4 h-4 mr-2" />
-                  Gerar Relatório
-                </Button>
-                <Button variant="outline">
-                  <Eye className="w-4 h-4 mr-2" />
-                  Visualizar
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Top Products */}
-        <div>
-          <Card>
-            <CardHeader>
-              <CardTitle>Produtos Mais Vendidos</CardTitle>
-              <CardDescription>
-                Ranking do mês atual
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {reportData.produtos.maisVendidos.map((produto, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 border border-border rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-bold">
-                        {index + 1}
-                      </div>
-                      <div>
-                        <p className="font-medium text-sm">{produto.nome}</p>
-                        <p className="text-xs text-muted-foreground">{produto.quantidade} vendas</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-medium text-sm">{formatCurrency(produto.valor)}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Recent Reports */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{selectedReport === 'comissoes' ? 'Resultado: Relatório de Comissões' : 'Relatórios Recentes'}</CardTitle>
-          <CardDescription>
-            {selectedReport === 'comissoes' ? `Período: ${dateRange.startDate} até ${dateRange.endDate}` : 'Últimos relatórios gerados'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-             <div className="text-center py-12">
-               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
-               <p>Gerando relatório...</p>
-             </div>
-          ) : selectedReport === 'comissoes' && commissionsData.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 font-medium">Vendedor</th>
-                    <th className="text-right py-3 font-medium">Qtd Itens</th>
-                    <th className="text-right py-3 font-medium">Total Vendido</th>
-                    <th className="text-right py-3 font-medium">Comissão Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {commissionsData.map((row, idx) => (
-                    <tr key={idx} className="border-b hover:bg-muted/50 transition-colors">
-                      <td className="py-3 font-medium">{row.sellerName}</td>
-                      <td className="py-3 text-right">{row.totalItems}</td>
-                      <td className="py-3 text-right">{formatCurrency(row.totalSales)}</td>
-                      <td className="py-3 text-right font-bold text-green-600">{formatCurrency(row.totalCommission)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="font-bold bg-muted/20">
-                    <td className="py-3">TOTAL GERAL</td>
-                    <td className="py-3 text-right">{commissionsData.reduce((s, r) => s + r.totalItems, 0)}</td>
-                    <td className="py-3 text-right">{formatCurrency(commissionsData.reduce((s, r) => s + r.totalSales, 0))}</td>
-                    <td className="py-3 text-right text-green-700">{formatCurrency(commissionsData.reduce((s, r) => s + r.totalCommission, 0))}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              <BarChart3 className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>Nenhum dado para exibir no momento</p>
-              <p className="text-sm">Selecione o tipo de relatório e clique em "Gerar Relatório"</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Conteúdo do relatório selecionado */}
+      {renderActiveReport()}
     </div>
   );
 };

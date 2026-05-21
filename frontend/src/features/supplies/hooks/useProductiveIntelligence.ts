@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { 
   ProductiveIntelligenceData, 
   DimUnit, 
@@ -8,7 +8,44 @@ export const useProductiveIntelligence = (
   value: ProductiveIntelligenceData,
   onChange: (data: ProductiveIntelligenceData) => void
 ) => {
-  const [dimUnit, setDimUnit] = useState<DimUnit>('cm');
+  // Infere a unidade de exibição ideal a partir do valor armazenado em metros.
+  // Ex.: 0.021m → "21" em mm (limpo); 0.21m → "21" em cm; 1.2m → "1.2" em m.
+  const inferDimUnit = useCallback((meters: number): DimUnit | null => {
+    if (!meters || meters <= 0) return null;
+    const mm = meters * 1000;
+    if (mm < 1000 && Math.abs(mm - Math.round(mm)) < 0.001) return 'mm';
+    const cm = meters * 100;
+    if (cm < 100 && Math.abs(cm * 10 - Math.round(cm * 10)) < 0.001) return 'cm';
+    return 'm';
+  }, []);
+
+  const initialDimUnit: DimUnit =
+    value.dimUnit ||
+    inferDimUnit(value.largura_unitaria) ||
+    inferDimUnit(value.altura_unitaria) ||
+    'cm';
+
+  const [dimUnit, setDimUnitState] = useState<DimUnit>(initialDimUnit);
+  const userTouchedRef = useRef(false);
+
+  // Re-infere quando os valores carregam (ex.: abrir Editar Insumo após fetch)
+  // até que o usuário escolha manualmente uma unidade.
+  useEffect(() => {
+    if (userTouchedRef.current) return;
+    const inferred =
+      value.dimUnit ||
+      inferDimUnit(value.largura_unitaria) ||
+      inferDimUnit(value.altura_unitaria);
+    if (inferred && inferred !== dimUnit) {
+      setDimUnitState(inferred);
+    }
+  }, [value.dimUnit, value.largura_unitaria, value.altura_unitaria, dimUnit, inferDimUnit]);
+
+  const setDimUnit = useCallback((u: DimUnit) => {
+    userTouchedRef.current = true;
+    setDimUnitState(u);
+    onChange({ ...value, dimUnit: u });
+  }, [value, onChange]);
 
   const toDisplayValue = useCallback((meters: number, unit: DimUnit): string => {
     if (meters === undefined || meters === null) return '';

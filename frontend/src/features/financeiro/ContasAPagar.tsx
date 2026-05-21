@@ -1,12 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/utils';
 import api from '@/lib/api';
-import { CheckCircle, AlertCircle, Clock, DollarSign, Plus, Calculator, Trash2, Edit2, Calendar } from 'lucide-react';
+import {
+  CheckCircle, AlertTriangle, Clock, Plus, Calculator,
+  Trash2, Edit2, Calendar, FileText, Search, RefreshCw
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+
+// ─── Interfaces ──────────────────────────────────────────────────────────────
 
 interface Supplier {
   id: string;
@@ -17,11 +22,13 @@ interface Supplier {
 interface AccountPayable {
   id: string;
   amount: number;
-  balanceDue: number;
+  balanceDue?: number;
   dueDate: string;
-  status: 'PENDING' | 'PARTIAL' | 'PAID' | 'CANCELLED';
+  status: 'PENDING' | 'PAID' | 'CANCELLED';
   supplier: { id: string; name: string };
+  supplierAccountId: string | null;
   _count: { receipts: number };
+  notes?: string | null;
 }
 
 interface BankAccount {
@@ -53,93 +60,218 @@ interface RecurringBill {
   categoryId: string | null;
 }
 
-interface ChartOfAccount {
-  id: string;
-  name: string;
-  code: string;
-  type: 'ANALYTIC' | 'SYNTHETIC';
+interface PayableStats {
+  overdue: { total: number; count: number };
+  upcoming: { total: number; count: number };
+  paidThisMonth: { total: number; count: number };
+  pendingReceipts: number;
 }
 
+type ActiveTab = 'payables' | 'receipts' | 'recurring' | 'history';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function todayMidnight() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function parseDueDateMidnight(dueDate: string) {
+  // Datas da API vêm como ISO string. Parsear como data local (sem hora) evita
+  // que diferenças de timezone marquem erroneamente o dia como vencido.
+  const [year, month, day] = dueDate.split('T')[0].split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function isOverdue(dueDate: string) {
+  return parseDueDateMidnight(dueDate) < todayMidnight();
+}
+
+function formatDueDate(dueDate: string) {
+  const due = parseDueDateMidnight(dueDate);
+  const today = todayMidnight();
+  const diffMs = due.getTime() - today.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+  const label = due.toLocaleDateString('pt-BR');
+
+  if (diffDays < 0) {
+    const abs = Math.abs(diffDays);
+    return { label, note: `Venceu há ${abs} dia${abs !== 1 ? 's' : ''}`, overdue: true };
+  }
+  if (diffDays === 0) return { label, note: 'Vence hoje', overdue: false };
+  if (diffDays <= 7) return { label, note: `Vence em ${diffDays} dia${diffDays !== 1 ? 's' : ''}`, overdue: false };
+  return { label, note: '', overdue: false };
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function ContasAPagar() {
+  const [stats, setStats] = useState<PayableStats | null>(null);
   const [payables, setPayables] = useState<AccountPayable[]>([]);
   const [summaries, setSummaries] = useState<ReceiptSummary[]>([]);
   const [recurringBills, setRecurringBills] = useState<RecurringBill[]>([]);
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [chartOfAccounts, setChartOfAccounts] = useState<ChartOfAccount[]>([]);
-  
+
+  const [activeTab, setActiveTab] = useState<ActiveTab>('payables');
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // Modais
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [showReceiptModal, setShowReceiptModal] = useState(false);
-  const [showCloseInvoiceModal, setShowCloseInvoiceModal] = useState(false);
-  const [showRecurringModal, setShowRecurringModal] = useState(false);
-
-  // Estados de formulário
-  const [selectedPayable, setSelectedPayable] = useState<AccountPayable | null>(null);
-  const [selectedSummary, setSelectedSummary] = useState<ReceiptSummary | null>(null);
-  const [selectedRecurring, setSelectedRecurring] = useState<RecurringBill | null>(null);
-
+  // Modal: pagar fatura
+  const [paymentModal, setPaymentModal] = useState<AccountPayable | null>(null);
   const [paymentData, setPaymentData] = useState({ paymentAccountId: '', amountPaid: '', notes: '' });
-  const [receiptData, setReceiptData] = useState({ supplierId: '', totalAmount: '', notes: '', issueDate: new Date().toISOString().split('T')[0] });
-  const [closeData, setCloseData] = useState({ dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], stockAccountId: '', supplierAccountId: '', notes: '' });
-  const [recurringData, setRecurringData] = useState({ name: '', amount: '', dueDay: '10', supplierId: '', categoryId: '', description: '', active: true });
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  // Modal: fechar fatura (recibos → conta a pagar)
+  const [closeModal, setCloseModal] = useState<ReceiptSummary | null>(null);
+  const [closeData, setCloseData] = useState({
+    dueDate: '',
+    notes: ''
+  });
+
+  // Modal: novo recibo
+  const [receiptModal, setReceiptModal] = useState(false);
+  const [receiptData, setReceiptData] = useState({
+    supplierId: '',
+    totalAmount: '',
+    issueDate: new Date().toISOString().split('T')[0],
+    notes: ''
+  });
+
+  // Modal: nova despesa direta
+  const [directModal, setDirectModal] = useState(false);
+  const [directData, setDirectData] = useState({
+    supplierId: '',
+    amount: '',
+    dueDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+    notes: ''
+  });
+
+  // Modal: conta recorrente
+  const [recurringModal, setRecurringModal] = useState(false);
+  const [selectedRecurring, setSelectedRecurring] = useState<RecurringBill | null>(null);
+  const [recurringData, setRecurringData] = useState({
+    name: '', amount: '', dueDay: '10', supplierId: '', description: '', active: true
+  });
+
+  useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [payablesRes, summariesRes, recurringRes, accountsRes, suppliersRes, chartRes] = await Promise.all([
+      const [payablesRes, summariesRes, recurringRes, accountsRes, suppliersRes, statsRes] = await Promise.all([
         api.get('/api/finance/payables'),
         api.get('/api/insumos/receipts/summary'),
         api.get('/api/finance/recurring-bills'),
         api.get('/api/finance/accounts'),
         api.get('/api/profiles?isSupplier=true'),
-        api.get('/api/finance/chart-of-accounts')
+        api.get('/api/finance/payables/stats')
       ]);
 
       setPayables(payablesRes.data.data);
       setSummaries(summariesRes.data.data);
       setRecurringBills(recurringRes.data.data);
-      setAccounts(accountsRes.data.data.filter((a: any) => a.type === 'CHECKING' || a.type === 'CASH' || a.type === 'SAVINGS'));
+      setAccounts(accountsRes.data.data.filter((a: BankAccount) =>
+        ['CHECKING', 'CASH', 'SAVINGS'].includes(a.type)
+      ));
       setSuppliers(suppliersRes.data.data);
-      setChartOfAccounts(chartRes.data.data.filter((acc: any) => acc.type === 'ANALYTIC'));
-    } catch (error) {
+      setStats(statsRes.data.data);
+    } catch {
       toast.error('Erro ao carregar dados financeiros');
     } finally {
       setLoading(false);
     }
   };
 
-  // --- Handlers: Pagamento de AccountPayable ---
-  const handleOpenPayment = (payable: AccountPayable) => {
-    setSelectedPayable(payable);
-    setPaymentData({ paymentAccountId: '', amountPaid: (payable.balanceDue || payable.amount).toString(), notes: '' });
-    setShowPaymentModal(true);
+  // ── Filtros ────────────────────────────────────────────────────────────────
+
+  const pendingPayables = useMemo(() =>
+    payables.filter(p => p.status === 'PENDING'), [payables]);
+
+  const overduePayables = useMemo(() =>
+    pendingPayables.filter(p => isOverdue(p.dueDate)), [pendingPayables]);
+
+  const upcomingPayables = useMemo(() =>
+    pendingPayables.filter(p => !isOverdue(p.dueDate)), [pendingPayables]);
+
+  const historyPayables = useMemo(() =>
+    payables.filter(p => p.status === 'PAID' || p.status === 'CANCELLED'), [payables]);
+
+  const filteredUpcoming = useMemo(() =>
+    upcomingPayables.filter(p =>
+      p.supplier?.name?.toLowerCase().includes(search.toLowerCase())
+    ), [upcomingPayables, search]);
+
+  const filteredOverdue = useMemo(() =>
+    overduePayables.filter(p =>
+      p.supplier?.name?.toLowerCase().includes(search.toLowerCase())
+    ), [overduePayables, search]);
+
+  const filteredHistory = useMemo(() =>
+    historyPayables.filter(p =>
+      p.supplier?.name?.toLowerCase().includes(search.toLowerCase())
+    ), [historyPayables, search]);
+
+  // ── Handlers: Pagamento ────────────────────────────────────────────────────
+
+  const openPaymentModal = (payable: AccountPayable) => {
+    setPaymentModal(payable);
+    setPaymentData({
+      paymentAccountId: accounts.length === 1 ? accounts[0].id : '',
+      amountPaid: String(payable.balanceDue ?? payable.amount),
+      notes: ''
+    });
   };
 
   const handlePayBill = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPayable) return;
+    if (!paymentModal) return;
     try {
-      await api.post(`/api/finance/payables/${selectedPayable.id}/pay`, {
+      await api.post(`/api/finance/payables/${paymentModal.id}/pay`, {
         paymentAccountId: paymentData.paymentAccountId,
         amountPaid: parseFloat(paymentData.amountPaid),
-        notes: paymentData.notes
+        notes: paymentData.notes || undefined
       });
-      toast.success('Pagamento registrado!');
-      setShowPaymentModal(false);
+      toast.success('Pagamento registrado com sucesso!');
+      setPaymentModal(null);
       loadData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Erro no pagamento');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Erro ao registrar pagamento');
     }
   };
 
-  // --- Handlers: Novo Recibo de Material ---
+  // ── Handlers: Fechar Fatura ────────────────────────────────────────────────
+
+  const openCloseModal = (summary: ReceiptSummary) => {
+    setCloseModal(summary);
+    setCloseData({
+      dueDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+      notes: `Fechamento: ${summary.count} recibo${summary.count !== 1 ? 's' : ''}`
+    });
+  };
+
+  const handleCloseInvoice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!closeModal) return;
+    try {
+      await api.post('/api/insumos/receipts/close', {
+        supplierId: closeModal.supplierId,
+        receiptIds: closeModal.receiptIds,
+        dueDate: closeData.dueDate,
+        notes: closeData.notes || undefined
+        // stockAccountId e supplierAccountId são auto-resolvidos no backend
+      });
+      toast.success('Fatura gerada em Contas a Pagar!');
+      setCloseModal(null);
+      setActiveTab('payables');
+      loadData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Erro ao fechar fatura');
+    }
+  };
+
+  // ── Handlers: Novo Recibo ──────────────────────────────────────────────────
+
   const handleSaveReceipt = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -147,75 +279,61 @@ export function ContasAPagar() {
         supplierId: receiptData.supplierId,
         totalAmount: parseFloat(receiptData.totalAmount),
         issueDate: receiptData.issueDate,
-        notes: receiptData.notes
+        notes: receiptData.notes || undefined
       });
-      toast.success('Entrada de material registrada!');
-      setShowReceiptModal(false);
-      setReceiptData({ supplierId: '', totalAmount: '', notes: '', issueDate: new Date().toISOString().split('T')[0] });
+      toast.success('Recibo registrado!');
+      setReceiptModal(false);
+      setReceiptData({ supplierId: '', totalAmount: '', issueDate: new Date().toISOString().split('T')[0], notes: '' });
       loadData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Erro ao salvar recibo');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Erro ao salvar recibo');
     }
   };
 
-  // --- Handlers: Fechamento de Fatura (Billing) ---
-  const handleOpenCloseInvoice = (summary: ReceiptSummary) => {
-    setSelectedSummary(summary);
-    // Tenta encontrar contas padrão no Plano de Contas (ids fixos ou configurados seriam melhor, mas vamos deixar livre por ora)
-    setCloseData({
-      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      stockAccountId: '',
-      supplierAccountId: '',
-      notes: `Fechamento ref. ${summary.count} recibos`
-    });
-    setShowCloseInvoiceModal(true);
-  };
+  // ── Handlers: Despesa Direta ───────────────────────────────────────────────
 
-  const handleCloseInvoice = async (e: React.FormEvent) => {
+  const handleSaveDirect = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedSummary) return;
     try {
-      await api.post('/api/insumos/receipts/close', {
-        supplierId: selectedSummary.supplierId,
-        receiptIds: selectedSummary.receiptIds,
-        dueDate: closeData.dueDate,
-        stockAccountId: closeData.stockAccountId,
-        supplierAccountId: closeData.supplierAccountId,
-        notes: closeData.notes
+      await api.post('/api/finance/payables/direct', {
+        supplierId: directData.supplierId || undefined,
+        amount: parseFloat(directData.amount),
+        dueDate: directData.dueDate,
+        notes: directData.notes || undefined
       });
-      toast.success('Fatura consolidada e gerada em Contas a Pagar!');
-      setShowCloseInvoiceModal(false);
+      toast.success('Despesa lançada em Contas a Pagar!');
+      setDirectModal(false);
+      setDirectData({ supplierId: '', amount: '', dueDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0], notes: '' });
       loadData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Erro ao fechar fatura');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Erro ao lançar despesa');
     }
   };
 
-  // --- Handlers: Contas Recorrentes ---
+  // ── Handlers: Recorrentes ──────────────────────────────────────────────────
+
   const handleSaveRecurring = async (e: React.FormEvent) => {
     e.preventDefault();
+    const payload = {
+      name: recurringData.name,
+      amount: parseFloat(recurringData.amount),
+      dueDay: parseInt(recurringData.dueDay),
+      supplierId: recurringData.supplierId || null,
+      description: recurringData.description || null,
+      active: recurringData.active
+    };
     try {
-      const payload = {
-        name: recurringData.name,
-        amount: parseFloat(recurringData.amount),
-        dueDay: parseInt(recurringData.dueDay),
-        supplierId: recurringData.supplierId || null,
-        categoryId: recurringData.categoryId || null,
-        description: recurringData.description,
-        active: recurringData.active
-      };
-
       if (selectedRecurring) {
         await api.put(`/api/finance/recurring-bills/${selectedRecurring.id}`, payload);
       } else {
         await api.post('/api/finance/recurring-bills', payload);
       }
       toast.success('Conta recorrente salva!');
-      setShowRecurringModal(false);
+      setRecurringModal(false);
       setSelectedRecurring(null);
       loadData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Erro ao salvar recorrente');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Erro ao salvar conta recorrente');
     }
   };
 
@@ -225,264 +343,636 @@ export function ContasAPagar() {
       await api.delete(`/api/finance/recurring-bills/${id}`);
       toast.success('Removida!');
       loadData();
-    } catch (error) {
+    } catch {
       toast.error('Erro ao excluir');
     }
   };
 
   const handleGenerateMonth = async () => {
     const date = new Date();
-    if (!confirm(`Gerar cobranças para ${date.getMonth() + 1}/${date.getFullYear()}?`)) return;
+    const month = date.getMonth() + 1;
+    const year = date.getFullYear();
+    const monthLabel = date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    if (!confirm(`Gerar cobranças de ${monthLabel}?`)) return;
     try {
-      const res = await api.post('/api/finance/recurring-bills/generate-month', {
-        year: date.getFullYear(),
-        month: date.getMonth() + 1
-      });
-      toast.success(`Sucesso! Gerados: ${res.data.data.generated.join(', ')}`);
+      const res = await api.post('/api/finance/recurring-bills/generate-month', { year, month });
+      const generated = res.data.data.generated ?? [];
+      toast.success(generated.length > 0
+        ? `${generated.length} cobrança${generated.length !== 1 ? 's' : ''} gerada${generated.length !== 1 ? 's' : ''}!`
+        : 'Cobranças já geradas para este mês.'
+      );
       loadData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Erro ao gerar cobranças');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Erro ao gerar cobranças');
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  // ── Sub-componentes ────────────────────────────────────────────────────────
+
+  const StatusBadge = ({ status }: { status: string }) => {
     switch (status) {
-      case 'PENDING': return <Badge variant="outline" className="text-yellow-600 bg-yellow-50"><Clock className="w-3 h-3 mr-1" /> Pendente</Badge>;
-      case 'PAID': return <Badge variant="outline" className="text-green-600 bg-green-50"><CheckCircle className="w-3 h-3 mr-1" /> Pago</Badge>;
-      case 'PARTIAL': return <Badge variant="outline" className="text-blue-600 bg-blue-50"><Clock className="w-3 h-3 mr-1" /> Parcial</Badge>;
-      default: return <Badge variant="secondary">{status}</Badge>;
+      case 'PENDING': return <Badge variant="outline" className="text-yellow-600 bg-yellow-50 border-yellow-200"><Clock className="w-3 h-3 mr-1" />Pendente</Badge>;
+      case 'PAID':    return <Badge variant="outline" className="text-green-600 bg-green-50 border-green-200"><CheckCircle className="w-3 h-3 mr-1" />Pago</Badge>;
+      default:        return <Badge variant="secondary">{status}</Badge>;
     }
   };
 
-  if (loading) return <div className="p-8 text-center text-muted-foreground">Carregando painel financeiro...</div>;
+  const PayableRow = ({ payable, highlight }: { payable: AccountPayable; highlight?: boolean }) => {
+    const { label, note, overdue } = formatDueDate(payable.dueDate);
+    const amount = payable.balanceDue ?? payable.amount;
+    return (
+      <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 rounded-lg border transition-colors ${highlight ? 'bg-red-50 border-red-200 hover:bg-red-100' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold truncate">{payable.supplier?.name}</span>
+            <StatusBadge status={payable.status} />
+            {payable._count?.receipts > 0 && (
+              <Badge variant="secondary" className="text-xs">{payable._count.receipts} recibo{payable._count.receipts !== 1 ? 's' : ''}</Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
+            <span className={overdue ? 'text-red-600 font-medium' : ''}>{label}</span>
+            {note && <span className={`text-xs ${overdue ? 'text-red-500' : 'text-amber-600'}`}>· {note}</span>}
+          </div>
+          {payable.notes && <p className="text-xs text-muted-foreground mt-1 truncate">{payable.notes}</p>}
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <p className={`text-lg font-bold ${overdue ? 'text-red-600' : 'text-gray-800'}`}>{formatCurrency(amount)}</p>
+          </div>
+          <Button size="sm" onClick={() => openPaymentModal(payable)} className="bg-green-600 hover:bg-green-700 shrink-0">
+            Pagar
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div className="p-8 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+        <RefreshCw className="w-6 h-6 animate-spin" />
+        <span>Carregando painel financeiro...</span>
+      </div>
+    );
+  }
+
+  const tabs: { key: ActiveTab; label: string; count?: number }[] = [
+    { key: 'payables', label: 'A Pagar', count: pendingPayables.length },
+    { key: 'receipts', label: 'Recibos', count: summaries.length },
+    { key: 'recurring', label: 'Recorrentes', count: recurringBills.filter(b => b.active).length },
+    { key: 'history', label: 'Histórico', count: historyPayables.length }
+  ];
 
   return (
-    <div className="space-y-8 mt-6 max-w-7xl mx-auto">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-4">
+    <div className="space-y-6">
+
+      {/* ── Cabeçalho ─────────────────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b pb-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Gestão de Contas a Pagar</h1>
-          <p className="text-muted-foreground text-sm">Controle de faturas, débitos por fornecedor e custos fixos.</p>
+          <h1 className="text-2xl font-bold tracking-tight">Contas a Pagar</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">Controle de faturas, recibos de compra e custos fixos.</p>
         </div>
-        <div className="flex space-x-2">
-          <Button onClick={() => setShowReceiptModal(true)} variant="outline" className="borderColor-green-200">
-            <Plus className="w-4 h-4 mr-2" /> Novo Recibo Material
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" onClick={() => setReceiptModal(true)} size="sm">
+            <FileText className="w-4 h-4 mr-1.5" />Novo Recibo
           </Button>
-          <Button onClick={() => { setSelectedRecurring(null); setRecurringData({ name: '', amount: '', dueDay: '10', supplierId: '', categoryId: '', description: '', active: true }); setShowRecurringModal(true); }}>
-            <Calendar className="w-4 h-4 mr-2" /> Nova Conta Recorrente
+          <Button onClick={() => setDirectModal(true)} size="sm">
+            <Plus className="w-4 h-4 mr-1.5" />Nova Despesa
           </Button>
         </div>
       </div>
 
-      {/* --- SEÇÃO 1: SALDO ABERTO POR FORNECEDOR (RECEIPTS PENDING) --- */}
-      <section className="space-y-4">
-        <div className="flex items-center space-x-2">
-          <div className="p-2 bg-orange-100 rounded-lg text-orange-600"><Calculator className="w-5 h-5" /></div>
-          <h2 className="text-lg font-bold">Saldo Aberto por Fornecedor (Sob Demanda)</h2>
+      {/* ── KPI Cards ─────────────────────────────────────────────────────────── */}
+      {stats && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <Card className={stats.overdue.count > 0 ? 'border-red-200 bg-red-50' : ''}>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <AlertTriangle className={`w-4 h-4 ${stats.overdue.count > 0 ? 'text-red-500' : 'text-muted-foreground'}`} />
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Vencidas</span>
+              </div>
+              <p className={`text-xl font-bold ${stats.overdue.count > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                {formatCurrency(stats.overdue.total)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">{stats.overdue.count} fatura{stats.overdue.count !== 1 ? 's' : ''}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Clock className="w-4 h-4 text-amber-500" />
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">A Vencer</span>
+              </div>
+              <p className="text-xl font-bold text-gray-800">{formatCurrency(stats.upcoming.total)}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{stats.upcoming.count} fatura{stats.upcoming.count !== 1 ? 's' : ''}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <CheckCircle className="w-4 h-4 text-green-500" />
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Pago este mês</span>
+              </div>
+              <p className="text-xl font-bold text-green-600">{formatCurrency(stats.paidThisMonth.total)}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{stats.paidThisMonth.count} fatura{stats.paidThisMonth.count !== 1 ? 's' : ''}</p>
+            </CardContent>
+          </Card>
+
+          <Card className={stats.pendingReceipts > 0 ? 'border-orange-200 bg-orange-50' : ''}>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Calculator className={`w-4 h-4 ${stats.pendingReceipts > 0 ? 'text-orange-500' : 'text-muted-foreground'}`} />
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Recibos Abertos</span>
+              </div>
+              <p className={`text-xl font-bold ${stats.pendingReceipts > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
+                {stats.pendingReceipts}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">aguardando faturamento</p>
+            </CardContent>
+          </Card>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      )}
+
+      {/* ── Tabs ──────────────────────────────────────────────────────────────── */}
+      <div className="border-b flex gap-0">
+        {tabs.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+              activeTab === tab.key
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-gray-300'
+            }`}
+          >
+            {tab.label}
+            {tab.count !== undefined && tab.count > 0 && (
+              <span className={`text-xs rounded-full px-1.5 py-0.5 ${
+                activeTab === tab.key ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+              }`}>
+                {tab.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Tab: A Pagar ──────────────────────────────────────────────────────── */}
+      {activeTab === 'payables' && (
+        <div className="space-y-5">
+          {pendingPayables.length > 0 && (
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              <Input
+                className="pl-9"
+                placeholder="Buscar por fornecedor..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
+          )}
+
+          {/* Vencidas */}
+          {filteredOverdue.length > 0 && (
+            <section className="space-y-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-500" />
+                <h2 className="font-semibold text-red-600">Vencidas ({filteredOverdue.length})</h2>
+              </div>
+              {filteredOverdue.map(p => <PayableRow key={p.id} payable={p} highlight />)}
+            </section>
+          )}
+
+          {/* A vencer */}
+          {filteredUpcoming.length > 0 && (
+            <section className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-500" />
+                <h2 className="font-semibold text-gray-700">A Vencer ({filteredUpcoming.length})</h2>
+              </div>
+              {filteredUpcoming.map(p => <PayableRow key={p.id} payable={p} />)}
+            </section>
+          )}
+
+          {pendingPayables.length === 0 && (
+            <Card className="border-dashed">
+              <CardContent className="py-10 text-center text-muted-foreground">
+                <CheckCircle className="w-8 h-8 mx-auto mb-2 text-green-400" />
+                <p className="font-medium">Tudo em dia!</p>
+                <p className="text-sm mt-1">Nenhuma fatura pendente no momento.</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {pendingPayables.length > 0 && filteredOverdue.length === 0 && filteredUpcoming.length === 0 && (
+            <Card className="border-dashed">
+              <CardContent className="py-8 text-center text-muted-foreground text-sm">
+                Nenhum resultado para "{search}"
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* ── Tab: Recibos ──────────────────────────────────────────────────────── */}
+      {activeTab === 'receipts' && (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <p className="text-sm text-muted-foreground">
+              Recibos de compra agrupados por fornecedor. Feche a fatura para gerar uma conta a pagar.
+            </p>
+            <Button variant="outline" size="sm" onClick={() => setReceiptModal(true)}>
+              <Plus className="w-3.5 h-3.5 mr-1.5" />Novo Recibo
+            </Button>
+          </div>
+
           {summaries.length === 0 ? (
-            <Card className="col-span-full border-dashed"><CardContent className="py-8 text-center text-muted-foreground">Nenhum saldo acumulado em fornecedores no momento.</CardContent></Card>
+            <Card className="border-dashed">
+              <CardContent className="py-10 text-center text-muted-foreground">
+                <FileText className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                <p className="font-medium">Nenhum recibo pendente</p>
+                <p className="text-sm mt-1">Registre um novo recibo de compra ao receber materiais.</p>
+              </CardContent>
+            </Card>
           ) : (
-            summaries.map((s) => (
-              <Card key={s.supplierId} className="hover:shadow-md transition-shadow">
-                <CardHeader className="pb-2">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="text-base">{s.supplierName}</CardTitle>
-                      <CardDescription className="text-xs">{s.supplierDocument || 'Sem documento'}</CardDescription>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {summaries.map(s => (
+                <Card key={s.supplierId} className="hover:shadow-md transition-shadow border-orange-100">
+                  <CardContent className="p-4">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <p className="font-semibold">{s.supplierName}</p>
+                        <p className="text-xs text-muted-foreground">{s.supplierDocument || 'Sem CNPJ/CPF'}</p>
+                      </div>
+                      <Badge className="bg-orange-100 text-orange-700 border-none text-xs">
+                        {s.count} recibo{s.count !== 1 ? 's' : ''}
+                      </Badge>
                     </div>
-                    <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-200 border-none">{s.count} entradas</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex justify-between items-end">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Total Acumulado</p>
-                      <p className="text-xl font-bold text-orange-600">{formatCurrency(s.total)}</p>
+                    <div className="flex justify-between items-end">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Total acumulado</p>
+                        <p className="text-xl font-bold text-orange-600">{formatCurrency(s.total)}</p>
+                      </div>
+                      <Button size="sm" onClick={() => openCloseModal(s)} className="bg-orange-600 hover:bg-orange-700 text-white">
+                        Gerar Fatura
+                      </Button>
                     </div>
-                    <Button size="sm" onClick={() => handleOpenCloseInvoice(s)} className="bg-orange-600 hover:bg-orange-700">Fechar Fatura</Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           )}
         </div>
-      </section>
+      )}
 
-      {/* --- SEÇÃO 2: FATURAS CONSOLIDADAS (ACCOUNT PAYABLE) --- */}
-      <section className="space-y-4">
-        <div className="flex items-center space-x-2">
-          <div className="p-2 bg-green-100 rounded-lg text-green-600"><DollarSign className="w-5 h-5" /></div>
-          <h2 className="text-lg font-bold">Faturas Consolidadas a Pagar</h2>
-        </div>
-        {payables.filter(p => p.status !== 'PAID').length === 0 ? (
-          <Card className="border-dashed"><CardContent className="py-8 text-center text-muted-foreground">Nenhum boleto ou fatura vencendo em breve.</CardContent></Card>
-        ) : (
-          <div className="space-y-3">
-            {payables.filter(p => p.status !== 'PAID').map((payable) => (
-              <Card key={payable.id}>
-                <CardContent className="p-4 flex flex-col md:flex-row justify-between items-center gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-bold">{payable.supplier?.name}</span>
-                      {getStatusBadge(payable.status)}
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Vencimento: <span className={new Date(payable.dueDate) < new Date() ? 'text-red-500 font-bold' : ''}>{new Date(payable.dueDate).toLocaleDateString('pt-BR')}</span>
-                    </p>
-                  </div>
-                  <div className="text-right px-6 border-r border-l">
-                    <p className="text-xs text-muted-foreground uppercase font-semibold">Saldo</p>
-                    <p className="text-xl font-bold text-red-600">{formatCurrency(payable.balanceDue || payable.amount)}</p>
-                  </div>
-                  <Button onClick={() => handleOpenPayment(payable)} className="bg-green-600 hover:bg-green-700 h-10 px-6">Pagar Agora</Button>
-                </CardContent>
-              </Card>
-            ))}
+      {/* ── Tab: Recorrentes ──────────────────────────────────────────────────── */}
+      {activeTab === 'recurring' && (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <p className="text-sm text-muted-foreground">
+              Despesas fixas mensais. Use "Gerar Mês" para criar as cobranças do mês atual.
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleGenerateMonth} className="text-purple-700 hover:bg-purple-50">
+                <Calendar className="w-3.5 h-3.5 mr-1.5" />Gerar Mês
+              </Button>
+              <Button size="sm" onClick={() => { setSelectedRecurring(null); setRecurringData({ name: '', amount: '', dueDay: '10', supplierId: '', description: '', active: true }); setRecurringModal(true); }}>
+                <Plus className="w-3.5 h-3.5 mr-1.5" />Nova
+              </Button>
+            </div>
           </div>
-        )}
-      </section>
 
-      {/* --- SEÇÃO 3: CONTAS RECORRENTES (FIXAS) --- */}
-      <section className="space-y-4">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center space-x-2">
-            <div className="p-2 bg-purple-100 rounded-lg text-purple-600"><Calendar className="w-5 h-5" /></div>
-            <h2 className="text-lg font-bold">Custos Fixos / Recorrentes</h2>
-          </div>
-          <Button size="sm" variant="outline" onClick={handleGenerateMonth} className="text-purple-700 borderColor-purple-200 hover:bg-purple-50">Gerar Cobranças do Mês</Button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {recurringBills.length === 0 ? (
-            <Card className="col-span-full border-dashed"><CardContent className="py-6 text-center text-muted-foreground">Nenhuma conta recorrente cadastrada.</CardContent></Card>
+            <Card className="border-dashed">
+              <CardContent className="py-10 text-center text-muted-foreground">
+                <Calendar className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                <p className="font-medium">Nenhuma despesa recorrente</p>
+                <p className="text-sm mt-1">Cadastre aluguel, internet, energia e outros custos fixos.</p>
+              </CardContent>
+            </Card>
           ) : (
-            recurringBills.map((bill) => (
-              <Card key={bill.id} className={!bill.active ? 'opacity-60 bg-gray-50' : ''}>
-                <CardContent className="p-4 flex justify-between items-center">
-                  <div className="space-y-1">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-bold">{bill.name}</span>
-                      <Badge variant="secondary" className="text-[10px]">Dia {bill.dueDay}</Badge>
-                      {!bill.active && <Badge variant="destructive" className="text-[10px]">Inativo</Badge>}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {recurringBills.map(bill => (
+                <Card key={bill.id} className={`${!bill.active ? 'opacity-50' : ''}`}>
+                  <CardContent className="p-4 flex justify-between items-center">
+                    <div className="space-y-0.5 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold">{bill.name}</span>
+                        <Badge variant="secondary" className="text-xs">Dia {bill.dueDay}</Badge>
+                        {!bill.active && <Badge variant="destructive" className="text-xs">Inativo</Badge>}
+                      </div>
+                      {bill.description && <p className="text-xs text-muted-foreground truncate">{bill.description}</p>}
+                      {bill.lastGeneratedAt && (
+                        <p className="text-xs text-green-600">
+                          Gerado em {new Date(bill.lastGeneratedAt).toLocaleDateString('pt-BR')}
+                        </p>
+                      )}
                     </div>
-                    <p className="text-xs text-muted-foreground">{bill.description || 'Sem descrição'}</p>
-                    {bill.lastGeneratedAt && <p className="text-[10px] text-green-600">Última geração: {new Date(bill.lastGeneratedAt).toLocaleDateString('pt-BR')}</p>}
-                  </div>
-                  <div className="flex items-center space-x-4">
-                    <div className="text-right">
-                      <p className="text-lg font-bold">{formatCurrency(bill.amount)}</p>
+                    <div className="flex items-center gap-3 ml-4">
+                      <p className="text-lg font-bold whitespace-nowrap">{formatCurrency(bill.amount)}</p>
+                      <div className="flex flex-col gap-1">
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
+                          setSelectedRecurring(bill);
+                          setRecurringData({ name: bill.name, amount: String(bill.amount), dueDay: String(bill.dueDay), supplierId: bill.supplierId || '', description: bill.description || '', active: bill.active });
+                          setRecurringModal(true);
+                        }}>
+                          <Edit2 className="w-3 h-3" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-red-400 hover:text-red-600" onClick={() => handleDeleteRecurring(bill.id)}>
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex flex-col space-y-1">
-                      <Button size="icon" variant="ghost" onClick={() => { setSelectedRecurring(bill); setRecurringData({ ...bill, amount: bill.amount.toString(), dueDay: bill.dueDay.toString(), supplierId: bill.supplierId || '', categoryId: bill.categoryId || '', description: bill.description || '' }); setShowRecurringModal(true); }}><Edit2 className="w-3 h-3" /></Button>
-                      <Button size="icon" variant="ghost" onClick={() => handleDeleteRecurring(bill.id)} className="text-red-500"><Trash2 className="w-3 h-3" /></Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           )}
         </div>
-      </section>
+      )}
 
-      {/* --- MODAIS --- */}
+      {/* ── Tab: Histórico ────────────────────────────────────────────────────── */}
+      {activeTab === 'history' && (
+        <div className="space-y-4">
+          {historyPayables.length > 0 && (
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              <Input className="pl-9" placeholder="Buscar por fornecedor..." value={search} onChange={e => setSearch(e.target.value)} />
+            </div>
+          )}
 
-      {/* 1. Modal Pagamento Fatura (AccountPayable) */}
-      {showPaymentModal && selectedPayable && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-md shadow-2xl">
-            <CardHeader><CardTitle>Liquidar Fatura</CardTitle><CardDescription>Pagar R$ {paymentData.amountPaid} para {selectedPayable.supplier?.name}</CardDescription></CardHeader>
-            <CardContent><form onSubmit={handlePayBill} className="space-y-4">
-              <label className="text-sm font-medium">Conta Bancária de Saída *</label>
-              <select value={paymentData.paymentAccountId} onChange={e => setPaymentData({ ...paymentData, paymentAccountId: e.target.value })} className="w-full p-2 border rounded" required>
-                <option value="">Selecione...</option>
-                {accounts.map(a => <option key={a.id} value={a.id}>{a.name} ({formatCurrency(a.balance)})</option>)}
-              </select>
-              <Input type="number" step="0.01" value={paymentData.amountPaid} onChange={e => setPaymentData({ ...paymentData, amountPaid: e.target.value })} placeholder="Valor Pago" required />
-              <Input value={paymentData.notes} onChange={e => setPaymentData({ ...paymentData, notes: e.target.value })} placeholder="Observações" />
-              <div className="flex justify-end space-x-2 pt-4"><Button type="button" variant="outline" onClick={() => setShowPaymentModal(false)}>Cancelar</Button><Button type="submit" className="bg-green-600">Confirmar</Button></div>
-            </form></CardContent>
-          </Card>
+          {filteredHistory.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="py-10 text-center text-muted-foreground">
+                <CheckCircle className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                <p className="font-medium">Sem histórico ainda</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-2">
+              {filteredHistory.map(payable => {
+                const { label } = formatDueDate(payable.dueDate);
+                const amount = payable.balanceDue ?? payable.amount;
+                return (
+                  <div key={payable.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 p-4 rounded-lg border bg-white">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{payable.supplier?.name}</span>
+                        <StatusBadge status={payable.status} />
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-0.5">Vencimento: {label}</p>
+                    </div>
+                    <p className="text-base font-semibold text-gray-500">{formatCurrency(amount)}</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
-      {/* 2. Modal Novo Recibo Manual */}
-      {showReceiptModal && (
+      {/* ══════════════════════════════════════════════════════════════════════════
+          MODAIS
+      ══════════════════════════════════════════════════════════════════════════ */}
+
+      {/* Modal: Pagar Fatura */}
+      {paymentModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <Card className="w-full max-w-md shadow-2xl">
-            <CardHeader><CardTitle>Novo Recibo de Material</CardTitle><CardDescription>Registrar débito acumulado com fornecedor (sem nota imediata)</CardDescription></CardHeader>
-            <CardContent><form onSubmit={handleSaveReceipt} className="space-y-4">
-              <label className="text-sm font-medium">Fornecedor *</label>
-              <select value={receiptData.supplierId} onChange={e => setReceiptData({ ...receiptData, supplierId: e.target.value })} className="w-full p-2 border rounded" required>
-                <option value="">Selecione...</option>
-                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-              <Input type="number" step="0.01" value={receiptData.totalAmount} onChange={e => setReceiptData({ ...receiptData, totalAmount: e.target.value })} placeholder="Valor (R$)" required />
-              <Input type="date" value={receiptData.issueDate} onChange={e => setReceiptData({ ...receiptData, issueDate: e.target.value })} required />
-              <Input value={receiptData.notes} onChange={e => setReceiptData({ ...receiptData, notes: e.target.value })} placeholder="Ex: Retirada 20m vinil" />
-              <div className="flex justify-end space-x-2 pt-4"><Button type="button" variant="outline" onClick={() => setShowReceiptModal(false)}>Cancelar</Button><Button type="submit" className="bg-orange-600 text-white">Salvar Recibo</Button></div>
-            </form></CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* 3. Modal Fechar Fatura (Transformar Recibos em AccountPayable) */}
-      {showCloseInvoiceModal && selectedSummary && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-lg shadow-2xl">
-            <CardHeader><CardTitle>Fechar Fatura: {selectedSummary.supplierName}</CardTitle><CardDescription>Consolidando {selectedSummary.count} recibos (Total: {formatCurrency(selectedSummary.total)})</CardDescription></CardHeader>
-            <CardContent><form onSubmit={handleCloseInvoice} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2"><label className="text-xs font-bold uppercase">Data de Vencimento</label><Input type="date" value={closeData.dueDate} onChange={e => setCloseData({ ...closeData, dueDate: e.target.value })} required /></div>
-                <div className="space-y-2"><label className="text-xs font-bold uppercase">Conta de Estoque (Débito)</label>
-                  <select value={closeData.stockAccountId} onChange={e => setCloseData({ ...closeData, stockAccountId: e.target.value })} className="w-full p-2 border rounded text-sm" required>
-                    <option value="">Selecione no plano de contas...</option>
-                    {chartOfAccounts.map(acc => <option key={acc.id} value={acc.id}>{acc.code} - {acc.name}</option>)}
+            <CardHeader>
+              <CardTitle>Registrar Pagamento</CardTitle>
+              <CardDescription>
+                {paymentModal.supplier?.name} · {formatCurrency(paymentModal.balanceDue ?? paymentModal.amount)}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handlePayBill} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Conta bancária de débito *</label>
+                  <select
+                    value={paymentData.paymentAccountId}
+                    onChange={e => setPaymentData({ ...paymentData, paymentAccountId: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-md text-sm bg-background"
+                    required
+                  >
+                    <option value="">Selecione a conta...</option>
+                    {accounts.map(a => (
+                      <option key={a.id} value={a.id}>{a.name} · {formatCurrency(a.balance)}</option>
+                    ))}
                   </select>
                 </div>
-              </div>
-              <div className="space-y-2"><label className="text-xs font-bold uppercase">Conta do Fornecedor (Crédito)</label>
-                <select value={closeData.supplierAccountId} onChange={e => setCloseData({ ...closeData, supplierAccountId: e.target.value })} className="w-full p-2 border rounded text-sm" required>
-                  <option value="">Selecione no plano de contas...</option>
-                  {chartOfAccounts.map(acc => <option key={acc.id} value={acc.id}>{acc.code} - {acc.name}</option>)}
-                </select>
-              </div>
-              <Input value={closeData.notes} onChange={e => setCloseData({ ...closeData, notes: e.target.value })} placeholder="Notas adicionais" />
-              <div className="flex justify-end space-x-2 pt-4 border-t"><Button type="button" variant="outline" onClick={() => setShowCloseInvoiceModal(false)}>Cancelar</Button><Button type="submit" className="bg-orange-600 text-white">Gerar Conta a Pagar</Button></div>
-            </form></CardContent>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Valor pago (R$) *</label>
+                  <Input
+                    type="number" step="0.01" min="0.01"
+                    value={paymentData.amountPaid}
+                    onChange={e => setPaymentData({ ...paymentData, amountPaid: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Observações</label>
+                  <Input
+                    value={paymentData.notes}
+                    onChange={e => setPaymentData({ ...paymentData, notes: e.target.value })}
+                    placeholder="Ex: Pago via PIX, chave CNPJ"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setPaymentModal(null)}>Cancelar</Button>
+                  <Button type="submit" className="bg-green-600 hover:bg-green-700">Confirmar Pagamento</Button>
+                </div>
+              </form>
+            </CardContent>
           </Card>
         </div>
       )}
 
-      {/* 4. Modal Conta Recorrente */}
-      {showRecurringModal && (
+      {/* Modal: Fechar Fatura (recibos → conta a pagar) */}
+      {closeModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <Card className="w-full max-w-md shadow-2xl">
-            <CardHeader><CardTitle>{selectedRecurring ? 'Editar' : 'Nova'} Conta Recorrente</CardTitle></CardHeader>
-            <CardContent><form onSubmit={handleSaveRecurring} className="space-y-4">
-              <Input value={recurringData.name} onChange={e => setRecurringData({ ...recurringData, name: e.target.value })} placeholder="Nome (Ex: Aluguel)" required />
-              <div className="grid grid-cols-2 gap-4">
-                <Input type="number" step="0.01" value={recurringData.amount} onChange={e => setRecurringData({ ...recurringData, amount: e.target.value })} placeholder="Valor R$" required />
-                <Input type="number" min="1" max="31" value={recurringData.dueDay} onChange={e => setRecurringData({ ...recurringData, dueDay: e.target.value })} placeholder="Dia Venc. (1-31)" required />
-              </div>
-              <select value={recurringData.supplierId} onChange={e => setRecurringData({ ...recurringData, supplierId: e.target.value })} className="w-full p-2 border rounded">
-                <option value="">Selecione Credor (opcional)</option>
-                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-              <select value={recurringData.categoryId} onChange={e => setRecurringData({ ...recurringData, categoryId: e.target.value })} className="w-full p-2 border rounded">
-                <option value="">Selecione Categoria (opcional)</option>
-                {chartOfAccounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-              </select>
-              <Input value={recurringData.description} onChange={e => setRecurringData({ ...recurringData, description: e.target.value })} placeholder="Notas Extras" />
-              <div className="flex items-center space-x-2">
-                <input type="checkbox" checked={recurringData.active} onChange={e => setRecurringData({ ...recurringData, active: e.target.checked })} id="recurring-active" />
-                <label htmlFor="recurring-active">Conta Ativa</label>
-              </div>
-              <div className="flex justify-end space-x-2 pt-4 border-t"><Button type="button" variant="outline" onClick={() => { setShowRecurringModal(false); setSelectedRecurring(null); }}>Cancelar</Button><Button type="submit" className="bg-purple-600 text-white">Salvar</Button></div>
-            </form></CardContent>
+            <CardHeader>
+              <CardTitle>Gerar Conta a Pagar</CardTitle>
+              <CardDescription>
+                {closeModal.supplierName} · {closeModal.count} recibo{closeModal.count !== 1 ? 's' : ''} · {formatCurrency(closeModal.total)}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleCloseInvoice} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Data de vencimento *</label>
+                  <Input
+                    type="date"
+                    value={closeData.dueDate}
+                    onChange={e => setCloseData({ ...closeData, dueDate: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Observações</label>
+                  <Input
+                    value={closeData.notes}
+                    onChange={e => setCloseData({ ...closeData, notes: e.target.value })}
+                    placeholder="Referência, número da nota fiscal, etc."
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground bg-muted/50 rounded p-2">
+                  Os lançamentos contábeis (Estoque / Fornecedores a Pagar) são gerados automaticamente.
+                </p>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setCloseModal(null)}>Cancelar</Button>
+                  <Button type="submit" className="bg-orange-600 hover:bg-orange-700 text-white">Gerar Fatura</Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal: Novo Recibo de Material */}
+      {receiptModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md shadow-2xl">
+            <CardHeader>
+              <CardTitle>Novo Recibo de Material</CardTitle>
+              <CardDescription>Registre uma entrada de insumos ou materiais do fornecedor.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSaveReceipt} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Fornecedor *</label>
+                  <select
+                    value={receiptData.supplierId}
+                    onChange={e => setReceiptData({ ...receiptData, supplierId: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-md text-sm bg-background"
+                    required
+                  >
+                    <option value="">Selecione...</option>
+                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Valor (R$) *</label>
+                    <Input type="number" step="0.01" min="0.01" value={receiptData.totalAmount} onChange={e => setReceiptData({ ...receiptData, totalAmount: e.target.value })} required />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Data *</label>
+                    <Input type="date" value={receiptData.issueDate} onChange={e => setReceiptData({ ...receiptData, issueDate: e.target.value })} required />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Observações</label>
+                  <Input value={receiptData.notes} onChange={e => setReceiptData({ ...receiptData, notes: e.target.value })} placeholder="Ex: 20m vinil, NF 1234" />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setReceiptModal(false)}>Cancelar</Button>
+                  <Button type="submit" className="bg-primary">Salvar Recibo</Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal: Nova Despesa Direta */}
+      {directModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md shadow-2xl">
+            <CardHeader>
+              <CardTitle>Nova Despesa</CardTitle>
+              <CardDescription>Lance uma conta a pagar diretamente (sem recibo de material).</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSaveDirect} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Credor / Fornecedor</label>
+                  <select
+                    value={directData.supplierId}
+                    onChange={e => setDirectData({ ...directData, supplierId: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-md text-sm bg-background"
+                  >
+                    <option value="">Nenhum (avulso)</option>
+                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Valor (R$) *</label>
+                    <Input type="number" step="0.01" min="0.01" value={directData.amount} onChange={e => setDirectData({ ...directData, amount: e.target.value })} required />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Vencimento *</label>
+                    <Input type="date" value={directData.dueDate} onChange={e => setDirectData({ ...directData, dueDate: e.target.value })} required />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Observações</label>
+                  <Input value={directData.notes} onChange={e => setDirectData({ ...directData, notes: e.target.value })} placeholder="Ex: Aluguel março, conta de luz" />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setDirectModal(false)}>Cancelar</Button>
+                  <Button type="submit">Lançar Despesa</Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal: Conta Recorrente */}
+      {recurringModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md shadow-2xl">
+            <CardHeader>
+              <CardTitle>{selectedRecurring ? 'Editar' : 'Nova'} Conta Recorrente</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSaveRecurring} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Nome *</label>
+                  <Input value={recurringData.name} onChange={e => setRecurringData({ ...recurringData, name: e.target.value })} placeholder="Ex: Aluguel, Internet, Energia" required />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Valor (R$) *</label>
+                    <Input type="number" step="0.01" min="0.01" value={recurringData.amount} onChange={e => setRecurringData({ ...recurringData, amount: e.target.value })} required />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Dia do venc. *</label>
+                    <Input type="number" min="1" max="31" value={recurringData.dueDay} onChange={e => setRecurringData({ ...recurringData, dueDay: e.target.value })} required />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Credor (opcional)</label>
+                  <select value={recurringData.supplierId} onChange={e => setRecurringData({ ...recurringData, supplierId: e.target.value })} className="w-full px-3 py-2 border rounded-md text-sm bg-background">
+                    <option value="">Nenhum</option>
+                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Notas</label>
+                  <Input value={recurringData.description} onChange={e => setRecurringData({ ...recurringData, description: e.target.value })} placeholder="Observações extras" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="rec-active" checked={recurringData.active} onChange={e => setRecurringData({ ...recurringData, active: e.target.checked })} />
+                  <label htmlFor="rec-active" className="text-sm">Conta ativa</label>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => { setRecurringModal(false); setSelectedRecurring(null); }}>Cancelar</Button>
+                  <Button type="submit" className="bg-purple-600 hover:bg-purple-700 text-white">Salvar</Button>
+                </div>
+              </form>
+            </CardContent>
           </Card>
         </div>
       )}
     </div>
   );
 }
-

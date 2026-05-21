@@ -1,6 +1,7 @@
 import React from 'react';
 import type { CompositionResult } from '../../types/composition.types';
-import { Package, Calculator } from 'lucide-react';
+import { Package } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface PriceSummaryPanelProps {
   composition: CompositionResult | null;
@@ -17,48 +18,47 @@ export const PriceSummaryPanel: React.FC<PriceSummaryPanelProps> = ({
   quantity,
   discountItem = 0,
 }) => {
+  const { hasPermission } = useAuth();
+  const canSeeCosts = hasPermission('finance.costs');
+
   const totalNegotiated = (negotiatedPrice * quantity) - discountItem;
   const totalCost = composition?.totalCost || 0;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm h-full flex flex-col">
-      <div className="p-3 border-b bg-slate-50/50 flex items-center justify-between">
-        <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-          <Calculator className="w-3 h-3" />
-          Resumo de Custos
-        </span>
-      </div>
-
-      <div className="p-4 space-y-4 flex-1">
-        {/* Custo Total de Insumos */}
-        <div className="space-y-1">
-          <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase">
-            <span>Custo de Materiais</span>
-            <Package className="w-3 h-3" />
-          </div>
-          <div className="text-xl font-black text-slate-700">
+    <div className="flex items-center gap-5 min-w-0">
+      {/* Custo de materiais (apenas quem tem permissão) */}
+      {canSeeCosts && (
+        <div className="flex flex-col min-w-0">
+          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+            <Package className="w-2.5 h-2.5" />
+            Custo
+          </span>
+          <span className="text-sm font-black text-slate-600 tabular-nums">
             {loading ? (
-              <div className="h-7 w-24 bg-slate-100 animate-pulse rounded" />
+              <span className="inline-block h-4 w-16 bg-slate-100 animate-pulse rounded" />
             ) : (
               `R$ ${totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
             )}
-          </div>
-          <p className="text-[9px] text-slate-400 font-medium">
-            Baseado no custo médio do estoque
-          </p>
+          </span>
         </div>
+      )}
 
-        {/* Valor Total da Venda */}
-        <div className="pt-4 border-t border-dashed space-y-1">
-          <div className="flex justify-between items-center text-[10px] font-bold text-indigo-400 uppercase">
-            <span>Valor Total do Item</span>
-          </div>
-          <div className="text-2xl font-black text-indigo-600">
+      {canSeeCosts && (
+        <div className="w-px h-8 bg-slate-200 shrink-0" />
+      )}
+
+      {/* Valor total */}
+      <div className="flex flex-col min-w-0">
+        <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-wider">
+          Total do Item
+        </span>
+        <div className="flex items-baseline gap-2">
+          <span className="text-xl font-black text-indigo-600 tabular-nums leading-tight">
             R$ {totalNegotiated.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-          <div className="text-[10px] font-bold text-slate-400">
+          </span>
+          <span className="text-[10px] font-semibold text-slate-400 tabular-nums whitespace-nowrap">
             (R$ {negotiatedPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / un)
-          </div>
+          </span>
         </div>
       </div>
     </div>

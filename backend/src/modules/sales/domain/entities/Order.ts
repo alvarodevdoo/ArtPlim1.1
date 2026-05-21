@@ -292,6 +292,22 @@ export class Order {
     if (newStatus.isCancelled() && !this._cancelledAt) this._cancelledAt = new Date();
   }
 
+  /**
+   * Força a transição de status sem validação da máquina de estados.
+   * Usado nos modos de workflow SKIP e FREE.
+   */
+  forceStatus(newStatus: OrderStatus): void {
+    this._status = newStatus;
+    this._updatedAt = new Date();
+
+    // Set status timestamps
+    if (newStatus.isApproved() && !this._approvedAt) this._approvedAt = new Date();
+    if (newStatus.isInProduction() && !this._inProductionAt) this._inProductionAt = new Date();
+    if (newStatus.isFinished() && !this._finishedAt) this._finishedAt = new Date();
+    if (newStatus.isDelivered() && !this._deliveredAt) this._deliveredAt = new Date();
+    if (newStatus.isCancelled() && !this._cancelledAt) this._cancelledAt = new Date();
+  }
+
   approve(): void {
     this.changeStatus(OrderStatus.approved());
   }
@@ -471,7 +487,7 @@ export class Order {
   }
 
   canBeModified(): boolean {
-    return !this._status.isDelivered();
+    return !this._status.isDelivered() && !this._status.isCancelled();
   }
 
   getTotalArea(): number {

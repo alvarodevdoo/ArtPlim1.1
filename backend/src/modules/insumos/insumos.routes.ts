@@ -13,6 +13,7 @@ import { InsumoService } from './InsumoService';
 import { getTenantClient } from '../../shared/infrastructure/database/tenant';
 import { MaterialReceiptService } from './MaterialReceiptService';
 import { BillingService } from './BillingService';
+import { AccountPayableService } from '../finance/services/AccountPayableService';
 
 // ─── Schemas Zod ─────────────────────────────────────────────────────────────
 
@@ -231,8 +232,8 @@ export async function insumosRoutes(fastify: FastifyInstance) {
     supplierId: z.string().uuid('Fornecedor inválido'),
     receiptIds: z.array(z.string().uuid('ID de recibo inválido')).min(1, 'Selecione ao menos um recibo'),
     dueDate: z.string(),
-    stockAccountId: z.string().uuid('Conta de Estoque inválida'),
-    supplierAccountId: z.string().uuid('Conta do Fornecedor inválida'),
+    stockAccountId: z.string().uuid().optional(),    // auto-resolvido via GL defaults se omitido
+    supplierAccountId: z.string().uuid().optional(), // auto-resolvido via GL defaults se omitido
     notes: z.string().optional()
   });
 
@@ -308,16 +309,26 @@ export async function insumosRoutes(fastify: FastifyInstance) {
   // POST /api/insumos/receipts/close
   fastify.post('/receipts/close', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const body = closeReceiptsSchema.parse(request.body);
-    const prisma = getTenantClient(request.user!.organizationId);
-    const service = new BillingService(prisma);
+    const organizationId = request.user!.organizationId;
+    const prisma = getTenantClient(organizationId);
 
+    // Auto-resolve GL accounts if not provided
+    let { stockAccountId, supplierAccountId } = body;
+    if (!stockAccountId || !supplierAccountId) {
+      const payableService = new AccountPayableService(prisma);
+      const glDefaults = await payableService.getGLDefaults(organizationId);
+      stockAccountId = stockAccountId || glDefaults.stockAccountId;
+      supplierAccountId = supplierAccountId || glDefaults.supplierAccountId;
+    }
+
+    const service = new BillingService(prisma);
     const payable = await service.closeReceipts({
-      organizationId: request.user!.organizationId,
+      organizationId,
       supplierId: body.supplierId,
       receiptIds: body.receiptIds,
       dueDate: new Date(body.dueDate),
-      stockAccountId: body.stockAccountId,
-      supplierAccountId: body.supplierAccountId,
+      stockAccountId,
+      supplierAccountId,
       notes: body.notes,
       userId: request.user!.userId
     });

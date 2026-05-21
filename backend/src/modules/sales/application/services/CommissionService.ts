@@ -1,4 +1,4 @@
-import { PrismaClient, OrderStatus, CommissionStatus } from '@prisma/client';
+import { PrismaClient, OrderStatus } from '@prisma/client';
 
 export class CommissionService {
   constructor(private prisma: PrismaClient) {}
@@ -22,79 +22,94 @@ export class CommissionService {
       throw new Error('Pedido não encontrado ou acesso negado');
     }
 
-    // Regras de negócio: 
-    // 1. Comissões são geradas quando o pedido é APROVADO (para o vendedor)
-    // 2. Comissões de produção podem ser geradas quando o pedido é FINALIZADO
-    
-    if (order.status === OrderStatus.APPROVED || order.status === OrderStatus.FINISHED) {
+    // Verifica se as comissões estão habilitadas globalmente para a organização
+    const settings = await client.organizationSettings.findUnique({
+      where: { organizationId }
+    });
+
+    if (settings && !settings.enableCommissions) {
+      // Se estiver desabilitado, remove entradas existentes (caso o pedido tenha sido re-processado) e retorna
+      await client.commissionEntry.deleteMany({
+        where: { orderId }
+      });
+      return;
+    }
+
+    if (order.status === OrderStatus.APPROVED || order.status === OrderStatus.FINISHED || order.status === OrderStatus.DELIVERED) {
       await this.calculateAndCreateEntries(order, organizationId, client);
     }
   }
 
   private async calculateAndCreateEntries(order: any, organizationId: string, client?: any) {
     const db = client || this.prisma;
+    
+    // Busca as regras ativas incluindo as roles para validar o nome/descrição
     const rules = await db.commissionRule.findMany({
       where: { 
         organizationId,
         active: true 
+      },
+      include: {
+        role: true
       }
     });
 
     if (rules.length === 0) return;
 
-    const commissionEntries = [];
+    // Remove entradas antigas para esse pedido, para evitar duplicação em caso de re-processamento
+    await db.commissionEntry.deleteMany({
+      where: { orderId: order.id }
+    });
+
+    const commissionEntries: any[] = [];
+
+    // Base de cálculo é o Total do Pedido, ou a soma das comissões dos itens (OrderItem.commissionAmount)
+    // Se a regra diz que é X% do pedido, pegamos o order.total.
+    const baseAmount = Number(order.total || 0);
 
     // Helper para processar um papel específico
     const processRole = (userId: string | null, roleKeys: string[], description: string) => {
       if (!userId) return;
       
-      const rule = rules.find(r => 
-        roleKeys.some(key => r.roleName.toLowerCase().includes(key.toLowerCase()))
+      const rule = rules.find((r: any) => 
+        roleKeys.some(key => r.role.name.toLowerCase().includes(key.toLowerCase()) || r.role.name === key)
       );
 
       if (rule) {
-        const amount = (order.totalAmount * rule.percentage) / 100;
+        // Se a taxa for 5, significa 5%.
+        const rate = Number(rule.rate);
+        const amount = (baseAmount * rate) / 100;
+        
         commissionEntries.push({
           orderId: order.id,
           userId: userId,
+          roleId: rule.roleId,
           organizationId,
           amount,
-          percentage: rule.percentage,
-          roleName: rule.roleName,
-          status: CommissionStatus.PENDING,
+          rateApplied: rate,
+          status: 'PENDING',
+          categoryId: rule.categoryId ?? null,
           description: `${description} - Pedido #${order.orderNumber || order.id.substring(0,8)}`,
         });
       }
     };
 
-    // 1. Vendedor (Sales)
-    processRole(order.sellerId, ['sales', 'vendedor'], 'Comissão de venda');
+    // 1. Vendedor (Sales / Vendas / Vendedor)
+    processRole(order.sellerId, ['sales', 'vendedor', 'vendas'], 'Comissão de venda');
 
-    // 2. Arte Finalista (Art)
+    // 2. Arte Finalista (Art / Arte / Designer)
     processRole(order.artDesignerId, ['art', 'arte', 'designer'], 'Comissão de arte final');
 
-    // 3. Produção (Production)
+    // 3. Produção (Production / Produção)
     processRole(order.productionUserId, ['production', 'produção'], 'Comissão de produção');
 
-    // 4. Embalagem (Packaging)
-    processRole(order.packagingUserId, ['packaging', 'embalagem', 'pacote'], 'Comissão de embalagem');
+    // 4. Embalagem (Packaging / Embalagem / Acabamento)
+    processRole(order.packagingUserId, ['packaging', 'embalagem', 'acabamento'], 'Comissão de embalagem');
 
     if (commissionEntries.length > 0) {
-      for (const entry of commissionEntries) {
-        const existing = await db.commissionEntry.findFirst({
-          where: {
-            orderId: entry.orderId,
-            userId: entry.userId,
-            roleName: entry.roleName
-          }
-        });
-
-        if (!existing) {
-          await db.commissionEntry.create({
-            data: entry
-          });
-        }
-      }
+      await db.commissionEntry.createMany({
+        data: commissionEntries
+      });
     }
   }
 
@@ -116,9 +131,11 @@ export class CommissionService {
           select: {
             id: true,
             orderNumber: true,
-            totalAmount: true,
+            total: true,
             status: true,
-            customerName: true
+            customer: {
+               select: { name: true }
+            }
           }
         }
       },

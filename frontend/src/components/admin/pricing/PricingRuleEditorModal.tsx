@@ -10,6 +10,7 @@ import {
     calculatePricingResult
 } from '@/lib/pricing/formulaUtils';
 import { toast } from 'sonner';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 export type FormulaVariableType = 'INPUT' | 'FIXED';
 export type FormulaVariableRole =
@@ -297,7 +298,7 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
     };
 
     return (
-        <div className="modal-overlay">
+        <ModalPortal>
             <div className="modal-content-card max-w-6xl">
 
                 {/* HEAD */}
@@ -897,7 +898,7 @@ const PricingRuleEditorModal: React.FC<Props> = ({ rule, onSave, onClose }) => {
                 </div>
 
             </div>
-        </div>
+        </ModalPortal>
     );
 };
 

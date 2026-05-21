@@ -62,17 +62,22 @@ export class CancelOrderItemsUseCase {
       }
 
       // 3. Recalcular Totais do Pedido
-      const remainingItems = order.items.filter((item: any) => 
+      const remainingItems = order.items.filter((item: any) =>
         !itemIds.includes(item.id) && item.status !== OrderStatus.CANCELLED
       );
-      
+
       let newSubtotal = remainingItems.reduce((acc: number, item: any) => acc + Number(item.totalPrice), 0);
       let newTaxAmount = 0;
-      let newDiscountBase = Number(order.discount);
+      // Recalcular desconto apenas com base nos itens remanescentes para não aplicar
+      // descontos dos itens cancelados ao saldo restante.
+      let newDiscountBase = remainingItems.reduce(
+        (acc: number, item: any) => acc + Number(item.discountItem || 0) + Number(item.discountGlobal || 0),
+        0
+      );
       let newTotal = newSubtotal - newDiscountBase + newTaxAmount;
 
       if (newTotal < 0) {
-        newDiscountBase = newSubtotal; 
+        newDiscountBase = newSubtotal;
         newTotal = 0;
       }
 
@@ -165,9 +170,10 @@ export class CancelOrderItemsUseCase {
       await tx.orderStatusHistory.create({
          data: {
             orderId,
+            fromStatus: order.status,
             toStatus: order.status,
             userId,
-            notes: `Cancelamento de ${itemsToCancel.length} item(ns). Motivo: ${reason || 'N/A'}`
+            notes: `Cancelamento parcial de ${itemsToCancel.length} item(ns). Motivo: ${reason || 'N/A'}`
          }
       });
 

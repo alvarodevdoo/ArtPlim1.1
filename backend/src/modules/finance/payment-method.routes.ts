@@ -5,6 +5,9 @@ import { getTenantClient } from '../../shared/infrastructure/database/tenant';
 const createPaymentMethodSchema = z.object({
   name: z.string().min(1, 'Nome é obrigatório'),
   type: z.enum(['PIX', 'CARD', 'CASH', 'TRANSFER', 'BOLETO', 'OTHER']),
+  usageScope: z.enum(['SALES', 'PURCHASES', 'BOTH']).optional().default('SALES'),
+  cardClosingDay: z.number().int().min(1).max(31).nullish(),
+  cardDueDay: z.number().int().min(1).max(31).nullish(),
   feePercentage: z.number().min(0).default(0),
   feeCategoryId: z.string().uuid().nullish(),
   installmentRules: z.object({
@@ -30,13 +33,17 @@ const updatePaymentMethodSchema = createPaymentMethodSchema.partial();
 
 export async function paymentMethodRoutes(fastify: FastifyInstance) {
   
-  // List all
+  // List all (com filtro opcional ?scope=SALES|PURCHASES)
   fastify.get('/', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const prisma = getTenantClient(request.user!.organizationId);
+    const scope = (request.query as any)?.scope as string | undefined;
+    const where: any = { organizationId: request.user!.organizationId };
+    if (scope === 'SALES') where.usageScope = { in: ['SALES', 'BOTH'] };
+    if (scope === 'PURCHASES') where.usageScope = { in: ['PURCHASES', 'BOTH'] };
     const methods = await prisma.paymentMethod.findMany({
-      where: { organizationId: request.user!.organizationId },
+      where,
       include: { account: true },
       orderBy: { name: 'asc' }
     });

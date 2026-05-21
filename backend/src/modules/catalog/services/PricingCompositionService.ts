@@ -61,17 +61,36 @@ export class PricingCompositionService {
   /**
    * Calcula o custo de composição de um produto para as opções selecionadas.
    * Chamado pelo endpoint /simulate-composition (sem efeito colateral no banco).
+   *
+   * Aceita duas formas de seleção (compatíveis simultaneamente):
+   *  - `selectedOptionIds: string[]` (legado — usa qty default da opção)
+   *  - `selectedOptions: { optionId, quantity? }[]` (novo — permite override de qty
+   *    por opção, ex: 40 ilhos em vez do padrão 8)
    */
   async calculate(params: {
     productId: string;
     selectedOptionIds: string[];
+    selectedOptions?: Array<{ optionId: string; quantity?: number | null }>;
     quantity: number;
     width?: number;
     height?: number;
     dynamicVariables?: any;
     organizationId: string;
   }): Promise<CompositionResult> {
-    let { productId, selectedOptionIds, quantity, width, height, dynamicVariables, organizationId } = params;
+    let { productId, selectedOptionIds, selectedOptions, quantity, width, height, dynamicVariables, organizationId } = params;
+
+    // Normaliza: prefere `selectedOptions` (com qty) se enviado; senão constrói a partir dos IDs flat.
+    const optionQtyMap = new Map<string, number | null>();
+    if (Array.isArray(selectedOptions) && selectedOptions.length > 0) {
+      for (const it of selectedOptions) {
+        if (!it?.optionId) continue;
+        optionQtyMap.set(it.optionId, it.quantity == null ? null : Number(it.quantity));
+      }
+      // Garante que o array flat tem todos os IDs (compat com o resto do código que itera selectedOptionIds)
+      selectedOptionIds = Array.from(optionQtyMap.keys());
+    } else {
+      for (const id of selectedOptionIds || []) optionQtyMap.set(id, null);
+    }
 
     // Fallback de segurança para pedidos legados ou com divergência de formulário:
     // Tenta resgatar largura e altura dos Atributos Dinâmicos se não foram enviados explícitos
@@ -209,7 +228,11 @@ export class PricingCompositionService {
             consumptionMultiplier = (width * height) / 1000000;
           }
 
-          const qtd = Number(opt.slotQuantity || 1) * quantity * consumptionMultiplier;
+          // Qty efetiva: customQuantity (do pedido) > defaultQuantity (cadastro) > slotQuantity (legado) > 1
+          const customQty = optionQtyMap.get(opt.id);
+          const baseQty = Number(opt.defaultQuantity ?? opt.slotQuantity ?? 1);
+          const effectiveQty = customQty != null && !Number.isNaN(customQty) ? customQty : baseQty;
+          const qtd = effectiveQty * quantity * consumptionMultiplier;
           // Custo unitário resolvido com hierarquia: averageCost → costPerUnit → purchasePrice derivado
           const costPerUnit = this.valuationSvc.resolveAverageCost(mat);
           const subtotal = qtd * costPerUnit;

@@ -17,6 +17,8 @@ import type { CompositionResult } from '../types/composition.types';
 interface UseCompositionParams {
   productId: string | null;
   selectedOptionIds: string[];
+  /** Qty customizada por opção (id → qty). Quando ausente, backend usa defaultQuantity. */
+  optionQuantities?: Record<string, number>;
   quantity: number;
   dynamicVariables?: Record<string, any>;
   width?: number;
@@ -35,6 +37,7 @@ interface UseCompositionReturn {
 export function useComposition({
   productId,
   selectedOptionIds,
+  optionQuantities,
   quantity,
   dynamicVariables,
   width,
@@ -64,9 +67,16 @@ export function useComposition({
       setError(null);
 
       try {
+        // Converte selectedOptionIds + optionQuantities num array { optionId, quantity? }
+        // que o backend consome para aplicar qty customizada por opção.
+        const selectedOptions = selectedOptionIds.map(id => ({
+          optionId: id,
+          quantity: optionQuantities && optionQuantities[id] != null ? Number(optionQuantities[id]) : null
+        }));
         const result = await simulateComposition({
           productId,
           selectedOptionIds,
+          selectedOptions,
           quantity: Math.max(1, quantity),
           dynamicVariables,
           width,
@@ -81,7 +91,7 @@ export function useComposition({
         setLoading(false);
       }
     }, debounceMs);
-  }, [productId, selectedOptionIds.join(','), quantity, JSON.stringify(dynamicVariables || {}), width, height, debounceMs]);
+  }, [productId, selectedOptionIds.join(','), JSON.stringify(optionQuantities || {}), quantity, JSON.stringify(dynamicVariables || {}), width, height, debounceMs]);
 
   useEffect(() => {
     fetch();

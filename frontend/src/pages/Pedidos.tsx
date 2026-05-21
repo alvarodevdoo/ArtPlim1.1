@@ -16,6 +16,7 @@ import PedidosKanban from '@/components/pedidos/PedidosKanban';
 import OrderDetailsModal from '@/components/pedidos/modals/OrderDetailsModal';
 import CancelOrderModal from '@/components/pedidos/modals/CancelOrderModal';
 import WhatsAppModal from '@/components/pedidos/modals/WhatsAppModal';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 const Pedidos: React.FC = () => {
   const navigate = useNavigate();
@@ -206,8 +207,8 @@ const Pedidos: React.FC = () => {
         pedido={selectedPedido}
         isOpen={showCancelModal}
         onClose={() => setShowCancelModal(false)}
-        onConfirm={(id, reason, paymentAction, refundAmount) => {
-          handleStatusChange(id, 'CANCELLED', { reason, paymentAction, refundAmount });
+        onConfirm={(id, reason, paymentAction, refundAmount, materiaisConsumidos) => {
+          handleStatusChange(id, 'CANCELLED', { reason, paymentAction, refundAmount, materiaisConsumidos });
           setShowCancelModal(false);
         }}
       />
@@ -224,7 +225,7 @@ const Pedidos: React.FC = () => {
       />
 
       {showMaterialCalculator && calculatorItem && (hasFinancialAccess() || hasPermission('sales.edit')) && (
-        <div className="modal-overlay">
+        <ModalPortal>
           <Card className="modal-content-card max-w-4xl">
 
               <CardHeader>
@@ -245,7 +246,7 @@ const Pedidos: React.FC = () => {
                 />
               </CardContent>
             </Card>
-          </div>
+          </ModalPortal>
       )}
 
     </div>

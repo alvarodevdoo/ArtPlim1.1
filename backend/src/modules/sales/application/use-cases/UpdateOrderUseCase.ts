@@ -1,4 +1,5 @@
 import { addDays } from 'date-fns';
+import { StockReservationService } from '../../../wms/services/StockReservationService';
 import { Order } from '../../domain/entities/Order';
 import { OrderItem, DiscountStatus } from '../../domain/entities/OrderItem';
 import { OrderRepository } from '../../domain/repositories/OrderRepository';
@@ -170,8 +171,10 @@ export class UpdateOrderUseCase {
         insumos_snapshot: pricing.insumos
       };
 
-      // Tenta encontrar o item correspondente no pedido existente para preservar o status
-      const existingItem = existingOrder.items.find(ei => ei.productId === itemData.productId && ei.quantity === itemData.quantity);
+      // Preserva status do item pelo ID quando disponível; fallback por productId
+      const existingItem = itemData.id
+        ? existingOrder.items.find(ei => ei.id === itemData.id)
+        : existingOrder.items.find(ei => ei.productId === itemData.productId);
 
       const orderItem = new OrderItem({
         id: itemData.id, // Preservar ID se enviado
@@ -284,6 +287,57 @@ export class UpdateOrderUseCase {
 
     // Salvar no repositório
     const updatedOrder = await this.orderRepository.save(existingOrder);
+
+    // Recalcular consumo de materiais a partir dos snapshots dos itens
+    const materialConsumptionMap = new Map<string, number>();
+    for (const orderItem of orderItems) {
+      const snap: any[] = (orderItem.attributes as any)?.insumos_snapshot || [];
+      for (const insumo of snap) {
+        if (!insumo?.id) continue;
+        const prev = materialConsumptionMap.get(insumo.id) || 0;
+        materialConsumptionMap.set(insumo.id, prev + (insumo.quantidade || 0));
+      }
+    }
+
+    // Materiais vinculados às opções de configuração (ConfigurationOption.materialId)
+    const allOptionIds = orderItems.flatMap((oi: any) => {
+      const sel = (oi.attributes as any)?.selectedOptions || {};
+      return Object.values(sel).filter((v: any) => !!v);
+    }) as string[];
+
+    if (allOptionIds.length > 0) {
+      const opts = await (this as any).prisma.configurationOption.findMany({
+        where: { id: { in: allOptionIds }, materialId: { not: null } },
+        select: { id: true, materialId: true, slotQuantity: true }
+      });
+      const optMap = new Map<string, { materialId: string; slotQuantity: number }>(
+        opts.map((o: any) => [o.id, { materialId: o.materialId, slotQuantity: Number(o.slotQuantity || 1) }])
+      );
+
+      for (const oi of orderItems) {
+        const sel: Record<string, string> = (oi.attributes as any)?.selectedOptions || {};
+        for (const optId of Object.values(sel)) {
+          const info = optMap.get(optId);
+          if (!info?.materialId) continue;
+          const qty = info.slotQuantity * oi.quantity;
+          const prev = materialConsumptionMap.get(info.materialId) || 0;
+          materialConsumptionMap.set(info.materialId, prev + qty);
+        }
+      }
+    }
+
+    // Atualizar reservas de estoque (recria para refletir novos itens/quantidades)
+    try {
+      const reservationService = new StockReservationService((this as any).prisma);
+      await reservationService.reserveForOrder(
+        updatedOrder.id,
+        customer.organizationId,
+        data.items.map(i => ({ productId: i.productId, quantity: i.quantity })),
+        materialConsumptionMap
+      );
+    } catch (reservationError: any) {
+      throw reservationError;
+    }
 
     return { order: updatedOrder };
   }

@@ -6,7 +6,10 @@ import {
   Save,
   ArrowLeft,
   FileText,
-  AlertCircle
+  AlertCircle,
+  Users,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import api from '@/lib/api';
@@ -21,6 +24,7 @@ import { PaymentSelection } from '@/components/sales/PaymentSelection';
 import { OrderHistoryModal } from '@/components/sales/OrderHistoryModal';
 import { WasteModal } from '@/components/pedidos/modals/WasteModal';
 import { CustomerBalanceAlert } from '@/components/sales/CustomerBalanceAlert';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 
 const CriarPedido: React.FC = () => {
@@ -55,6 +59,8 @@ const CriarPedido: React.FC = () => {
   const [artDesignerId, setArtDesignerId] = useState('');
   const [productionUserId, setProductionUserId] = useState('');
   const [packagingUserId, setPackagingUserId] = useState('');
+  const [showAssignmentPanel, setShowAssignmentPanel] = useState(false);
+  const [billingOverride, setBillingOverride] = useState<any>(null);
 
   // Edio de item
   const [editingItem, setEditingItem] = useState<ItemPedido | null>(null);
@@ -270,6 +276,7 @@ const CriarPedido: React.FC = () => {
       setArtDesignerId(pedido.artDesignerId || '');
       setProductionUserId(pedido.productionUserId || '');
       setPackagingUserId(pedido.packagingUserId || '');
+      setBillingOverride(pedido.billingInfo || null);
 
       // Carregar pagamentos (transaes)
       if (pedido.transactions && pedido.transactions.length > 0) {
@@ -410,27 +417,61 @@ const CriarPedido: React.FC = () => {
     }
   };
 
-  const handleAddItem = (item: ItemPedido) => {
-    // Ensure product data is available
-    const itemWithProduct = {
-      ...item,
-      product: item.product || produtos.find(p => p.id === item.productId)
-    };
-    setItens(prev => [...prev, itemWithProduct]);
-    setShowAddModal(false);
+  const buildStockCheckPayload = (allItems: ItemPedido[]) => ({
+    items: allItems.map(it => ({
+      productId: it.productId,
+      quantity: it.quantity,
+      selectedOptionIds: Object.values((it.attributes as any)?.selectedOptions || {}).filter(Boolean) as string[]
+    })),
+    excludeOrderId: editId || undefined
+  });
+
+  const checkStockOrAlert = async (allItems: ItemPedido[]): Promise<boolean> => {
+    try {
+      const res = await api.post('/api/sales/orders/check-stock', buildStockCheckPayload(allItems));
+      const data = res.data.data;
+      if (!data.ok) {
+        const productRuptures = (data.ruptures as any[]).filter(r => r.kind === 'product');
+        if (productRuptures.length > 0) {
+          const msgs = productRuptures.map(r =>
+            `• ${r.name}: disponível ${Number(r.available).toFixed(2)} ${r.unit || ''}, solicitado ${Number(r.needed).toFixed(2)}`
+          ).join('\n');
+          toast.error(`Estoque insuficiente:\n${msgs}`, { duration: 8000 });
+          return false;
+        }
+      }
+      return true;
+    } catch (e: any) {
+      console.error('Erro ao verificar estoque:', e);
+      toast.error('Não foi possível verificar o estoque. Tente novamente.');
+      return false;
+    }
   };
 
-  const handleUpdateItem = (item: ItemPedido) => {
-    // Ensure product data is preserved
+  const handleAddItem = async (item: ItemPedido): Promise<boolean> => {
     const itemWithProduct = {
       ...item,
       product: item.product || produtos.find(p => p.id === item.productId)
     };
-    setItens(prev => prev.map(existingItem =>
-      existingItem.id === itemWithProduct.id ? itemWithProduct : existingItem
-    ));
+    const ok = await checkStockOrAlert([...itens, itemWithProduct]);
+    if (!ok) return false;
+    setItens(prev => [...prev, itemWithProduct]);
+    setShowAddModal(false);
+    return true;
+  };
+
+  const handleUpdateItem = async (item: ItemPedido): Promise<boolean> => {
+    const itemWithProduct = {
+      ...item,
+      product: item.product || produtos.find(p => p.id === item.productId)
+    };
+    const updatedList = itens.map(existing => existing.id === itemWithProduct.id ? itemWithProduct : existing);
+    const ok = await checkStockOrAlert(updatedList);
+    if (!ok) return false;
+    setItens(updatedList);
     setEditingItem(null);
     setShowEditModal(false);
+    return true;
   };
 
   const abrirModalAdicionar = () => {
@@ -753,6 +794,7 @@ const CriarPedido: React.FC = () => {
         artDesignerId: artDesignerId || undefined,
         productionUserId: productionUserId || undefined,
         packagingUserId: packagingUserId || undefined,
+        billingInfo: billingOverride || undefined,
         payments: (customPayments || payments).map(p => ({
           id: p.id,           //  IMPORTANTE: incluir id para o backend saber quais j existem
           methodId: p.methodId,
@@ -903,9 +945,13 @@ const CriarPedido: React.FC = () => {
             <CustomerSelection
               selectedCustomer={clienteSelecionado}
               onSelect={setClienteSelecionado}
-              onClear={() => setClienteSelecionado(null)}
+              onClear={() => { setClienteSelecionado(null); setBillingOverride(null); }}
               customers={clientes}
               loading={loadingClientes}
+              profileDetails={profileDetails}
+              onProfileUpdated={() => clienteSelecionado?.id && loadProfileDetails(clienteSelecionado.id)}
+              billingOverride={billingOverride}
+              onSaveBillingOverride={setBillingOverride}
             />
 
             {/* Lista de Itens */}
@@ -923,61 +969,73 @@ const CriarPedido: React.FC = () => {
 
             {/* Observaes e Envio */}
             <div className="bg-white p-6 rounded-lg border shadow-sm space-y-6">
-              <h3 className="text-lg font-medium">Informaes Adicionais e Responsveis</h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Arte / Designer
-                  </label>
-                  <select
-                    className="w-full border rounded-md px-3 py-2 text-sm bg-white"
-                    value={artDesignerId}
-                    onChange={(e) => setArtDesignerId(e.target.value)}
-                  >
-                    <option value="">No atribuído</option>
-                    {equipe.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Produo
-                  </label>
-                  <select
-                    className="w-full border rounded-md px-3 py-2 text-sm bg-white"
-                    value={productionUserId}
-                    onChange={(e) => setProductionUserId(e.target.value)}
-                  >
-                    <option value="">No atribuído</option>
-                    {equipe.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Acabamento / Expedio
-                  </label>
-                  <select
-                    className="w-full border rounded-md px-3 py-2 text-sm bg-white"
-                    value={packagingUserId}
-                    onChange={(e) => setPackagingUserId(e.target.value)}
-                  >
-                    <option value="">No atribuído</option>
-                    {equipe.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              <h3 className="text-lg font-medium">Informações Adicionais</h3>
+
+              {/* Atribuição de equipe — colapsável, discreto */}
+              {(() => {
+                const etapas = [
+                  { label: 'Arte / Designer', value: artDesignerId, setter: setArtDesignerId },
+                  { label: 'Produção', value: productionUserId, setter: setProductionUserId },
+                  { label: 'Acabamento / Expedição', value: packagingUserId, setter: setPackagingUserId },
+                ];
+                const atribuidos = etapas.filter(e => e.value);
+                return (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setShowAssignmentPanel(v => !v)}
+                      className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+                    >
+                      <Users className="w-4 h-4" />
+                      <span>Responsáveis</span>
+                      {atribuidos.length > 0 && (
+                        <span className="flex items-center gap-1">
+                          {atribuidos.map(e => {
+                            const membro = equipe.find(u => u.id === e.value);
+                            return membro ? (
+                              <span
+                                key={e.value}
+                                className="bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full border border-blue-200"
+                              >
+                                {e.label.split(' / ')[0]}: {membro.name}
+                              </span>
+                            ) : null;
+                          })}
+                        </span>
+                      )}
+                      {atribuidos.length === 0 && (
+                        <span className="text-xs text-gray-400">(automático)</span>
+                      )}
+                      {showAssignmentPanel
+                        ? <ChevronUp className="w-3 h-3 text-gray-400" />
+                        : <ChevronDown className="w-3 h-3 text-gray-400" />
+                      }
+                    </button>
+
+                    {showAssignmentPanel && (
+                      <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                        {etapas.map(etapa => (
+                          <div key={etapa.label}>
+                            <label className="block text-xs font-medium text-gray-500 mb-1">
+                              {etapa.label}
+                            </label>
+                            <select
+                              className="w-full border rounded-md px-2 py-1.5 text-sm bg-white"
+                              value={etapa.value}
+                              onChange={(e) => etapa.setter(e.target.value)}
+                            >
+                              <option value="">Automático</option>
+                              {equipe.map((u) => (
+                                <option key={u.id} value={u.id}>{u.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -1169,7 +1227,7 @@ const CriarPedido: React.FC = () => {
           isPriceUnlocked={canEditPriceByRole}
         />
         {showRemoveConfirm && (
-          <div className="modal-overlay z-[1000]">
+          <ModalPortal className="z-[1000]">
             <div className="absolute inset-0 bg-transparent" onClick={() => setShowRemoveConfirm(false)} />
             <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6 animate-in fade-in zoom-in-95">
 
@@ -1205,9 +1263,9 @@ const CriarPedido: React.FC = () => {
                 </Button>
               </div>
             </div>
-          </div>
+          </ModalPortal>
         )}
-        
+
         {/* Modal de Perdas/Retrabalho */}
         <WasteModal
           isOpen={!!selectedWasteItem}

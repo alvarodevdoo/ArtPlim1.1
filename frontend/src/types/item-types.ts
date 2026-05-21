@@ -2,6 +2,9 @@
 // TIPOS E ENUMS PARA ENGENHARIA DE PRODUTO
 // ==========================================
 
+import type { LucideIcon } from 'lucide-react';
+import { Package, Hash, Ruler, Timer, Palette, FileText, Printer, Zap } from 'lucide-react';
+
 export enum ItemType {
     PRODUCT = 'PRODUCT',      // Produto Padrão/Revenda
     SERVICE = 'SERVICE',      // Arte/Mão de Obra/Design
@@ -17,7 +20,7 @@ export interface ItemTypeConfig {
     value: ItemType;
     label: string;
     description: string;
-    icon: string;
+    icon: LucideIcon;
     color: string;
     requiresDimensions: boolean;
     showMaterialSelector: boolean;
@@ -29,7 +32,7 @@ export const ITEM_TYPE_CONFIGS: Record<ItemType, ItemTypeConfig> = {
         value: ItemType.UNIT,
         label: 'Unidade',
         description: 'Venda por unidade simples',
-        icon: '🔢',
+        icon: Hash,
         color: 'gray',
         requiresDimensions: false,
         showMaterialSelector: false,
@@ -39,7 +42,7 @@ export const ITEM_TYPE_CONFIGS: Record<ItemType, ItemTypeConfig> = {
         value: ItemType.SQUARE_METER,
         label: 'Metro Quadrado',
         description: 'Venda por área (m²)',
-        icon: '📐',
+        icon: Ruler,
         color: 'indigo',
         requiresDimensions: true,
         showMaterialSelector: false,
@@ -49,9 +52,9 @@ export const ITEM_TYPE_CONFIGS: Record<ItemType, ItemTypeConfig> = {
         value: ItemType.TIME_AREA,
         label: 'Tempo + Área',
         description: 'Corte CNC / Laser com material',
-        icon: '⏱️',
+        icon: Timer,
         color: 'orange',
-        requiresDimensions: true, // Para calcular material
+        requiresDimensions: true,
         showMaterialSelector: false,
         showFinishingSelector: false
     },
@@ -59,7 +62,7 @@ export const ITEM_TYPE_CONFIGS: Record<ItemType, ItemTypeConfig> = {
         value: ItemType.SERVICE,
         label: 'Serviço/Arte',
         description: 'Design, criação de arte, mão de obra',
-        icon: '🎨',
+        icon: Palette,
         color: 'blue',
         requiresDimensions: false,
         showMaterialSelector: false,
@@ -69,7 +72,7 @@ export const ITEM_TYPE_CONFIGS: Record<ItemType, ItemTypeConfig> = {
         value: ItemType.PRINT_SHEET,
         label: 'Impressão Folha',
         description: 'Cartões, flyers, folhetos em papel',
-        icon: '📄',
+        icon: FileText,
         color: 'green',
         requiresDimensions: true,
         showMaterialSelector: true,
@@ -79,7 +82,7 @@ export const ITEM_TYPE_CONFIGS: Record<ItemType, ItemTypeConfig> = {
         value: ItemType.PRINT_ROLL,
         label: 'Impressão Rolo',
         description: 'Banners, adesivos, lonas',
-        icon: '🖨️',
+        icon: Printer,
         color: 'purple',
         requiresDimensions: true,
         showMaterialSelector: true,
@@ -89,7 +92,7 @@ export const ITEM_TYPE_CONFIGS: Record<ItemType, ItemTypeConfig> = {
         value: ItemType.LASER_CUT,
         label: 'Corte Laser',
         description: 'Corte e gravação a laser',
-        icon: '⚡',
+        icon: Zap,
         color: 'red',
         requiresDimensions: true,
         showMaterialSelector: true,
@@ -99,7 +102,7 @@ export const ITEM_TYPE_CONFIGS: Record<ItemType, ItemTypeConfig> = {
         value: ItemType.PRODUCT,
         label: 'Produto Pronto',
         description: 'Produtos acabados para revenda',
-        icon: '📦',
+        icon: Package,
         color: 'gray',
         requiresDimensions: false,
         showMaterialSelector: false,

@@ -5,8 +5,8 @@ import { ProfileBalanceService } from '../../profiles/services/ProfileBalanceSer
 export interface PayBillInput {
   organizationId: string;
   payableId: string;
-  paymentAccountId: string; // Caixa/Bancos (ativo que sai)
-  supplierAccountId: string; // Fornecedores a Pagar (passivo que é baixado)
+  paymentAccountId: string;    // Caixa/Bancos (ativo que sai)
+  supplierAccountId?: string;  // Fornecedores a Pagar — auto-resolvido se omitido
   paymentMethodId?: string;
   amountPaid: number;
   notes?: string;
@@ -73,6 +73,22 @@ export class PaymentService {
         throw new AppError('O valor pago não pode ser maior que o valor da fatura.', 400);
       }
 
+      // ── 1b. Auto-resolver supplierAccountId pela transação CREDIT criada no fechamento da fatura
+      let resolvedSupplierAccountId = supplierAccountId;
+      if (!resolvedSupplierAccountId) {
+        const linkedCreditTx = await tx.transaction.findFirst({
+          where: { payableId, organizationId, type: TransactionType.CREDIT },
+          orderBy: { createdAt: 'asc' }
+        });
+        if (!linkedCreditTx) {
+          throw new AppError(
+            'Conta contábil do fornecedor não encontrada. Confirme se a fatura foi gerada corretamente.',
+            400
+          );
+        }
+        resolvedSupplierAccountId = linkedCreditTx.accountId;
+      }
+
       const updatedPayable = await tx.accountPayable.update({
         where: {
           id: payableId,
@@ -93,7 +109,7 @@ export class PaymentService {
       await tx.transaction.create({
         data: {
           organizationId,
-          accountId: supplierAccountId,
+          accountId: resolvedSupplierAccountId,
           type: TransactionType.DEBIT,
           amount: amountPaid,
           description: `Baixa Fatura Fornecedor #${payable.id.slice(-8)}`,
@@ -109,7 +125,7 @@ export class PaymentService {
       });
 
       await tx.account.update({
-        where: { id: supplierAccountId, organizationId },
+        where: { id: resolvedSupplierAccountId, organizationId },
         data: { balance: { decrement: amountPaid } }
       });
 
@@ -186,7 +202,10 @@ export class PaymentService {
       const defaultAccount = await this.prisma.account.findFirst({
         where: { organizationId, active: true }
       });
-      finalAccountId = defaultAccount?.id || '';
+      if (!defaultAccount) {
+        throw new AppError('Nenhuma conta bancária ativa encontrada. Cadastre uma conta antes de registrar pagamentos.', 400);
+      }
+      finalAccountId = defaultAccount.id;
     }
 
     return await this.prisma.$transaction(async (tx) => {

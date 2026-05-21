@@ -18,6 +18,7 @@ import { formatCurrency } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { EntradasMaterial } from '../features/estoque/EntradasMaterial';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 interface InventoryItem {
   id: string;
@@ -296,7 +297,7 @@ const Estoque: React.FC = () => {
       </div>
 
       {showAddForm && (
-        <div className="modal-overlay">
+        <ModalPortal>
           <Card className="modal-content-card max-w-2xl">
 
             <CardHeader>
@@ -404,7 +405,7 @@ const Estoque: React.FC = () => {
               </form>
             </CardContent>
           </Card>
-        </div>
+        </ModalPortal>
       )}
 
       {/* Inventory List */}

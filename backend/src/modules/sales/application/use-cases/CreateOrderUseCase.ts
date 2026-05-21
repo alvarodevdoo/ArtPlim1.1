@@ -1,4 +1,5 @@
 import { addDays } from 'date-fns';
+import { StockReservationService } from '../../../wms/services/StockReservationService';
 import { Order } from '../../domain/entities/Order';
 import { OrderItem, DiscountStatus } from '../../domain/entities/OrderItem';
 import { OrderNumber } from '../../domain/value-objects/OrderNumber';
@@ -68,7 +69,7 @@ export class CreateOrderUseCase {
     const initialStatus = statuses.find((s: any) => s.mappedBehavior === 'DRAFT') || statuses[0];
 
     // Gerar número do pedido
-    const sequence = await this.orderRepository.getNextSequence();
+    const sequence = await this.orderRepository.getNextSequence(customer.organizationId);
     const orderNumber = OrderNumber.generate(sequence);
 
     // Calcular validade do orçamento
@@ -202,9 +203,10 @@ export class CreateOrderUseCase {
     });
     // ----------------------------------------
 
-    // ─── VALIDAÇÃO DE ESTOQUE (Bulk Query — não recalcula a BOM) ──────────────
-    // Acumular consumo total de materiais de todos os itens do pedido
+    // Acumular consumo total de materiais de todos os itens (para reserva)
     const materialConsumptionMap = new Map<string, number>();
+
+    // 1) Materiais vindos do insumos_snapshot (BOM via Ficha Técnica + opções)
     for (const orderItem of orderItems) {
       const snap: any[] = (orderItem.attributes as any)?.insumos_snapshot || [];
       for (const insumo of snap) {
@@ -214,43 +216,33 @@ export class CreateOrderUseCase {
       }
     }
 
-    if (materialConsumptionMap.size > 0) {
-      // Busca todos os materiais relevantes + seu estoque em UMA query
-      const materialIds = Array.from(materialConsumptionMap.keys());
-      const materials = await (this as any).prisma?.material.findMany({
-        where: { id: { in: materialIds } },
-        select: {
-          id: true,
-          name: true,
-          sellWithoutStock: true,
-          inventoryItems: {
-            select: { quantity: true }
-          }
-        }
-      });
+    // 2) Materiais vinculados diretamente às OPÇÕES de configuração (ConfigurationOption.materialId)
+    //    Ex: cor "KIWI-TRANSPARENTE" -> material "Carimbo Printer C20 Kiwi"
+    const allOptionIds = orderItems.flatMap((oi: any) => {
+      const sel = (oi.attributes as any)?.selectedOptions || {};
+      return Object.values(sel).filter((v: any) => !!v);
+    }) as string[];
 
-      if (materials) {
-        const ruptures: string[] = [];
-        for (const mat of materials) {
-          if (mat.sellWithoutStock) continue; // Permissão de venda sem estoque
-          const estoqueAtual = mat.inventoryItems.reduce(
-            (sum: number, item: any) => sum + (item.quantity || 0), 0
-          );
-          const consumo = materialConsumptionMap.get(mat.id) || 0;
-          if (estoqueAtual < consumo) {
-            ruptures.push(
-              `"${mat.name}" (estoque: ${estoqueAtual}, necessário: ${consumo.toFixed(2)})`
-            );
-          }
-        }
-        if (ruptures.length > 0) {
-          throw new Error(
-            `Estoque insuficiente para concluir o pedido. Material(is) bloqueado(s): ${ruptures.join('; ')}`
-          );
+    if (allOptionIds.length > 0) {
+      const opts = await (this as any).prisma.configurationOption.findMany({
+        where: { id: { in: allOptionIds }, materialId: { not: null } },
+        select: { id: true, materialId: true, slotQuantity: true }
+      });
+      const optMap = new Map<string, { materialId: string; slotQuantity: number }>(
+        opts.map((o: any) => [o.id, { materialId: o.materialId, slotQuantity: Number(o.slotQuantity || 1) }])
+      );
+
+      for (const oi of orderItems) {
+        const sel: Record<string, string> = (oi.attributes as any)?.selectedOptions || {};
+        for (const optId of Object.values(sel)) {
+          const info = optMap.get(optId);
+          if (!info?.materialId) continue;
+          const qty = info.slotQuantity * oi.quantity;
+          const prev = materialConsumptionMap.get(info.materialId) || 0;
+          materialConsumptionMap.set(info.materialId, prev + qty);
         }
       }
     }
-    // ─────────────────────────────────────────────────────────────────────────
 
     // Calcular subtotais e totais finais (Bruto)
     const subtotal = orderItems.reduce(
@@ -289,6 +281,21 @@ export class CreateOrderUseCase {
 
     // Salvar no repositório
     const savedOrder = await this.orderRepository.save(order);
+
+    // Reservar estoque (produtos com stockQuantity + materiais usados na composição)
+    try {
+      const reservationService = new StockReservationService((this as any).prisma);
+      await reservationService.reserveForOrder(
+        savedOrder.id,
+        customer.organizationId,
+        data.items.map(i => ({ productId: i.productId, quantity: i.quantity })),
+        materialConsumptionMap
+      );
+    } catch (reservationError: any) {
+      // Se a reserva falhar, desfaz o pedido e repropaga o erro
+      await (this as any).prisma.order.delete({ where: { id: savedOrder.id } }).catch(() => {});
+      throw reservationError;
+    }
 
     // Registrar no histórico de status (Criação)
     try {

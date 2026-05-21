@@ -1,9 +1,10 @@
-import { ConfigurationType } from '@prisma/client';
+import { ConfigurationType, ConfigurationKind } from '@prisma/client';
 import { NotFoundError, ValidationError } from '../../../shared/infrastructure/errors/AppError';
 
 interface CreateConfigurationRequest {
   name: string;
   type: ConfigurationType;
+  kind?: ConfigurationKind;
   required?: boolean;
   defaultValue?: string;
   affectsComponents?: boolean;
@@ -19,6 +20,7 @@ interface CreateConfigurationRequest {
 interface UpdateConfigurationRequest {
   name?: string;
   type?: ConfigurationType;
+  kind?: ConfigurationKind;
   required?: boolean;
   defaultValue?: string;
   affectsComponents?: boolean;
@@ -45,6 +47,12 @@ interface CreateOptionRequest {
   isAvailable?: boolean;
   priceOverride?: number | null;
   fixedValue?: number | null;
+  // Qty editável (acabamentos)
+  defaultQuantity?: number | null;
+  minQuantity?: number | null;
+  maxQuantity?: number | null;
+  allowCustomQty?: boolean;
+  allowedChildIds?: string[] | null;
 }
 
 interface UpdateOptionRequest {
@@ -61,6 +69,11 @@ interface UpdateOptionRequest {
   isAvailable?: boolean;
   priceOverride?: number | null;
   fixedValue?: number | null;
+  defaultQuantity?: number | null;
+  minQuantity?: number | null;
+  maxQuantity?: number | null;
+  allowCustomQty?: boolean;
+  allowedChildIds?: string[] | null;
 }
 
 interface AdditionalComponent {
@@ -161,6 +174,7 @@ export class ProductConfigurationService {
         productId,
         name: request.name,
         type: request.type,
+        kind: request.kind ?? ConfigurationKind.VARIATION,
         required: request.required ?? true,
         defaultValue: request.defaultValue,
         affectsComponents: request.affectsComponents ?? false,
@@ -326,6 +340,11 @@ export class ProductConfigurationService {
         priceOverride: request.priceOverride ?? null,
         fixedValue: request.fixedValue ?? null,
         materialId: request.materialId ?? null,
+        defaultQuantity: request.defaultQuantity ?? null,
+        minQuantity: request.minQuantity ?? null,
+        maxQuantity: request.maxQuantity ?? null,
+        allowCustomQty: request.allowCustomQty ?? false,
+        allowedChildIds: request.allowedChildIds ?? null,
         additionalComponents: request.additionalComponents ? JSON.stringify(request.additionalComponents) : null,
         removedComponents: request.removedComponents ? JSON.stringify(request.removedComponents) : null,
         componentModifiers: request.componentModifiers ? JSON.stringify(request.componentModifiers) : null,
@@ -359,6 +378,11 @@ export class ProductConfigurationService {
         priceOverride: request.priceOverride,
         fixedValue: request.fixedValue,
         ...(request.materialId !== undefined ? { materialId: request.materialId } : {}),
+        ...(request.defaultQuantity !== undefined ? { defaultQuantity: request.defaultQuantity } : {}),
+        ...(request.minQuantity !== undefined ? { minQuantity: request.minQuantity } : {}),
+        ...(request.maxQuantity !== undefined ? { maxQuantity: request.maxQuantity } : {}),
+        ...(request.allowCustomQty !== undefined ? { allowCustomQty: request.allowCustomQty } : {}),
+        ...(request.allowedChildIds !== undefined ? { allowedChildIds: request.allowedChildIds } : {}),
         additionalComponents: request.additionalComponents ? JSON.stringify(request.additionalComponents) : undefined,
         removedComponents: request.removedComponents ? JSON.stringify(request.removedComponents) : undefined,
         componentModifiers: request.componentModifiers ? JSON.stringify(request.componentModifiers) : undefined,
@@ -434,7 +458,21 @@ export class ProductConfigurationService {
         configurations: {
           include: {
             options: {
-              orderBy: { displayOrder: 'asc' }
+              orderBy: { displayOrder: 'asc' },
+              include: {
+                material: {
+                  select: {
+                    id: true,
+                    name: true,
+                    unit: true,
+                    controlUnit: true,
+                    trackStock: true,
+                    currentStock: true,
+                    minStockQuantity: true,
+                    sourcingMode: true
+                  }
+                }
+              }
             }
           },
           orderBy: { displayOrder: 'asc' }

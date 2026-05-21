@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Plus, Edit, Trash, CreditCard, Banknote, DollarSign, Wallet, ArrowDown } from 'lucide-react';
+import { Plus, Edit, Trash, CreditCard, Banknote, DollarSign, Wallet, ArrowDown, Power, PowerOff } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import { Combobox } from '@/components/ui/Combobox';
@@ -11,6 +11,9 @@ interface PaymentMethod {
     id: string;
     name: string;
     type: 'PIX' | 'CARD' | 'CASH' | 'TRANSFER' | 'BOLETO' | 'OTHER';
+    usageScope?: 'SALES' | 'PURCHASES' | 'BOTH';
+    cardClosingDay?: number | null;
+    cardDueDay?: number | null;
     feePercentage: number;
     installmentRules?: {
         maxInstallments: number;
@@ -34,7 +37,13 @@ interface Account {
     balance: string | number;
 }
 
-const PaymentMethodSettings: React.FC = () => {
+interface PaymentMethodSettingsProps {
+    scope?: 'SALES' | 'PURCHASES';
+    title?: string;
+    description?: string;
+}
+
+const PaymentMethodSettings: React.FC<PaymentMethodSettingsProps> = ({ scope, title, description }) => {
     const [methods, setMethods] = useState<PaymentMethod[]>([]);
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [categories, setCategories] = useState<any[]>([]);
@@ -45,6 +54,9 @@ const PaymentMethodSettings: React.FC = () => {
     // Form states
     const [name, setName] = useState('');
     const [type, setType] = useState('PIX');
+    const [usageScope, setUsageScope] = useState<'SALES' | 'PURCHASES' | 'BOTH'>('SALES');
+    const [cardClosingDay, setCardClosingDay] = useState<string>('');
+    const [cardDueDay, setCardDueDay] = useState<string>('');
     const [accountId, setAccountId] = useState('');
     const [feePercentage, setFeePercentage] = useState('0');
     const [feeCategoryId, setFeeCategoryId] = useState('');
@@ -56,13 +68,13 @@ const PaymentMethodSettings: React.FC = () => {
 
     useEffect(() => {
         loadData();
-    }, []);
+    }, [scope]);
 
     const loadData = async () => {
         try {
             setLoading(true);
             const [methodsRes, accountsRes, chartRes] = await Promise.all([
-                api.get('/api/payment-methods'),
+                api.get(scope ? `/api/payment-methods?scope=${scope}` : '/api/payment-methods'),
                 api.get('/api/finance/accounts'),
                 api.get('/api/finance/v2/chart-of-accounts')
             ]);
@@ -113,6 +125,9 @@ const PaymentMethodSettings: React.FC = () => {
             setEditingMethod(method);
             setName(method.name);
             setType(method.type);
+            setUsageScope(method.usageScope || 'SALES');
+            setCardClosingDay(method.cardClosingDay != null ? String(method.cardClosingDay) : '');
+            setCardDueDay(method.cardDueDay != null ? String(method.cardDueDay) : '');
             setAccountId(method.accountId || '');
             setFeePercentage(String(method.feePercentage));
             setFeeCategoryId(method.feeCategoryId || '');
@@ -125,6 +140,9 @@ const PaymentMethodSettings: React.FC = () => {
             setEditingMethod(null);
             setName('');
             setType('PIX');
+            setUsageScope(scope || 'SALES');
+            setCardClosingDay('');
+            setCardDueDay('');
             setAccountId('');
             setFeePercentage('0');
             setFeeCategoryId('');
@@ -143,10 +161,16 @@ const PaymentMethodSettings: React.FC = () => {
             const payload = {
                 name,
                 type,
-                accountId: accountId || null,
-                feePercentage: Number(feePercentage),
-                feeCategoryId: feeCategoryId || null,
-                installmentRules: type === 'CARD' ? {
+                usageScope,
+                // Cartão em compras não tem conta de débito imediato (vai pra fatura)
+                accountId: (usageScope === 'PURCHASES' && type === 'CARD') ? null : (accountId || null),
+                // Fatura do cartão: persistir quando CARD (independente de scope)
+                cardClosingDay: type === 'CARD' && cardClosingDay !== '' ? Number(cardClosingDay) : null,
+                cardDueDay: type === 'CARD' && cardDueDay !== '' ? Number(cardDueDay) : null,
+                // Compras: não aplicam taxa de processador (vem do fornecedor, não do método)
+                feePercentage: usageScope === 'PURCHASES' ? 0 : Number(feePercentage),
+                feeCategoryId: usageScope === 'PURCHASES' ? null : (feeCategoryId || null),
+                installmentRules: (type === 'CARD' && usageScope !== 'PURCHASES') ? {
                     maxInstallments: Number(maxInstallments),
                     interestFreeInstallments: Number(interestFreeInstallments),
                     installmentFees: installmentFees.length > 0 ? installmentFees : undefined,
@@ -204,8 +228,8 @@ const PaymentMethodSettings: React.FC = () => {
         <Card>
             <CardHeader className="flex flex-row items-center justify-between">
                 <div>
-                    <CardTitle>Métodos de Pagamento</CardTitle>
-                    <CardDescription>Configure as formas de pagamento aceitas e suas taxas</CardDescription>
+                    <CardTitle>{title || 'Métodos de Pagamento'}</CardTitle>
+                    <CardDescription>{description || 'Configure as formas de pagamento aceitas e suas taxas'}</CardDescription>
                 </div>
                 <Button onClick={() => handleOpenModal()}>
                     <Plus className="w-4 h-4 mr-2" />
@@ -235,17 +259,44 @@ const PaymentMethodSettings: React.FC = () => {
                                             {!method.active && <span className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">Inativo</span>}
                                         </h4>
                                         <p className="text-sm text-slate-500">
-                                            Taxa: {Number(method.feePercentage).toFixed(2)}% •
-                                            {method.type === 'CARD'
-                                                ? ` Até ${method.installmentRules?.maxInstallments}x`
-                                                : ' À vista'}
-                                            {method.account && ` • Conta: ${method.account.name}`}
+                                            {/* Para compras, omitimos taxa do processador. Para CARD em compras,
+                                                mostramos os dias de fechamento/vencimento. Para outros tipos em
+                                                compras, indicamos "À vista" + conta de origem. */}
+                                            {method.usageScope === 'PURCHASES' ? (
+                                                <>
+                                                    {method.type === 'CARD' ? (
+                                                        <>
+                                                            {method.cardClosingDay != null && method.cardDueDay != null
+                                                                ? `Fecha dia ${method.cardClosingDay} • Vence dia ${method.cardDueDay}`
+                                                                : 'Cartão de crédito (fatura)'}
+                                                        </>
+                                                    ) : (
+                                                        <>À vista{method.account && ` • Conta: ${method.account.name}`}</>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <>
+                                                    Taxa: {Number(method.feePercentage).toFixed(2)}% •
+                                                    {method.type === 'CARD'
+                                                        ? ` Até ${method.installmentRules?.maxInstallments ?? 1}x`
+                                                        : ' À vista'}
+                                                    {method.account && ` • Conta: ${method.account.name}`}
+                                                </>
+                                            )}
                                         </p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <Button variant="ghost" size="sm" onClick={() => handleToggleStatus(method.id)}>
-                                        {method.active ? 'Desativar' : 'Ativar'}
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => handleToggleStatus(method.id)}
+                                        title={method.active ? 'Desativar método' : 'Ativar método'}
+                                        className={method.active ? 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}
+                                    >
+                                        {method.active
+                                            ? <Power className="w-4 h-4" />
+                                            : <PowerOff className="w-4 h-4" />}
                                     </Button>
                                     <Button variant="ghost" size="icon" onClick={() => handleOpenModal(method)}>
                                         <Edit className="w-4 h-4 text-slate-600" />
@@ -287,45 +338,130 @@ const PaymentMethodSettings: React.FC = () => {
                                             <option value="OTHER">Outro</option>
                                         </select>
                                     </div>
-                                    <div>
-                                        <label className="text-sm font-medium">Conta de Destino</label>
-                                        <select
-                                            value={accountId}
-                                            onChange={e => setAccountId(e.target.value)}
-                                            className="w-full h-10 px-3 border rounded-md"
-                                        >
-                                            <option value="">Padrão (Primeira Conta Ativa)</option>
-                                            {accounts.map(acc => (
-                                                <option key={acc.id} value={acc.id}>{acc.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="text-sm font-medium">Taxa (%)</label>
-                                        <Input
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            value={feePercentage}
-                                            onChange={e => setFeePercentage(e.target.value)}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-sm font-medium mb-1 block">Categoria p/ Taxas</label>
-                                        <Combobox 
-                                            value={feeCategoryId}
-                                            onChange={setFeeCategoryId}
-                                            options={categories}
-                                            placeholder="Nenhuma (Padrão)"
-                                            searchPlaceholder="Buscar por código ou nome..."
-                                            allowClear={true}
-                                            clearLabel="Remover Vínculo de Taxa"
-                                            triggerClassName="h-10"
-                                        />
-                                    </div>
+
+                                    {!scope && (
+                                        <div className="md:col-span-3">
+                                            <label className="text-sm font-medium">Uso</label>
+                                            <select
+                                                value={usageScope}
+                                                onChange={e => setUsageScope(e.target.value as any)}
+                                                className="w-full h-10 px-3 border rounded-md"
+                                            >
+                                                <option value="SALES">Vendas (receber de clientes)</option>
+                                                <option value="PURCHASES">Compras (pagar fornecedores)</option>
+                                                <option value="BOTH">Ambos os fluxos</option>
+                                            </select>
+                                            <p className="text-[10px] text-muted-foreground mt-1 italic">
+                                                Determina em quais cadastros este método aparece como opção.
+                                            </p>
+                                        </div>
+                                    )}
+                                    {/* Conta vinculada — não aparece para CARD em COMPRAS,
+                                        pois cartão de crédito não debita conta no momento da compra
+                                        (vai pra fatura paga depois). */}
+                                    {!(usageScope === 'PURCHASES' && type === 'CARD') && (
+                                        <div>
+                                            <label className="text-sm font-medium">
+                                                {usageScope === 'PURCHASES' ? 'Conta de Origem' :
+                                                 usageScope === 'BOTH' ? 'Conta vinculada' :
+                                                 'Conta de Destino'}
+                                            </label>
+                                            <select
+                                                value={accountId}
+                                                onChange={e => setAccountId(e.target.value)}
+                                                className="w-full h-10 px-3 border rounded-md"
+                                            >
+                                                <option value="">Padrão (Primeira Conta Ativa)</option>
+                                                {accounts.map(acc => (
+                                                    <option key={acc.id} value={acc.id}>{acc.name}</option>
+                                                ))}
+                                            </select>
+                                            <p className="text-[9px] text-muted-foreground mt-1 italic">
+                                                {usageScope === 'PURCHASES'
+                                                    ? 'De onde sai o dinheiro ao pagar o fornecedor (Pix, dinheiro, débito).'
+                                                    : usageScope === 'BOTH'
+                                                        ? 'Conta movimentada (entrada nas vendas, saída nas compras).'
+                                                        : 'Onde o dinheiro recebido será creditado.'}
+                                            </p>
+                                        </div>
+                                    )}
+                                    {usageScope === 'PURCHASES' && type === 'CARD' && (
+                                        <div className="md:col-span-3 space-y-3">
+                                            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                                                <p className="text-[11px] text-amber-800 leading-tight">
+                                                    💳 <strong>Cartão de crédito:</strong> não há débito imediato em conta.
+                                                    A compra entra na fatura, que será paga no vencimento via outro método
+                                                    (Pix, débito, transferência) — registrado quando a fatura chegar.
+                                                </p>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="text-sm font-medium">Dia de Fechamento</label>
+                                                    <Input
+                                                        type="number"
+                                                        min="1"
+                                                        max="31"
+                                                        placeholder="Ex: 25"
+                                                        value={cardClosingDay}
+                                                        onChange={e => setCardClosingDay(e.target.value)}
+                                                    />
+                                                    <p className="text-[9px] text-muted-foreground mt-1 italic">
+                                                        Dia do mês em que a fatura fecha. Compras após esse dia entram na próxima fatura.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <label className="text-sm font-medium">Dia de Vencimento</label>
+                                                    <Input
+                                                        type="number"
+                                                        min="1"
+                                                        max="31"
+                                                        placeholder="Ex: 5"
+                                                        value={cardDueDay}
+                                                        onChange={e => setCardDueDay(e.target.value)}
+                                                    />
+                                                    <p className="text-[9px] text-muted-foreground mt-1 italic">
+                                                        Dia que a fatura precisa ser paga. Gera lembrete no calendário/notificação.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {usageScope !== 'PURCHASES' && (
+                                        <>
+                                            <div>
+                                                <label className="text-sm font-medium">Taxa (%)</label>
+                                                <Input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    value={feePercentage}
+                                                    onChange={e => setFeePercentage(e.target.value)}
+                                                />
+                                                <p className="text-[9px] text-muted-foreground mt-1 italic">
+                                                    Taxa do processador/maquininha, descontada do recebimento.
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium mb-1 block">Categoria p/ Taxas</label>
+                                                <Combobox
+                                                    value={feeCategoryId}
+                                                    onChange={setFeeCategoryId}
+                                                    options={categories}
+                                                    placeholder="Nenhuma (Padrão)"
+                                                    searchPlaceholder="Buscar por código ou nome..."
+                                                    allowClear={true}
+                                                    clearLabel="Remover Vínculo de Taxa"
+                                                    triggerClassName="h-10"
+                                                />
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
 
-                                {type === 'CARD' && (
+                                {/* Para COMPRAS: o fornecedor informa o valor final.
+                                    Bandeiras/taxas/parcelamento são informações da minha relação com a maquininha,
+                                    irrelevantes ao pagar fornecedor. Por isso ocultamos quando scope === PURCHASES. */}
+                                {type === 'CARD' && usageScope !== 'PURCHASES' && (
                                     <div className="space-y-6">
                                         <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-lg border">
                                             <div>

@@ -6,6 +6,7 @@ import { Plus, Search, Edit, Trash2, Layers, Info } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 interface Material {
   id: string;
@@ -282,7 +283,7 @@ const Materiais: React.FC = () => {
 
       {/* Form Modal */}
       {showForm && (
-        <div className="modal-overlay">
+        <ModalPortal>
           <Card className="modal-content-card max-w-2xl">
             <CardHeader>
               <CardTitle>
@@ -655,7 +656,7 @@ const Materiais: React.FC = () => {
               </form>
             </CardContent>
           </Card>
-        </div>
+        </ModalPortal>
       )}
 
       {/* Materiais List */}

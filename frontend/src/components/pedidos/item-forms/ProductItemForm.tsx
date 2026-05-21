@@ -1,19 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { 
-    Plus, 
-    Package, 
+import {
+    Plus,
     Save,
-    Coins,
-    X,
-    AlertCircle
+    X
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import api from '@/lib/api';
-import { useInsumos } from '@/features/supplies/useInsumos';
-import { SeletorInsumos } from '@/features/supplies/SeletorInsumos';
 import { InsumoMaterialSelecionado } from '@/features/supplies/types';
 import { calculatePricingResult, applyNormalization } from '@/lib/pricing/formulaUtils';
 import { useComposition } from '@/features/orders/hooks/useComposition';
@@ -23,6 +18,7 @@ import { cn } from '@/lib/utils';
 
 // Novos Sub-Componentes Especializados
 import { VariationsSection } from './sections/VariationsSection';
+import type { SelectionPresets } from '../ProductSelectionModal';
 import { SimpleAreaSection } from './sections/SimpleAreaSection';
 import { DynamicRuleSection } from './sections/DynamicRuleSection';
 import { PriceQuantitySection } from './sections/PriceQuantitySection';
@@ -46,6 +42,7 @@ interface ProductItemFormProps {
     isEditing?: boolean;
     isPriceUnlocked?: boolean;
     maxDiscountThreshold?: number;
+    selectionPresets?: SelectionPresets;
 }
 
 const ProductItemForm: React.FC<ProductItemFormProps> = ({
@@ -54,7 +51,8 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
     editingData,
     isEditing = false,
     isPriceUnlocked: isPriceUnlockedParam = false,
-    maxDiscountThreshold = 0.15
+    maxDiscountThreshold = 0.15,
+    selectionPresets
 }) => {
     // ── Estados Principais ────────────────────────────────────────────
     const [quantity, setQuantity] = useState<number>(editingData?.quantity || 1);
@@ -63,17 +61,35 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
     );
     const [discountItem, setDiscountItem] = useState<number | string>(editingData?.discountItem || 0);
     const [notes, setNotes] = useState(editingData?.notes || '');
-    const [materiaisSelecionados, setMateriaisSelecionados] = useState<InsumoMaterialSelecionado[]>(
-        editingData?.attributes?.insumos || []
-    );
+    // Mantém insumos do item para backward compat no payload (bloco visual removido)
+    const materiaisSelecionados: InsumoMaterialSelecionado[] = editingData?.attributes?.insumos || [];
     const [dynamicVariables, setDynamicVariables] = useState<Record<string, any>>(
         editingData?.attributes?.dynamicVariables || {}
     );
-    const [opcoesSelecionadas, setOpcoesSelecionadas] = useState<Record<string, string>>(
-        editingData?.attributes?.selectedOptions || {}
+    const [stockInfo, setStockInfo] = useState<{
+        loading: boolean;
+        items: Array<{ kind: 'product' | 'material'; id: string; name: string; available: number; needed: number; unit?: string; ok: boolean }>;
+    }>({ loading: false, items: [] });
+
+    const hasStockRupture = stockInfo.items.some(s => !s.ok);
+
+    const [opcoesSelecionadas, setOpcoesSelecionadas] = useState<Record<string, string[]>>(() => {
+        // Prioriza o shape novo (multi-select); fallback para legado (single per group)
+        const multi = editingData?.attributes?.selectedOptionsMulti;
+        const source = (multi && typeof multi === 'object') ? multi : (editingData?.attributes?.selectedOptions || {});
+        const normalized: Record<string, string[]> = {};
+        for (const [k, v] of Object.entries(source)) {
+            if (Array.isArray(v)) normalized[k] = (v as any[]).filter(Boolean) as string[];
+            else if (v) normalized[k] = [v as string];
+            else normalized[k] = [];
+        }
+        return normalized;
+    });
+    const [opcoesQuantidades, setOpcoesQuantidades] = useState<Record<string, number>>(
+        editingData?.attributes?.optionQuantities || {}
     );
     const [configuracoes, setConfiguracoes] = useState<any[]>([]);
-    const { insumos } = useInsumos();
+    // useInsumos removido — bloco de composição manual não utilizado
     const [globalUnit, setGlobalUnit] = useState<'M' | 'CM' | 'MM'>('MM');
     const unitInitializedRef = React.useRef<string | null>(null);
 
@@ -134,17 +150,37 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
         };
     }, [dynamicVariables, inputVars]);
 
+    // ── Achatamento dos IDs selecionados (suporta multi-select por grupo) ─
+    const flatSelectedOptionIds = useMemo(
+        () => Object.values(opcoesSelecionadas).flat().filter(Boolean) as string[],
+        [opcoesSelecionadas]
+    );
+
+    // ── Shape legado para compat (consumidores antigos esperam Record<string,string>) ─
+    const legacySelectedOptions = useMemo(() => {
+        const out: Record<string, string> = {};
+        for (const [k, v] of Object.entries(opcoesSelecionadas)) {
+            if (Array.isArray(v) && v.length > 0) out[k] = v[0];
+        }
+        return out;
+    }, [opcoesSelecionadas]);
+
+    // O ajuste local por quantidade customizada foi REMOVIDO — agora o backend
+    // (PricingCompositionService) aplica a customQuantity diretamente no cálculo
+    // de custo do material, e o preço sugerido já vem ajustado em `composition`.
+
     // ── Motor de Composição ───────────────────────────────────────────
     const { composition, loading: compLoading } = useComposition({
         productId: produto.id,
-        selectedOptionIds: Object.values(opcoesSelecionadas).filter(Boolean),
+        selectedOptionIds: flatSelectedOptionIds,
+        optionQuantities: opcoesQuantidades, // qty customizada por opção (acabamentos)
         quantity,
         dynamicVariables,
         width: normalizedDims.width,
         height: normalizedDims.height,
         debounceMs: 200 // Aumentado levemente para estabilidade
     });
-    const { blockedIds } = useIncompatibilities(Object.values(opcoesSelecionadas).filter(Boolean));
+    const { blockedIds } = useIncompatibilities(flatSelectedOptionIds);
     const hiddenFormulaVars = useMemo(() => pricingRule?.variables?.filter((v: any) => {
         const nameUpper = (v.name || v.id || '').toUpperCase();
         const isPriceField = v.role === 'SALE_PRICE' || v.role === 'MONETARY' || 
@@ -170,15 +206,55 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 // 2. Configurações (Variações)
                 const confResp = await api.get(`/api/catalog/products/${produto.id}/configurations/complete`);
                 const itemsList = confResp.data?.data || [];
-                setConfiguracoes(Array.isArray(itemsList) ? itemsList : (itemsList.configurations || []));
-                
-                const defaults: Record<string, string> = {};
-                (Array.isArray(itemsList) ? itemsList : []).forEach((c: any) => {
+                // Normaliza para array — backend pode devolver [{...}] OU { configurations: [{...}] }
+                const configList: any[] = Array.isArray(itemsList)
+                    ? itemsList
+                    : (Array.isArray(itemsList?.configurations) ? itemsList.configurations : []);
+                setConfiguracoes(configList);
+
+                const defaults: Record<string, string[]> = {};
+                configList.forEach((c: any) => {
                     if (c.required && Array.isArray(c.options) && c.options.length > 0) {
-                        defaults[c.id] = c.options[0].id;
+                        defaults[c.id] = [c.options[0].id];
                     }
                 });
-                setOpcoesSelecionadas(prev => ({ ...defaults, ...prev }));
+
+                // Aplicar presets vindos do ProductSelectionModal (SKU virtual).
+                // Mapeia configName + optionLabel para os IDs reais do catálogo.
+                // Match tolerante: case/whitespace-insensitive + fallback por substring.
+                const presetSelections: Record<string, string[]> = {};
+                if (selectionPresets?.optionLabels && selectionPresets.optionLabels.length > 0) {
+                    const norm = (s: string) =>
+                        (s || '').toLowerCase().trim().normalize('NFC');
+
+                    for (const preset of selectionPresets.optionLabels) {
+                        const pName = norm(preset.configName);
+                        const pLabel = norm(preset.optionLabel);
+
+                        let targetCfg = configList.find((c: any) => norm(c.name) === pName);
+                        if (!targetCfg) {
+                            targetCfg = configList.find((c: any) => {
+                                const cn = norm(c.name);
+                                return cn.includes(pName) || pName.includes(cn);
+                            });
+                        }
+                        if (!targetCfg || !Array.isArray(targetCfg.options)) continue;
+
+                        let targetOpt = targetCfg.options.find((o: any) => norm(o.label) === pLabel);
+                        if (!targetOpt) {
+                            targetOpt = targetCfg.options.find((o: any) => {
+                                const ol = norm(o.label);
+                                return ol.includes(pLabel) || pLabel.includes(ol);
+                            });
+                        }
+                        if (!targetOpt) continue;
+
+                        presetSelections[targetCfg.id] = [targetOpt.id];
+                    }
+                }
+
+                // Ordem de precedência: editingData (prev) > presets > defaults
+                setOpcoesSelecionadas(prev => ({ ...defaults, ...presetSelections, ...prev }));
 
                 // 3. Inicializar Variáveis Dinâmicas
                 const currentVariables = inputVars.length > 0 ? inputVars : (produto.pricingMode === 'SIMPLE_AREA' ? [
@@ -255,6 +331,27 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
             }
         }
     }, [composition?.unitSuggestedPrice, hiddenFormulaVars]);
+
+    // ── Checagem reativa de estoque (debounced) ───────────────────────
+    useEffect(() => {
+        const selectedIds = flatSelectedOptionIds;
+        if (quantity <= 0) return;
+
+        const timer = setTimeout(async () => {
+            setStockInfo(prev => ({ ...prev, loading: true }));
+            try {
+                const res = await api.post('/api/sales/orders/check-stock', {
+                    items: [{ productId: produto.id, quantity, selectedOptionIds: selectedIds }]
+                });
+                const breakdown = res.data?.data?.breakdown || [];
+                setStockInfo({ loading: false, items: breakdown });
+            } catch (e) {
+                setStockInfo({ loading: false, items: [] });
+            }
+        }, 350);
+
+        return () => clearTimeout(timer);
+    }, [quantity, opcoesSelecionadas, produto.id]);
 
     // ── Lógica de Cálculo de Preço (Motor) ──────────────────────────
     const [formulaResultValue, setFormulaResultValue] = useState<number>(0);
@@ -346,6 +443,8 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
         }
 
         if (suggested > 0 && !isPriceManualRef.current) {
+            // Soma o ajuste de quantidade customizada (mock) ao preço final
+            // O backend já injeta a customQuantity no preço sugerido via `composition`.
             let finalSuggested = suggested;
 
             const rounded = Number(finalSuggested.toFixed(2));
@@ -456,7 +555,7 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                     authorizationRequestId: requestId,
                     width: normalizedDims.width || null,
                     height: normalizedDims.height || null,
-                    notes, attributes: { dynamicVariables, insumos: materiaisSelecionados, selectedOptions: opcoesSelecionadas }
+                    notes, attributes: { dynamicVariables, insumos: materiaisSelecionados, selectedOptions: legacySelectedOptions, selectedOptionsMulti: opcoesSelecionadas, optionQuantities: opcoesQuantidades }
                 });
             }
         } catch (err) {
@@ -472,9 +571,25 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
 
     const handleSubmitLocal = () => {
         if (quantity <= 0 || Number(unitPrice) <= 0) return toast.error('Coloque quantidade e preço.');
-        
+
         if (discountValidation.exceedsGross) {
             return toast.error('O desconto não pode ser maior que o valor total do item.');
+        }
+
+        // Verificação de estoque disponível
+        const prodAny = produto as any;
+        if (prodAny.stockQuantity != null && prodAny.availableStock != null) {
+            const editingPrevious = editingData?.quantity || 0;
+            const effectiveAvailable = prodAny.availableStock + editingPrevious;
+            if (quantity > effectiveAvailable) {
+                if (prodAny.sellWithoutStock === false) {
+                    return toast.error(`Estoque insuficiente. Disponível: ${effectiveAvailable} ${prodAny.stockUnit || 'un.'}, solicitado: ${quantity}`);
+                }
+                const proceed = window.confirm(
+                    `ATENÇÃO: Estoque insuficiente!\n\nDisponível: ${effectiveAvailable} ${prodAny.stockUnit || 'un.'}\nSolicitado: ${quantity}\n\nO produto será reservado mesmo assim, gerando estoque negativo. Deseja continuar?`
+                );
+                if (!proceed) return;
+            }
         }
 
         // Bloqueio estrito se exceder o teto e não estiver autorizado (E não for uma solicitação remota em curso)
@@ -492,9 +607,24 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
             discountStatus: isPriceUnlocked ? 'APPROVED' : 'NONE',
             width: normalizedDims.width || null,
             height: normalizedDims.height || null,
-            notes, attributes: { dynamicVariables, insumos: materiaisSelecionados, selectedOptions: opcoesSelecionadas }
+            notes, attributes: { dynamicVariables, insumos: materiaisSelecionados, selectedOptions: legacySelectedOptions, selectedOptionsMulti: opcoesSelecionadas, optionQuantities: opcoesQuantidades }
         });
     };
+
+    // Mostra a disponibilidade do PRODUTO para o vendedor.
+    // Materiais/insumos são informação interna de produção, não de venda.
+    const stockBottleneck = useMemo(() => {
+        if (stockInfo.items.length === 0) return null;
+        // Preferência: estoque do produto se rastreado;
+        // caso contrário, material com menor disponibilidade (gargalo real).
+        const productEntry = stockInfo.items.find(s => s.kind === 'product');
+        if (productEntry) return productEntry;
+        const materialEntries = stockInfo.items.filter(s => s.kind === 'material');
+        if (materialEntries.length === 0) return null;
+        return materialEntries.reduce((a, b) =>
+            Number(a.available ?? 0) <= Number(b.available ?? 0) ? a : b
+        );
+    }, [stockInfo.items]);
 
     return (
         <div className="space-y-4 animate-in fade-in duration-300">
@@ -542,13 +672,6 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 </div>
 
                 <div className="flex flex-row items-end gap-4 w-full flex-wrap">
-                    <VariationsSection 
-                        configuracoes={configuracoes} 
-                        opcoesSelecionadas={opcoesSelecionadas} 
-                        setOpcoesSelecionadas={setOpcoesSelecionadas} 
-                        blockedIds={blockedIds} 
-                    />
-
                     {produto.pricingMode === 'SIMPLE_AREA' && (
                         <SimpleAreaSection 
                             inputVars={inputVars}
@@ -576,52 +699,63 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                         />
                     )}
 
-                    <PriceQuantitySection 
+                    <PriceQuantitySection
                         quantity={quantity} setQuantity={setQuantity}
                         unitPrice={unitPrice} setUnitPrice={setUnitPrice}
                         isPriceLocked={isPriceLocked} isPriceUnlocked={isPriceUnlocked}
-                        setIsPriceUnlocked={setIsPriceUnlocked} 
+                        setIsPriceUnlocked={setIsPriceUnlocked}
                         setShowAuthModal={handleRequestUnlock}
                         isPriceManualRef={isPriceManualRef} compLoading={compLoading}
                         discountItem={discountItem} setDiscountItem={setDiscountItem}
                         discountValidation={discountValidation}
                         maxDiscountThreshold={effectiveThreshold}
+                        quantityHasError={hasStockRupture}
+                        stockBottleneck={stockBottleneck}
                     />
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-                <div className="lg:col-span-3 space-y-2">
-                    <div className="flex items-center gap-2 text-slate-500 font-bold text-[10px] uppercase tracking-wider"><Package className="w-3 h-3" />Composição</div>
-                    <div className="border border-slate-200 rounded-xl p-3 bg-white shadow-sm min-h-[160px]">
-                        <SeletorInsumos insumos={insumos} materiaisIniciais={materiaisSelecionados} onMaterialsChange={setMateriaisSelecionados} />
-                    </div>
-                </div>
-                <div className="lg:col-span-2 space-y-2">
-                    <div className="flex items-center gap-2 text-slate-500 font-bold text-[10px] uppercase tracking-wider"><Coins className="w-3 h-3" />Lucratividade</div>
-                    <PriceSummaryPanel composition={composition} loading={compLoading} negotiatedPrice={Number(unitPrice)} quantity={quantity} discountItem={Number(discountItem) || 0} />
-                </div>
-            </div>
+            {configuracoes.length > 0 && (
+                <VariationsSection
+                    configuracoes={configuracoes}
+                    opcoesSelecionadas={opcoesSelecionadas}
+                    setOpcoesSelecionadas={setOpcoesSelecionadas}
+                    opcoesQuantidades={opcoesQuantidades}
+                    setOpcoesQuantidades={setOpcoesQuantidades}
+                    blockedIds={blockedIds}
+                />
+            )}
 
-            <div className="flex flex-col sm:flex-row gap-4 pt-6 border-t mt-4">
-                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Observações do item..." className="flex-1 h-12 p-3 border border-slate-200 rounded-lg bg-slate-50 text-[11px] font-medium resize-none focus:h-20 transition-all shadow-inner" />
-                <Button 
-                    onClick={handleSubmitLocal} 
-                    disabled={
-                        quantity <= 0 || 
-                        Number(unitPrice) <= 0 || 
-                        discountValidation.exceedsGross ||
-                        (!discountValidation.ok && !isPriceUnlocked)
-                    } 
-                    className={`w-full sm:w-72 h-12 text-sm font-bold uppercase tracking-widest shadow-lg transition-all ${
-                        !discountValidation.ok && !isPriceUnlocked 
-                        ? 'bg-slate-300 cursor-not-allowed' 
-                        : 'bg-indigo-600 hover:bg-indigo-700'
-                    }`}
-                >
-                    {isEditing ? <Save className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
-                    {!discountValidation.ok && !isPriceUnlocked ? 'Solicitar Autorização' : (isEditing ? 'Salvar Item' : 'Adicionar Item')}
-                </Button>
+            {/* Observações */}
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Observações do item..." className="w-full h-12 p-3 border border-slate-200 rounded-lg bg-slate-50 text-[11px] font-medium resize-none focus:h-20 transition-all shadow-inner" />
+
+            {/* ── Rodapé fixo: Resumo de valor + Ação ─────────────────── */}
+            <div className="sticky bottom-0 -mx-4 -mb-4 mt-2 bg-white border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+                <div className="px-4 py-3 flex items-center justify-between gap-4">
+                    {/* Lado esquerdo: resumo de custos compacto */}
+                    <div className="flex items-center gap-4 min-w-0">
+                        <PriceSummaryPanel composition={composition} loading={compLoading} negotiatedPrice={Number(unitPrice)} quantity={quantity} discountItem={Number(discountItem) || 0} />
+                    </div>
+
+                    {/* Lado direito: botão de ação */}
+                    <Button
+                        onClick={handleSubmitLocal}
+                        disabled={
+                            quantity <= 0 ||
+                            Number(unitPrice) <= 0 ||
+                            discountValidation.exceedsGross ||
+                            (!discountValidation.ok && !isPriceUnlocked)
+                        }
+                        className={`shrink-0 h-12 px-8 text-sm font-bold uppercase tracking-widest shadow-lg transition-all ${
+                            !discountValidation.ok && !isPriceUnlocked
+                            ? 'bg-slate-300 cursor-not-allowed'
+                            : 'bg-indigo-600 hover:bg-indigo-700'
+                        }`}
+                    >
+                        {isEditing ? <Save className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+                        {!discountValidation.ok && !isPriceUnlocked ? 'Solicitar Autorização' : (isEditing ? 'Salvar Item' : 'Adicionar Item')}
+                    </Button>
+                </div>
             </div>
 
             {showAuthModal && (

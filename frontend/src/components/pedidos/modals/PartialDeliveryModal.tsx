@@ -8,6 +8,7 @@ import { PackageCheck, Truck } from 'lucide-react';
 import { Pedido } from '@/types/pedidos';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 interface PartialDeliveryModalProps {
   pedido: Pedido | null;
@@ -73,7 +74,7 @@ const PartialDeliveryModal: React.FC<PartialDeliveryModalProps> = ({ pedido, ite
   };
 
   return (
-    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <ModalPortal className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <Card className="modal-content-card max-w-xl w-full relative">
         <CardHeader>
           <div className="flex items-center space-x-2 text-emerald-600 mb-2">
@@ -135,7 +136,7 @@ const PartialDeliveryModal: React.FC<PartialDeliveryModalProps> = ({ pedido, ite
           </Button>
         </CardFooter>
       </Card>
-    </div>
+    </ModalPortal>
   );
 };
 

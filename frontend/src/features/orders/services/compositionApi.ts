@@ -13,6 +13,8 @@ import type { CompositionResult, IncompatibilityResult } from '../types/composit
 export async function simulateComposition(params: {
   productId: string;
   selectedOptionIds: string[];
+  /** Novo formato (qty customizada por opção). Backend prefere este quando enviado. */
+  selectedOptions?: Array<{ optionId: string; quantity?: number | null }>;
   quantity: number;
   dynamicVariables?: Record<string, any>;
   width?: number;

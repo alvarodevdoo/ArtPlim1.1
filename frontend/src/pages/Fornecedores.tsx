@@ -3,9 +3,12 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Plus, Search, Edit, Trash2, Phone, Mail, Truck, MapPin, Building2, Hash } from 'lucide-react';
-import axios from 'axios';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { toTitleCaseBR } from '@/services/lookup';
+import { useCnpjLookup } from '@/hooks/useCnpjLookup';
+import { useCepLookup } from '@/hooks/useCepLookup';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 interface Fornecedor {
   id: string;
@@ -45,85 +48,57 @@ const Fornecedores: React.FC = () => {
     type: 'COMPANY' as 'INDIVIDUAL' | 'COMPANY',
     isCustomer: false,
     isSupplier: true,
-    isEmployee: false
+    isEmployee: false,
+    paymentMode: 'ON_PURCHASE' as 'ON_PURCHASE' | 'DAYS_AFTER' | 'MONTH_DAY' | 'END_OF_MONTH',
+    paymentTerms: '' as string | number,
+    paymentDayOfMonth: '' as string | number,
+    defaultPaymentMethodId: '' as string
   });
+  const [paymentMethods, setPaymentMethods] = useState<Array<{ id: string; name: string; type: string }>>([]);
 
   useEffect(() => {
     loadFornecedores();
+    (async () => {
+      try {
+        const resp = await api.get('/api/payment-methods?scope=PURCHASES');
+        const list = resp.data?.data || resp.data || [];
+        setPaymentMethods(Array.isArray(list) ? list.map((m: any) => ({ id: m.id, name: m.name, type: m.type })) : []);
+      } catch (e) {}
+    })();
   }, []);
 
-  const handleCepSearch = async () => {
-    const cep = formData.zipCode.replace(/\D/g, '');
-    if (cep.length !== 8) {
-      toast.error('CEP inválido (precisa de 8 dígitos)');
-      return;
-    }
+  const toTitleCase = toTitleCaseBR;
 
-    try {
-      const response = await axios.get(`https://viacep.com.br/ws/${cep}/json/`);
-      const data = response.data;
-
-      if (data.erro) {
-        toast.error('CEP não encontrado');
-        return;
-      }
-
+  const { fetch: handleCepSearchFetch } = useCepLookup({
+    onSuccess: (data) => {
       setFormData(prev => ({
         ...prev,
-        address: toTitleCase(data.logradouro),
-        city: toTitleCase(data.localidade),
-        state: (data.uf || '').toUpperCase()
+        address: toTitleCase(data.address),
+        city: toTitleCase(data.city),
+        state: (data.state || '').toUpperCase(),
       }));
-      toast.success('Endereço preenchido!');
-    } catch (error) {
-      toast.error('Erro ao buscar CEP');
-    }
-  };
+    },
+  });
 
-  const toTitleCase = (text: string) => {
-    if (!text) return '';
-    const prepositions = ['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'para', 'com'];
-    return text
-      .toLowerCase()
-      .split(' ')
-      .filter(word => word.length > 0)
-      .map((word, index) => {
-        if (index > 0 && prepositions.includes(word)) {
-          return word;
-        }
-        return word.charAt(0).toUpperCase() + word.slice(1);
-      })
-      .join(' ');
-  };
-
-  const handleCnpjSearch = async () => {
-    const cnpj = formData.document.replace(/\D/g, '');
-    if (cnpj.length !== 14) {
-      toast.error('CNPJ inválido (precisa de 14 dígitos)');
-      return;
-    }
-
-    try {
-      const response = await axios.get(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
-      const data = response.data;
-
+  const { fetch: handleCnpjSearchFetch } = useCnpjLookup({
+    onSuccess: (data) => {
       setFormData(prev => ({
         ...prev,
-        name: toTitleCase(data.razao_social || data.nome_fantasia || prev.name),
+        name: toTitleCase(data.razaoSocial || data.nomeFantasia || prev.name),
         email: (data.email || prev.email || '').toLowerCase(),
-        phone: data.ddd_telefone_1 || prev.phone,
-        address: toTitleCase(data.logradouro || prev.address),
-        addressNumber: data.numero || prev.addressNumber,
-        city: toTitleCase(data.municipio || prev.city),
-        state: (data.uf || prev.state || '').toUpperCase(),
-        zipCode: data.cep || prev.zipCode,
-        type: 'COMPANY'
+        phone: data.phone || prev.phone,
+        address: toTitleCase(data.address || prev.address),
+        addressNumber: data.addressNumber || prev.addressNumber,
+        city: toTitleCase(data.city || prev.city),
+        state: (data.state || prev.state || '').toUpperCase(),
+        zipCode: data.zipCode || prev.zipCode,
+        type: 'COMPANY',
       }));
-      toast.success('Dados da empresa carregados!');
-    } catch (error) {
-      toast.error('Erro ao buscar CNPJ');
-    }
-  };
+    },
+  });
+
+  const handleCepSearch = () => handleCepSearchFetch(formData.zipCode);
+  const handleCnpjSearch = () => handleCnpjSearchFetch(formData.document);
 
   const handleDocumentChange = (value: string) => {
     const cleanValue = value.replace(/\D/g, '');
@@ -157,11 +132,23 @@ const Fornecedores: React.FC = () => {
     e.preventDefault();
 
     try {
+      // Normalizar campos de pagamento (strings vazias → undefined)
+      const payload: any = {
+        ...formData,
+        paymentTerms: formData.paymentMode === 'DAYS_AFTER' && formData.paymentTerms !== ''
+          ? Number(formData.paymentTerms)
+          : undefined,
+        paymentDayOfMonth: formData.paymentMode === 'MONTH_DAY' && formData.paymentDayOfMonth !== ''
+          ? Number(formData.paymentDayOfMonth)
+          : null,
+        defaultPaymentMethodId: formData.defaultPaymentMethodId || null
+      };
+
       if (editingFornecedor) {
-        await api.put(`/api/profiles/${editingFornecedor.id}`, formData);
+        await api.put(`/api/profiles/${editingFornecedor.id}`, payload);
         toast.success('Fornecedor atualizado com sucesso!');
       } else {
-        await api.post('/api/profiles', formData);
+        await api.post('/api/profiles', payload);
         toast.success('Fornecedor criado com sucesso!');
       }
 
@@ -190,7 +177,11 @@ const Fornecedores: React.FC = () => {
       type: fornecedor.type,
       isCustomer: (fornecedor as any).isCustomer || false,
       isSupplier: fornecedor.isSupplier,
-      isEmployee: (fornecedor as any).isEmployee || false
+      isEmployee: (fornecedor as any).isEmployee || false,
+      paymentMode: (fornecedor as any).paymentMode || 'ON_PURCHASE',
+      paymentTerms: (fornecedor as any).paymentTerms ?? '',
+      paymentDayOfMonth: (fornecedor as any).paymentDayOfMonth ?? '',
+      defaultPaymentMethodId: (fornecedor as any).defaultPaymentMethodId ?? ''
     });
     setShowForm(true);
   };
@@ -221,7 +212,11 @@ const Fornecedores: React.FC = () => {
       type: 'COMPANY',
       isCustomer: false,
       isSupplier: true,
-      isEmployee: false
+      isEmployee: false,
+      paymentMode: 'ON_PURCHASE',
+      paymentTerms: '',
+      paymentDayOfMonth: '',
+      defaultPaymentMethodId: ''
     });
   };
 
@@ -270,8 +265,8 @@ const Fornecedores: React.FC = () => {
 
       {/* Form Modal */}
       {showForm && (
-        <div className="modal-overlay">
-          <Card className="modal-content-card max-w-2xl">
+        <ModalPortal>
+          <Card className="modal-content-card max-w-5xl">
             <CardHeader>
               <CardTitle>
                 {editingFornecedor ? 'Editar Fornecedor' : 'Novo Fornecedor'}
@@ -283,8 +278,8 @@ const Fornecedores: React.FC = () => {
             <CardContent className="flex-1 overflow-y-auto">
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  <div className="md:col-span-5 space-y-2">
                     <label className="text-sm font-medium">Nome / Razão Social *</label>
                     <Input
                       value={formData.name}
@@ -293,7 +288,7 @@ const Fornecedores: React.FC = () => {
                     />
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="md:col-span-3 space-y-2">
                     <label className="text-sm font-medium">Tipo</label>
                     <select
                       value={formData.type}
@@ -305,7 +300,7 @@ const Fornecedores: React.FC = () => {
                     </select>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="md:col-span-4 space-y-2">
                     <label className="text-sm font-medium">
                       {formData.type === 'INDIVIDUAL' ? 'CPF' : 'CNPJ'}
                     </label>
@@ -330,7 +325,7 @@ const Fornecedores: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="md:col-span-5 space-y-2">
                     <label className="text-sm font-medium">Email</label>
                     <Input
                       type="email"
@@ -340,7 +335,7 @@ const Fornecedores: React.FC = () => {
                     />
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="md:col-span-3 space-y-2">
                     <label className="text-sm font-medium">Telefone</label>
                     <Input
                       value={formData.phone}
@@ -349,49 +344,7 @@ const Fornecedores: React.FC = () => {
                     />
                   </div>
 
-                  {/* Papéis no Sistema */}
-                  <div className="md:col-span-2 space-y-2 border-t pt-2 mt-2">
-                    <label className="text-sm font-medium block mb-2">Papéis no Sistema</label>
-                    <div className="flex flex-wrap gap-4">
-                      <label className="flex items-center space-x-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formData.isCustomer}
-                          onChange={(e) => setFormData(prev => ({ ...prev, isCustomer: e.target.checked }))}
-                          className="rounded border-input h-4 w-4"
-                        />
-                        <span className="text-sm">Cliente</span>
-                      </label>
-                      <label className="flex items-center space-x-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formData.isSupplier}
-                          onChange={(e) => setFormData(prev => ({ 
-                            ...prev, 
-                            isSupplier: e.target.checked,
-                            isEmployee: e.target.checked ? false : prev.isEmployee
-                          }))}
-                          className="rounded border-input h-4 w-4"
-                        />
-                        <span className="text-sm">Fornecedor</span>
-                      </label>
-                      <label className="flex items-center space-x-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formData.isEmployee}
-                          onChange={(e) => setFormData(prev => ({ 
-                            ...prev, 
-                            isEmployee: e.target.checked,
-                            isSupplier: e.target.checked ? false : prev.isSupplier
-                          }))}
-                          className="rounded border-input h-4 w-4"
-                        />
-                        <span className="text-sm">Colaborador</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
+                  <div className="md:col-span-4 space-y-2">
                     <label className="text-sm font-medium">CEP</label>
                     <div className="flex space-x-2">
                       <Input
@@ -412,26 +365,7 @@ const Fornecedores: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Cidade</label>
-                    <Input
-                      value={formData.city}
-                      onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Estado</label>
-                    <Input
-                      value={formData.state}
-                      onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))}
-                      placeholder="UF"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-4 gap-4">
-                  <div className="col-span-3 space-y-2">
+                  <div className="md:col-span-6 space-y-2">
                     <label className="text-sm font-medium">Endereço</label>
                     <Input
                       value={formData.address}
@@ -439,7 +373,7 @@ const Fornecedores: React.FC = () => {
                       placeholder="Rua, Avenida, etc."
                     />
                   </div>
-                  <div className="col-span-1 space-y-2">
+                  <div className="md:col-span-2 space-y-2">
                     <label className="text-sm font-medium">Número</label>
                     <Input
                       value={formData.addressNumber}
@@ -447,6 +381,127 @@ const Fornecedores: React.FC = () => {
                       placeholder="Nº"
                     />
                   </div>
+                  <div className="md:col-span-3 space-y-2">
+                    <label className="text-sm font-medium">Cidade</label>
+                    <Input
+                      value={formData.city}
+                      onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
+                    />
+                  </div>
+                  <div className="md:col-span-1 space-y-2">
+                    <label className="text-sm font-medium">Estado</label>
+                    <Input
+                      value={formData.state}
+                      onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))}
+                      placeholder="UF"
+                    />
+                  </div>
+
+                  {/* Papéis no Sistema */}
+                  <div className={`${formData.isSupplier ? 'md:col-span-5' : 'md:col-span-12'} space-y-2 border-t pt-3 mt-1`}>
+                    <label className="text-sm font-medium block mb-2">Papéis no Sistema</label>
+                    <div className="flex flex-wrap gap-4">
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.isCustomer}
+                          onChange={(e) => setFormData(prev => ({ ...prev, isCustomer: e.target.checked }))}
+                          className="rounded border-input h-4 w-4"
+                        />
+                        <span className="text-sm">Cliente</span>
+                      </label>
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.isSupplier}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            isSupplier: e.target.checked,
+                            isEmployee: e.target.checked ? false : prev.isEmployee
+                          }))}
+                          className="rounded border-input h-4 w-4"
+                        />
+                        <span className="text-sm">Fornecedor</span>
+                      </label>
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.isEmployee}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            isEmployee: e.target.checked,
+                            isSupplier: e.target.checked ? false : prev.isSupplier
+                          }))}
+                          className="rounded border-input h-4 w-4"
+                        />
+                        <span className="text-sm">Colaborador</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Forma de Pagamento ao Fornecedor */}
+                  {formData.isSupplier && (
+                    <div className="md:col-span-7 border-t pt-3 mt-1">
+                      <div className="space-y-3 p-4 bg-blue-50/40 rounded-xl border border-blue-100">
+                        <label className="text-sm font-bold text-blue-700 block">Forma de Pagamento ao Fornecedor</label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <select
+                            value={formData.paymentMode}
+                            onChange={(e) => setFormData(prev => ({
+                              ...prev,
+                              paymentMode: e.target.value as any,
+                              paymentTerms: '',
+                              paymentDayOfMonth: ''
+                            }))}
+                            className="h-10 px-3 rounded-lg border border-blue-200 bg-white text-sm font-medium"
+                          >
+                            <option value="ON_PURCHASE">Na hora da retirada</option>
+                            <option value="DAYS_AFTER">A cada X dias após a compra</option>
+                            <option value="MONTH_DAY">Dia fixo do mês</option>
+                            <option value="END_OF_MONTH">No fim do mês</option>
+                          </select>
+                          {formData.paymentMode === 'DAYS_AFTER' && (
+                            <Input
+                              type="number"
+                              min="1"
+                              placeholder="Ex: 30 dias"
+                              value={formData.paymentTerms as any}
+                              onChange={(e) => setFormData(prev => ({ ...prev, paymentTerms: e.target.value }))}
+                            />
+                          )}
+                          {formData.paymentMode === 'MONTH_DAY' && (
+                            <Input
+                              type="number"
+                              min="1"
+                              max="31"
+                              placeholder="Ex: 10 (dia 10)"
+                              value={formData.paymentDayOfMonth as any}
+                              onChange={(e) => setFormData(prev => ({ ...prev, paymentDayOfMonth: e.target.value }))}
+                            />
+                          )}
+                          <div className="col-span-2">
+                            <label className="text-[11px] font-bold uppercase text-blue-700 block mb-1">Método de Pagamento</label>
+                            <select
+                              value={formData.defaultPaymentMethodId}
+                              onChange={(e) => setFormData(prev => ({ ...prev, defaultPaymentMethodId: e.target.value }))}
+                              className="w-full h-10 px-3 rounded-lg border border-blue-200 bg-white text-sm font-medium"
+                            >
+                              <option value="">— selecione (Dinheiro, Pix, Cartão...) —</option>
+                              {paymentMethods.map(pm => (
+                                <option key={pm.id} value={pm.id}>{pm.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground italic">
+                          {formData.paymentMode === 'ON_PURCHASE' && '✓ Pagamento imediato — conta a pagar nasce QUITADA.'}
+                          {formData.paymentMode === 'DAYS_AFTER' && '✓ Conta a pagar PENDENTE com vencimento em N dias após a compra.'}
+                          {formData.paymentMode === 'MONTH_DAY' && '✓ Conta a pagar PENDENTE com vencimento no dia escolhido do mês.'}
+                          {formData.paymentMode === 'END_OF_MONTH' && '✓ Conta a pagar PENDENTE com vencimento no último dia do mês corrente.'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex justify-end space-x-2 pt-4">
@@ -468,7 +523,7 @@ const Fornecedores: React.FC = () => {
               </form>
             </CardContent>
           </Card>
-        </div>
+        </ModalPortal>
       )}
 
       {/* Fornecedores List */}

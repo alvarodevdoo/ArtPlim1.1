@@ -22,13 +22,20 @@ export class QueryOptimizer {
         isCommissionable: true,
         specificCommissionRate: true,
         maxDiscountThreshold: true,
+        trackStock: true,
+        stockQuantity: true,
+        stockMinQuantity: true,
+        stockUnit: true,
+        sellWithoutStock: true,
         pricingRule: true,
         configurations: {
           select: {
             id: true,
+            name: true,
             options: {
               select: {
                 id: true,
+                label: true,
                 priceOverride: true,
                 priceModifier: true
               }
@@ -66,9 +73,24 @@ export class QueryOptimizer {
   // Otimizar consulta de pedidos com itens
   async getOptimizedOrders(organizationId: string, limit: number = 20, offset: number = 0, search?: string, status?: string) {
     const where: any = { organizationId };
+    // Flag: indica se devemos verificar pendência financeira em pedidos ocultos
+    let shouldCheckHiddenWithPendingPayment = false;
 
     if (status) {
       where.status = status;
+    } else if (!search) {
+      // Sem filtro de status nem busca: ocultar pedidos com hideFromFlow
+      // (pedidos com pendência financeira serão adicionados depois)
+      where.AND = [
+        { status: { not: 'CANCELLED' } },
+        {
+          OR: [
+            { processStatusId: null },
+            { processStatus: { hideFromFlow: false } }
+          ]
+        }
+      ];
+      shouldCheckHiddenWithPendingPayment = true;
     }
 
     if (search) {
@@ -111,9 +133,7 @@ export class QueryOptimizer {
       where.OR = orConditions;
     }
 
-    return await this.prisma.order.findMany({
-      where,
-      select: {
+    const orderSelect = {
         id: true,
         orderNumber: true,
         status: true,
@@ -157,7 +177,7 @@ export class QueryOptimizer {
             createdAt: true
           },
           take: 1,
-          orderBy: { createdAt: 'desc' }
+          orderBy: { createdAt: 'desc' as const }
         },
         transactions: {
           select: {
@@ -227,13 +247,55 @@ export class QueryOptimizer {
             createdAt: true,
             user: { select: { name: true } }
           },
-          orderBy: { createdAt: 'desc' }
+          orderBy: { createdAt: 'desc' as const }
         }
-      },
+    };
+
+    // 1. Buscar pedidos visíveis (query principal)
+    const visibleOrders = await this.prisma.order.findMany({
+      where,
+      select: orderSelect,
       orderBy: { createdAt: 'desc' },
       take: limit,
       skip: offset
     });
+
+    // 2. Se necessário, buscar pedidos ocultos (hideFromFlow=true) com pendência financeira
+    if (shouldCheckHiddenWithPendingPayment) {
+      const hiddenOrders = await this.prisma.order.findMany({
+        where: {
+          organizationId,
+          status: { not: 'CANCELLED' },
+          processStatus: { hideFromFlow: true }
+        },
+        select: orderSelect,
+        orderBy: { createdAt: 'desc' }
+      });
+
+      // Filtrar apenas os que TÊM pendência financeira (total pago < total do pedido)
+      const pendingHiddenOrders = hiddenOrders.filter((order: any) => {
+        const totalPaid = (order.transactions || []).reduce((sum: number, t: any) => {
+          if ((t.type === 'INCOME' || t.type === 'CREDIT') && t.status === 'PAID') {
+            return sum + Number(t.amount || 0);
+          }
+          return sum;
+        }, 0);
+        const orderTotal = Number(order.total || 0);
+        // Pendência = total pago não cobre o total do pedido (tolerância de 1 centavo)
+        return totalPaid < orderTotal - 0.01;
+      });
+
+      if (pendingHiddenOrders.length > 0) {
+        // Mesclar sem duplicatas e re-ordenar por data
+        const existingIds = new Set(visibleOrders.map((o: any) => o.id));
+        const newOrders = pendingHiddenOrders.filter((o: any) => !existingIds.has(o.id));
+        const merged = [...visibleOrders, ...newOrders];
+        merged.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        return merged;
+      }
+    }
+
+    return visibleOrders;
   }
 
   // Otimizar consulta de materiais com estoque

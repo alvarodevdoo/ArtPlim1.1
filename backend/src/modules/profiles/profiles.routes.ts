@@ -15,18 +15,27 @@ const listQuerySchema = z.object({
 const createProfileSchema = z.object({
   type: z.enum(['INDIVIDUAL', 'COMPANY']),
   name: z.string().min(2),
-  document: z.string().nullable().transform(val => val?.trim() || undefined),
-  email: z.string().nullable().transform(val => val?.trim() || undefined).refine(val => !val || z.string().email().safeParse(val).success, 'Email inv\u00e1lido'),
-  phone: z.string().nullable().transform(val => val?.trim() || undefined),
-  address: z.string().nullable().transform(val => val?.trim() || undefined),
-  city: z.string().nullable().transform(val => val?.trim() || undefined),
-  state: z.string().nullable().transform(val => val?.trim() || undefined),
-  zipCode: z.string().nullable().transform(val => val?.trim() || undefined),
+  document: z.string().nullish().transform(val => val?.trim() || undefined),
+  email: z.string().nullish().transform(val => val?.trim() || undefined).refine(val => !val || z.string().email().safeParse(val).success, 'Email inv\u00e1lido'),
+  phone: z.string().nullish().transform(val => val?.trim() || undefined),
+  address: z.string().nullish().transform(val => val?.trim() || undefined),
+  addressNumber: z.string().nullish().transform(val => val?.trim() || undefined),
+  addressComplement: z.string().nullish().transform(val => val?.trim() || undefined),
+  neighborhood: z.string().nullish().transform(val => val?.trim() || undefined),
+  city: z.string().nullish().transform(val => val?.trim() || undefined),
+  state: z.string().nullish().transform(val => val?.trim() || undefined),
+  zipCode: z.string().nullish().transform(val => val?.trim() || undefined),
+  tradeName: z.string().nullish().transform(val => val?.trim() || undefined),
+  stateRegistration: z.string().nullish().transform(val => val?.trim() || undefined),
+  municipalRegistration: z.string().nullish().transform(val => val?.trim() || undefined),
   isCustomer: z.boolean().default(false),
   isSupplier: z.boolean().default(false),
   isEmployee: z.boolean().default(false),
   creditLimit: z.number().positive().optional(),
   paymentTerms: z.number().int().positive().optional(),
+  paymentMode: z.enum(['ON_PURCHASE', 'DAYS_AFTER', 'MONTH_DAY', 'END_OF_MONTH']).optional(),
+  paymentDayOfMonth: z.number().int().min(1).max(31).optional().nullable(),
+  defaultPaymentMethodId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   password: z.string().min(6).optional(),
   role: z.enum(['ADMIN', 'MANAGER', 'OPERATOR', 'USER', 'CUSTOMER']).optional(),
   roleId: z.string().uuid().optional(),
@@ -40,14 +49,24 @@ const updateProfileSchema = z.object({
   email: z.string().nullable().transform(val => val?.trim() || undefined).refine(val => !val || z.string().email().safeParse(val).success, 'Email inv\u00e1lido').optional(),
   phone: z.string().nullable().transform(val => val?.trim() || undefined).optional(),
   address: z.string().nullable().transform(val => val?.trim() || undefined).optional(),
+  addressNumber: z.string().nullable().transform(val => val?.trim() || undefined).optional(),
+  addressComplement: z.string().nullable().transform(val => val?.trim() || undefined).optional(),
+  neighborhood: z.string().nullable().transform(val => val?.trim() || undefined).optional(),
   city: z.string().nullable().transform(val => val?.trim() || undefined).optional(),
   state: z.string().nullable().transform(val => val?.trim() || undefined).optional(),
   zipCode: z.string().nullable().transform(val => val?.trim() || undefined).optional(),
+  tradeName: z.string().nullable().transform(val => val?.trim() || undefined).optional(),
+  stateRegistration: z.string().nullable().transform(val => val?.trim() || undefined).optional(),
+  municipalRegistration: z.string().nullable().transform(val => val?.trim() || undefined).optional(),
+  savedBillingContacts: z.array(z.any()).optional(),
   isCustomer: z.boolean().optional(),
   isSupplier: z.boolean().optional(),
   isEmployee: z.boolean().optional(),
   creditLimit: z.number().positive().optional(),
   paymentTerms: z.number().int().positive().optional(),
+  paymentMode: z.enum(['ON_PURCHASE', 'DAYS_AFTER', 'MONTH_DAY', 'END_OF_MONTH']).optional(),
+  paymentDayOfMonth: z.number().int().min(1).max(31).optional().nullable(),
+  defaultPaymentMethodId: z.string().uuid().or(z.literal('')).nullable().transform(val => val === '' ? null : val).optional(),
   password: z.string().min(6).optional(),
   role: z.enum(['ADMIN', 'MANAGER', 'OPERATOR', 'USER', 'CUSTOMER']).optional(),
   roleId: z.string().uuid().optional(),
@@ -109,6 +128,21 @@ export async function profilesRoutes(fastify: FastifyInstance) {
           exemptFromDeposit: true,
           balance: true,
           createdAt: true,
+          address: true,
+          addressNumber: true,
+          addressComplement: true,
+          neighborhood: true,
+          city: true,
+          state: true,
+          zipCode: true,
+          tradeName: true,
+          stateRegistration: true,
+          municipalRegistration: true,
+          creditLimit: true,
+          paymentTerms: true,
+          paymentMode: true,
+          paymentDayOfMonth: true,
+          defaultPaymentMethodId: true,
           _count: {
             select: {
               orders: {
@@ -254,6 +288,59 @@ export async function profilesRoutes(fastify: FastifyInstance) {
       success: true,
       data: profile
     });
+  });
+
+  // Atualizar perfil (parcial)
+  fastify.patch('/:id', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = updateProfileSchema.parse(request.body);
+    const prisma = getTenantClient(request.user!.organizationId);
+    const profileService = new ProfileService(prisma);
+
+    const profile = await profileService.update(id, {
+      ...body,
+      organizationId: request.user!.organizationId
+    });
+
+    return reply.send({ success: true, data: profile });
+  });
+
+  // Adicionar contato de faturamento salvo
+  fastify.post('/:id/billing-contacts', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const contact = request.body as any;
+    const prisma = getTenantClient(request.user!.organizationId);
+
+    const profile = await prisma.profile.findUnique({ where: { id }, select: { savedBillingContacts: true } });
+    if (!profile) return reply.code(404).send({ success: false, message: 'Perfil não encontrado' });
+
+    const existing = (profile.savedBillingContacts as any[]) || [];
+    const updated = [...existing, { ...contact, savedAt: new Date().toISOString() }];
+
+    const result = await prisma.profile.update({ where: { id }, data: { savedBillingContacts: updated } });
+    return reply.send({ success: true, data: result.savedBillingContacts });
+  });
+
+  // Remover contato de faturamento salvo
+  fastify.delete('/:id/billing-contacts/:index', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id, index } = request.params as { id: string; index: string };
+    const prisma = getTenantClient(request.user!.organizationId);
+
+    const profile = await prisma.profile.findUnique({ where: { id }, select: { savedBillingContacts: true } });
+    if (!profile) return reply.code(404).send({ success: false, message: 'Perfil não encontrado' });
+
+    const existing = (profile.savedBillingContacts as any[]) || [];
+    const idx = parseInt(index);
+    existing.splice(idx, 1);
+
+    const result = await prisma.profile.update({ where: { id }, data: { savedBillingContacts: existing } });
+    return reply.send({ success: true, data: result.savedBillingContacts });
   });
 
   // Remover perfil

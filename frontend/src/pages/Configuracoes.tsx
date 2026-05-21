@@ -8,12 +8,13 @@ import {
   Shield,
   Palette,
   Workflow,
-  Database
+  Database,
+  UserCheck
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import api from '@/lib/api';
-import { ShoppingCart } from 'lucide-react';
+import { ShoppingCart, GitBranch } from 'lucide-react';
 
 // Features (Modular Pattern)
 import { BackupManager } from '@/features/organization/backup/BackupManager';
@@ -21,7 +22,9 @@ import { SecurityManager } from '@/features/organization/security/SecurityManage
 import { GeneralSettings } from '@/features/organization/settings/GeneralSettings';
 import { SystemSettings } from '@/features/organization/settings/SystemSettings';
 import { FinanceIntegrationSettings } from '@/features/organization/settings/FinanceIntegrationSettings';
+import { CommissionRulesSettings } from '@/features/organization/settings/CommissionRulesSettings';
 import { OrderSettings } from '@/features/organization/settings/OrderSettings';
+import { CustomerFieldSettings } from '@/features/organization/settings/CustomerFieldSettings';
 
 // Shared Components
 import UserManagement from '@/components/admin/UserManagement';
@@ -30,7 +33,7 @@ import PaymentMethodSettings from '@/components/admin/PaymentMethodSettings';
 import ProcessStatusSettings from '@/components/admin/ProcessStatusSettings';
 import PricingRuleSettings from '@/components/admin/PricingRuleSettings';
 import { SpedMappingManager } from '@/features/financeiro/SpedMappingManager';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
 interface OrganizationSettings {
@@ -170,6 +173,7 @@ const Configuracoes: React.FC = () => {
     { id: 'sistema', label: 'Sistema', icon: Settings },
     { id: 'usuarios', label: 'Usuários', icon: Users },
     { id: 'pedidos', label: 'Pedidos', icon: ShoppingCart },
+    { id: 'clientes', label: 'Clientes', icon: UserCheck },
     { id: 'financeiro', label: 'Financeiro', icon: DollarSign, setting: 'enableFinance' },
     { id: 'processos', label: 'Processos e Catálogo', icon: Workflow },
     { id: 'producao', label: 'Produção', icon: Package, setting: 'enableProduction' },
@@ -251,6 +255,10 @@ const Configuracoes: React.FC = () => {
             />
           )}
 
+          {activeTab === 'clientes' && (
+            <CustomerFieldSettings />
+          )}
+
           {activeTab === 'financeiro' && (
             <div className="space-y-6">
               <FinanceIntegrationSettings
@@ -259,7 +267,17 @@ const Configuracoes: React.FC = () => {
                 handleSaveSettings={handleSaveSettings}
                 loading={loading}
               />
-              <PaymentMethodSettings />
+              <CommissionRulesSettings />
+              <PaymentMethodSettings
+                scope="SALES"
+                title="Métodos de Pagamento — Vendas"
+                description="Instrumentos usados para receber de clientes (Pix, Cartão, Dinheiro...)"
+              />
+              <PaymentMethodSettings
+                scope="PURCHASES"
+                title="Métodos de Pagamento — Compras"
+                description="Instrumentos usados para pagar fornecedores (cartões de compras, contas, Pix...)"
+              />
               {settings.enableCategoryAppropriation ? (
                 <SpedMappingManager />
               ) : (
@@ -278,6 +296,59 @@ const Configuracoes: React.FC = () => {
 
           {activeTab === 'processos' && (
             <div className="space-y-6">
+              {/* Modo do Fluxo de Trabalho */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2"><GitBranch className="w-5 h-5" /> Fluxo de Trabalho</CardTitle>
+                  <CardDescription>Define como os pedidos podem transitar entre os status configurados abaixo.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {([
+                      { value: 'STRICT', label: 'Sequencial', desc: 'O pedido deve passar por todos os status na ordem. Ex: Rascunho → Aprovado → Produção → Finalizado → Entregue.' },
+                      { value: 'SKIP', label: 'Pular Etapas', desc: 'Permite avançar para qualquer status futuro, pulando etapas. Não permite retroceder.' },
+                      { value: 'FREE', label: 'Livre', desc: 'Qualquer transição é permitida, inclusive retroceder. Máxima flexibilidade.' },
+                    ] as const).map((mode) => {
+                      const isSelected = ((settings as any).workflowMode || 'FREE') === mode.value;
+                      return (
+                        <label
+                          key={mode.value}
+                          className={`relative flex flex-col p-4 border-2 rounded-xl cursor-pointer transition-all group ${
+                            isSelected
+                              ? 'border-primary bg-primary/5 shadow-md ring-1 ring-primary/20'
+                              : 'border-muted hover:border-muted-foreground/30 hover:bg-slate-50'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="workflowMode"
+                            value={mode.value}
+                            checked={isSelected}
+                            onChange={() => {
+                              setSettings((prev: any) => ({ ...prev, workflowMode: mode.value }));
+                              // Salvar imediatamente ao trocar
+                              api.put('/api/organization/settings', { workflowMode: mode.value })
+                                .then(() => toast.success('Modo de fluxo atualizado!'))
+                                .catch(() => toast.error('Erro ao salvar modo de fluxo'));
+                            }}
+                            className="sr-only"
+                          />
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <div className={`w-3 h-3 rounded-full border-2 flex items-center justify-center ${
+                              isSelected ? 'border-primary' : 'border-muted-foreground/40'
+                            }`}>
+                              {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-primary" />}
+                            </div>
+                            <span className={`text-sm font-bold ${isSelected ? 'text-primary' : 'text-foreground'}`}>{mode.label}</span>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground leading-tight pl-5">{mode.desc}</p>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+
               <Card><CardContent className="pt-6"><PricingRuleSettings /></CardContent></Card>
               <Card><CardContent className="pt-6"><ProcessStatusSettings /></CardContent></Card>
             </div>

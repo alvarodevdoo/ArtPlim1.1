@@ -9,10 +9,10 @@ export interface CreateReceivableFromOrderInput {
   dueDate: Date;
   receivableAccountId: string; // Conta de Ativo: Contas a Receber
   splits: {
-    revenueAccountId: string;  // Conta de Receita (Vendas/Serviços)
-    categoryId: string;        // Categoria Financeira
-    amount: number;            // Valor deste rateio
-    description?: string;      // Descrição customizada
+    revenueAccountId: string;   // Conta de Receita (Vendas/Serviços)
+    categoryId?: string;        // Categoria Financeira (opcional)
+    amount: number;             // Valor deste rateio
+    description?: string;       // Descrição customizada
   }[];
   notes?: string;
   userId: string; // Operador que realizou a ação
@@ -112,7 +112,7 @@ export class ReceivableService {
             accrualDate: new Date(), // Competência inicial na criação
             status: TransactionStatus.PENDING,
             orderId,
-            categoryId: split.categoryId,
+            categoryId: split.categoryId || undefined,
             receivableId: receivable.id,
             userId,
             profileId: customerId
@@ -134,8 +134,8 @@ export class ReceivableService {
    * Regra: Isolamento Multi-tenant
    */
   async listReceivables(organizationId: string) {
-    return this.prisma.accountReceivable.findMany({
-      where: { organizationId },
+    const receivables = await this.prisma.accountReceivable.findMany({
+      where: { organizationId, status: { not: 'CANCELLED' } },
       include: {
         customer: { select: { id: true, name: true, document: true } },
         order: { select: { id: true, orderNumber: true, total: true } },
@@ -147,5 +147,22 @@ export class ReceivableService {
       },
       orderBy: [{ status: 'asc' }, { dueDate: 'asc' }]
     });
+
+    // Auto-reconcile: PENDING com saldo quitado → marca como PAID sem bloquear a listagem
+    const toReconcile = receivables.filter(r => {
+      if (r.status !== 'PENDING') return false;
+      const paid = (r.transactions as any[]).reduce((s, t) => s + Number(t.amount), 0);
+      return paid >= Number(r.amount) - 0.01;
+    });
+
+    if (toReconcile.length > 0) {
+      await this.prisma.accountReceivable.updateMany({
+        where: { id: { in: toReconcile.map(r => r.id) }, organizationId },
+        data: { status: 'PAID' }
+      });
+      toReconcile.forEach(r => { (r as any).status = 'PAID'; });
+    }
+
+    return receivables;
   }
 }

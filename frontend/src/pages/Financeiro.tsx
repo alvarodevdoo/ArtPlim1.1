@@ -34,12 +34,13 @@ import { ContasAReceber } from '@/features/financeiro/ContasAReceber';
 import { RelatorioDRE } from '@/features/financeiro/RelatorioDRE';
 import { RelatorioFluxoCaixa } from '@/features/financeiro/RelatorioFluxoCaixa';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 
 interface Account {
   id: string;
   name: string;
-  type: 'CHECKING' | 'SAVINGS' | 'CASH' | 'CREDIT_CARD';
+  type: 'CHECKING' | 'SAVINGS' | 'CASH' | 'CREDIT_CARD' | 'RECEIVABLE' | string;
   balance: number;
   bank?: string;
   agency?: string;
@@ -126,12 +127,15 @@ interface FinancialDashboard {
   };
 }
 
-const accountTypeConfig = {
-  CHECKING: { label: 'Conta Corrente', icon: CreditCard, color: 'text-blue-500' },
-  SAVINGS: { label: 'Poupança', icon: Wallet, color: 'text-green-500' },
-  CASH: { label: 'Dinheiro', icon: DollarSign, color: 'text-yellow-500' },
-  CREDIT_CARD: { label: 'Cartão de Crédito', icon: CreditCard, color: 'text-purple-500' }
+const accountTypeConfig: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+  CHECKING:    { label: 'Conta Corrente',     icon: CreditCard,  color: 'text-blue-500'   },
+  SAVINGS:     { label: 'Poupança',            icon: Wallet,      color: 'text-green-500'  },
+  CASH:        { label: 'Dinheiro',            icon: DollarSign,  color: 'text-yellow-500' },
+  CREDIT_CARD: { label: 'Cartão de Crédito',  icon: CreditCard,  color: 'text-purple-500' },
+  RECEIVABLE:  { label: 'Contas a Receber',   icon: Wallet,      color: 'text-cyan-500'   },
 };
+
+const defaultTypeConfig = { label: 'Conta', icon: Wallet, color: 'text-gray-500' };
 
 const transactionStatusConfig = {
   PENDING: { label: 'Pendente', color: 'bg-yellow-100 text-yellow-800', icon: Clock },
@@ -257,11 +261,14 @@ const Financeiro: React.FC = () => {
     expenseAccountId: ''
   });
 
-  // Sincronizar tab com URL
+  // Sincronizar tab com URL — garante que a URL sempre reflete a aba ativa
   useEffect(() => {
     const tab = searchParams.get('tab');
     if (tab && tab !== activeTab) {
       setActiveTab(tab);
+    } else if (!tab) {
+      // Sem parâmetro → dashboard; escreve na URL para o subitem da sidebar ficar ativo
+      setSearchParams({ tab: 'dashboard' }, { replace: true });
     }
   }, [searchParams]);
 
@@ -381,7 +388,7 @@ const Financeiro: React.FC = () => {
 
   const handlePayTransaction = async (id: string) => {
     try {
-      await api.post(`/api/finance/transactions/${id}/pay`);
+      await api.patch(`/api/finance/transactions/${id}/pay`);
       toast.success('Transação marcada como paga!');
       loadData();
     } catch (error: any) {
@@ -995,7 +1002,7 @@ const Financeiro: React.FC = () => {
       {activeTab === 'accounts' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {accounts.map((account) => {
-            const typeConfig = accountTypeConfig[account.type];
+            const typeConfig = accountTypeConfig[account.type] ?? defaultTypeConfig;
             const Icon = typeConfig.icon;
 
             return (
@@ -1413,7 +1420,7 @@ const Financeiro: React.FC = () => {
 
       {/* Add Account Modal */}
       {showAddAccount && (
-        <div className="modal-overlay">
+        <ModalPortal>
           <Card className="modal-content-card max-w-md">
 
             <CardHeader>
@@ -1483,11 +1490,11 @@ const Financeiro: React.FC = () => {
               </form>
             </CardContent>
           </Card>
-        </div>
+        </ModalPortal>
       )}
 
       {showAddTransaction && (
-        <div className="modal-overlay">
+        <ModalPortal>
           <Card className="modal-content-card max-w-md">
 
             <CardHeader>
@@ -1607,11 +1614,11 @@ const Financeiro: React.FC = () => {
               </form>
             </CardContent>
           </Card>
-        </div>
+        </ModalPortal>
       )}
 
       {showAddCategory && (
-        <div className="modal-overlay">
+        <ModalPortal>
           <Card className="modal-content-card max-w-md">
 
             <CardHeader>
@@ -1763,11 +1770,11 @@ const Financeiro: React.FC = () => {
               </form>
             </CardContent>
           </Card>
-        </div>
+        </ModalPortal>
       )}
 
       {showAddChartAccount && (
-        <div className="modal-overlay">
+        <ModalPortal>
           <Card className="modal-content-card max-w-md w-full relative">
             <Button
               variant="ghost" 
@@ -1796,12 +1803,12 @@ const Financeiro: React.FC = () => {
               </div>
             </CardContent>
           </Card>
-        </div>
+        </ModalPortal>
       )}
 
       {/* Migration Modal for Dependencies */}
       {accountToDeleteWithDependencies && (
-        <div className="modal-overlay z-[9999]">
+        <ModalPortal className="z-[9999]">
           <Card className="modal-content-card max-w-lg w-full">
             <CardHeader className="bg-red-50 border-b border-red-100 rounded-t-xl pb-4">
               <CardTitle className="text-red-800 flex items-center gap-2">
@@ -1866,7 +1873,7 @@ const Financeiro: React.FC = () => {
               </div>
             </CardContent>
           </Card>
-        </div>
+        </ModalPortal>
       )}
 
       {/* Empty States */}

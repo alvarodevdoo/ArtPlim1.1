@@ -1,4 +1,6 @@
 import { OrderFinanceHelper } from '../../../shared/utils/OrderFinanceHelper';
+import { StockReservationService } from '../../wms/services/StockReservationService';
+import { OnDemandPurchaseService } from '../../finance/services/OnDemandPurchaseService';
 
 /**
  * ApproveOrderService
@@ -16,7 +18,6 @@ import { OPGeneratorService } from '../../production/services/OPGeneratorService
 import { InventoryValuationService, ValuationMethod } from '../../../shared/services/InventoryValuationService';
 import { CommissionService } from './services/CommissionService';
 import { StatusEngine } from '../domain/services/StatusEngine';
-import { CommissionService } from './services/CommissionService';
 
 export interface ApproveOrderInput {
   orderId: string;
@@ -132,9 +133,19 @@ export class ApproveOrderService {
         .map((c: any) => c.selectedOptionId)
         .filter(Boolean);
 
+      // Resgata `optionQuantities` (qty customizada por opção, ex: 40 ilhos vs padrão 8)
+      // O frontend grava em attributes.optionQuantities no formato { [optionId]: qty }.
+      const attrs = (item as any).attributes || {};
+      const optionQuantities: Record<string, number> = attrs.optionQuantities || {};
+      const selectedOptions = selectedOptionIds.map((id: string) => ({
+        optionId: id,
+        quantity: optionQuantities[id] != null ? Number(optionQuantities[id]) : null
+      }));
+
       const composition = await this.compositionService.calculate({
         productId: item.productId,
         selectedOptionIds,
+        selectedOptions, // <-- usa qty customizada por opção quando presente
         quantity: item.quantity,
         width: Number(item.width || 0),
         height: Number(item.height || 0),
@@ -249,10 +260,14 @@ export class ApproveOrderService {
         });
       }
 
-      // 3b. Baixa de Estoque
+      // 3b. Liberar reservas de estoque (a baixa física substitui a reserva)
+      const reservationService = new StockReservationService(this.prisma);
+      await reservationService.releaseForOrder(orderId, tx);
+
+      // 3c. Baixa de Estoque de Materiais
       for (const [, req] of stockRequirements) {
         if (req.quantityRequired <= 0) continue;
-        
+
         await tx.material.update({
           where: { id: req.materialId },
           data: { currentStock: { decrement: req.quantityRequired } }
@@ -277,7 +292,35 @@ export class ApproveOrderService {
         stockMovementsCreated++;
       }
 
-      // 3c. Atualizar Pedido para APPROVED
+      // 3c-bis. Geração automática de Contas a Pagar para materiais ON_DEMAND
+      // Materiais marcados como sourcingMode = ON_DEMAND com fornecedor primário
+      // geram AccountPayable (PENDING ou PAID conforme paymentMode do fornecedor).
+      try {
+        const onDemandService = new OnDemandPurchaseService(this.prisma);
+        const usageList = Array.from(stockRequirements.values())
+          .filter((r: any) => r.quantityRequired > 0)
+          .map((r: any) => ({
+            materialId: r.materialId,
+            quantityRequired: r.quantityRequired,
+            averageCost: r.averageCost
+          }));
+        const onDemandResult = await onDemandService.generateForOrder(
+          tx,
+          organizationId,
+          orderId,
+          order.orderNumber,
+          userId,
+          usageList
+        );
+        if (onDemandResult.accountPayablesCreated > 0) {
+          console.log(`[ApproveOrder] Pedido ${order.orderNumber}: ${onDemandResult.accountPayablesCreated} AP(s) auto-gerada(s) (${onDemandResult.paidImmediately} pagas na hora), total R$ ${onDemandResult.totalAmount.toFixed(2)}`);
+        }
+      } catch (e: any) {
+        // Não bloquear a aprovação por falha na geração de AP automática
+        console.error('[ApproveOrder] Falha ao gerar AP de materiais ON_DEMAND:', e?.message || e);
+      }
+
+      // 3d. Atualizar Pedido para APPROVED
       // Se não enviaram um processStatusId específico, tentamos achar o primeiro da empresa que seja 'APPROVED'
       let finalProcessStatusId = input.processStatusId;
       if (!finalProcessStatusId) {

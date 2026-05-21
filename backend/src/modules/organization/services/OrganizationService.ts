@@ -22,6 +22,7 @@ interface UpdateSettingsInput {
   enableFinance?: boolean;
   enableFinanceReports?: boolean;
   enableAutomation?: boolean;
+  enableCommissions?: boolean;
   defaultMarkup?: number;
   taxRate?: number;
   validadeOrcamento?: number;
@@ -44,6 +45,7 @@ interface UpdateSettingsInput {
   minDepositPercent?: number;
   allowDeliveryWithBalance?: boolean;
   defaultDueDateDays?: number;
+  workflowMode?: string;
 }
 
 export class OrganizationService {
@@ -118,6 +120,7 @@ export class OrganizationService {
           enableFinance: true,
           enableFinanceReports: true,
           enableAutomation: true,
+          enableCommissions: true,
           defaultMarkup: 2.0,
           taxRate: 0.0,
           validadeOrcamento: 7,
@@ -157,6 +160,7 @@ export class OrganizationService {
           enableFinance: true,
           enableFinanceReports: true,
           enableAutomation: true,
+          enableCommissions: true,
           defaultMarkup: 2.0,
           taxRate: 0.0,
           validadeOrcamento: 7,

@@ -16,4 +16,7 @@ export interface ProductiveIntelligenceData {
   
   // Fator de Conversão (Calculado: Largura * Altura)
   conversionFactor: number;
+
+  // Unidade de medida das dimensões (preferência de exibição)
+  dimUnit?: DimUnit;
 }

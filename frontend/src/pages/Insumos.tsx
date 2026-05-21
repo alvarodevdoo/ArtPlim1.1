@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { Combobox } from '@/components/ui/Combobox';
 import { MaterialDrawer, type Material } from '@/features/supplies/components/MaterialDrawer';
 import { cn } from '@/lib/utils';
+import { resolveDisplayUnit } from '@/lib/units';
 
 const Insumos: React.FC = () => {
   const [materiais, setMateriais] = useState<Material[]>([]);
@@ -109,7 +110,7 @@ const Insumos: React.FC = () => {
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
                         <span className="font-bold text-slate-700">{m.name}</span>
-                        <span className="text-[10px] text-muted-foreground font-mono uppercase">{m.id.split('-')[0]} | {m.unit}</span>
+                        <span className="text-[10px] text-muted-foreground font-mono uppercase">{m.id.split('-')[0]} | {resolveDisplayUnit(m)}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -127,7 +128,7 @@ const Insumos: React.FC = () => {
                       {m.trackStock ? (
                         <div className="flex items-baseline gap-1">
                           {m.currentStock || 0}
-                          <span className="text-[9px] font-normal text-muted-foreground">{m.unit}</span>
+                          <span className="text-[9px] font-normal text-muted-foreground">{resolveDisplayUnit(m)}</span>
                         </div>
                       ) : (
                         <span className="text-muted-foreground/30">—</span>

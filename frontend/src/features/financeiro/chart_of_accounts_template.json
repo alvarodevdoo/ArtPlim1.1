@@ -177,12 +177,110 @@
       "systemRole": "TAX"
     },
     {
+      "code": "2.1.3.03",
+      "name": "ICMS Próprio a Recolher",
+      "nature": "LIABILITY",
+      "type": "ANALYTIC",
+      "parentCode": "2.1.3",
+      "systemRole": "TAX",
+      "description": "ICMS devido por operação própria (saídas tributadas)."
+    },
+    {
+      "code": "2.1.3.04",
+      "name": "IPI a Recolher",
+      "nature": "LIABILITY",
+      "type": "ANALYTIC",
+      "parentCode": "2.1.3",
+      "systemRole": "TAX",
+      "description": "Imposto sobre Produtos Industrializados a recolher."
+    },
+    {
       "code": "2.1.3.05",
       "name": "ICMS ST / DIFAL a Recolher",
       "nature": "LIABILITY",
       "type": "ANALYTIC",
       "parentCode": "2.1.3",
+      "systemRole": "TAX",
+      "description": "Conta unificada (legado). Prefira usar as contas específicas 2.1.3.06 e 2.1.3.07."
+    },
+    {
+      "code": "2.1.3.06",
+      "name": "ICMS-ST a Recolher",
+      "nature": "LIABILITY",
+      "type": "ANALYTIC",
+      "parentCode": "2.1.3",
+      "systemRole": "TAX",
+      "description": "ICMS Substituição Tributária retido para repasse ao Estado."
+    },
+    {
+      "code": "2.1.3.07",
+      "name": "DIFAL a Recolher",
+      "nature": "LIABILITY",
+      "type": "ANALYTIC",
+      "parentCode": "2.1.3",
+      "systemRole": "TAX",
+      "description": "Diferencial de alíquota em operações interestaduais para consumidor final."
+    },
+    {
+      "code": "2.1.3.08",
+      "name": "PIS a Recolher",
+      "nature": "LIABILITY",
+      "type": "ANALYTIC",
+      "parentCode": "2.1.3",
       "systemRole": "TAX"
+    },
+    {
+      "code": "2.1.3.09",
+      "name": "COFINS a Recolher",
+      "nature": "LIABILITY",
+      "type": "ANALYTIC",
+      "parentCode": "2.1.3",
+      "systemRole": "TAX"
+    },
+    {
+      "code": "2.1.3.10",
+      "name": "IRPJ a Recolher",
+      "nature": "LIABILITY",
+      "type": "ANALYTIC",
+      "parentCode": "2.1.3",
+      "systemRole": "TAX",
+      "description": "Imposto de Renda Pessoa Jurídica (Lucro Real/Presumido)."
+    },
+    {
+      "code": "2.1.3.11",
+      "name": "CSLL a Recolher",
+      "nature": "LIABILITY",
+      "type": "ANALYTIC",
+      "parentCode": "2.1.3",
+      "systemRole": "TAX",
+      "description": "Contribuição Social sobre o Lucro Líquido."
+    },
+    {
+      "code": "2.1.3.12",
+      "name": "IRRF a Recolher",
+      "nature": "LIABILITY",
+      "type": "ANALYTIC",
+      "parentCode": "2.1.3",
+      "systemRole": "TAX",
+      "description": "Imposto de Renda Retido na Fonte (folha e serviços tomados)."
+    },
+    {
+      "code": "2.1.3.13",
+      "name": "INSS Patronal a Recolher",
+      "nature": "LIABILITY",
+      "type": "ANALYTIC",
+      "parentCode": "2.1.3",
+      "systemRole": "TAX",
+      "description": "Contribuição previdenciária patronal sobre folha."
+    },
+    {
+      "code": "2.1.3.14",
+      "name": "FGTS a Recolher",
+      "nature": "LIABILITY",
+      "type": "ANALYTIC",
+      "parentCode": "2.1.3",
+      "systemRole": "TAX",
+      "description": "Fundo de Garantia por Tempo de Serviço a recolher."
     },
     {
       "code": "2.1.4",

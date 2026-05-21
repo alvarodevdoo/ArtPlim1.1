@@ -30,6 +30,7 @@ interface Produto {
   stockMinQuantity?: number;
   stockUnit?: string;
   sellWithoutStock?: boolean;
+  availableStock?: number | null;
   formulaData?: any;
   components?: Array<{
     id: string;
@@ -198,10 +199,19 @@ const Produtos: React.FC = () => {
                     );
                   })()}
 
-                  {produto.trackStock && (
-                    <div className="flex items-center gap-1.5 pt-2 border-t text-[10px] font-bold text-slate-500">
-                      <Warehouse className="w-3 h-3" />
-                      Estoque: {produto.stockQuantity} {produto.stockUnit}
+                  {produto.stockQuantity != null && (
+                    <div className="pt-2 border-t space-y-1">
+                      <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+                        <Warehouse className="w-3 h-3" />
+                        Estoque: {produto.stockQuantity} {produto.stockUnit}
+                      </div>
+                      {produto.availableStock != null && produto.availableStock !== produto.stockQuantity && (
+                        <div className={`flex items-center gap-1.5 text-[10px] font-bold ${produto.availableStock <= 0 ? 'text-red-600' : 'text-amber-600'}`}>
+                          <Warehouse className="w-3 h-3" />
+                          Disponível: {produto.availableStock} {produto.stockUnit}
+                          <span className="text-slate-400 font-normal">({produto.stockQuantity - produto.availableStock} reservado)</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

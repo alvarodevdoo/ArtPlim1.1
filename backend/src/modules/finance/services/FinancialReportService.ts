@@ -38,7 +38,7 @@ export interface CashFlowResult {
     inflow: number;
     outflow: number;
     balance: number;
-    isProjeted: boolean;
+    isProjected: boolean;
   }>;
 }
 
@@ -227,18 +227,31 @@ export class FinancialReportService {
       select: { type: true, amount: true, dueDate: true }
     });
 
-    const paidInflows = paidTransactions.filter(t => t.type === TransactionType.INCOME).reduce((s, t) => s + Number(t.amount), 0);
-    const paidOutflows = paidTransactions.filter(t => t.type === TransactionType.EXPENSE).reduce((s, t) => s + Number(t.amount), 0);
+    // Entradas em contas bancárias: DEBIT (pagamentos recebidos) + INCOME (receitas manuais lançadas diretamente)
+    // Saídas em contas bancárias: CREDIT (pagamentos efetuados) + EXPENSE (despesas manuais lançadas diretamente)
+    const paidInflows = paidTransactions
+      .filter(t => t.type === TransactionType.DEBIT || t.type === TransactionType.INCOME)
+      .reduce((s, t) => s + Number(t.amount), 0);
+    const paidOutflows = paidTransactions
+      .filter(t => t.type === TransactionType.CREDIT || t.type === TransactionType.EXPENSE)
+      .reduce((s, t) => s + Number(t.amount), 0);
     const openingBalance = currentBalance - paidInflows + paidOutflows;
+
+    const projectedInflows = pendingTransactions
+      .filter(t => t.type === TransactionType.DEBIT || t.type === TransactionType.INCOME)
+      .reduce((s, t) => s + Number(t.amount), 0);
+    const projectedOutflows = pendingTransactions
+      .filter(t => t.type === TransactionType.CREDIT || t.type === TransactionType.EXPENSE)
+      .reduce((s, t) => s + Number(t.amount), 0);
 
     return {
       openingBalance,
       paidInflows,
       paidOutflows,
       closingBalance: currentBalance,
-      projectedInflows: pendingTransactions.filter(t => t.type === TransactionType.INCOME).reduce((s, t) => s + Number(t.amount), 0),
-      projectedOutflows: pendingTransactions.filter(t => t.type === TransactionType.EXPENSE).reduce((s, t) => s + Number(t.amount), 0),
-      projectedBalance: currentBalance + (pendingTransactions.filter(t => t.type === TransactionType.INCOME).reduce((s, t) => s + Number(t.amount), 0)) - (pendingTransactions.filter(t => t.type === TransactionType.EXPENSE).reduce((s, t) => s + Number(t.amount), 0)),
+      projectedInflows,
+      projectedOutflows,
+      projectedBalance: currentBalance + projectedInflows - projectedOutflows,
       timeline: this.buildTimeline(openingBalance, paidTransactions, pendingTransactions)
     };
   }
@@ -247,20 +260,20 @@ export class FinancialReportService {
   async getCashFlow(filter: CashFlowFilter) { return this.generateCashFlowReport(filter); }
 
   private buildTimeline(opening: number, paid: any[], pending: any[]) {
-    const timelineMap = new Map<string, { date: string, inflow: number, outflow: number, balance: number, isProjeted: boolean }>();
+    const timelineMap = new Map<string, { date: string, inflow: number, outflow: number, balance: number, isProjected: boolean }>();
     paid.forEach(t => {
       const date = t.paidAt!.toISOString().split('T')[0];
-      const entry = timelineMap.get(date) || { date, inflow: 0, outflow: 0, balance: 0, isProjeted: false };
-      if (t.type === TransactionType.INCOME) entry.inflow += Number(t.amount);
+      const entry = timelineMap.get(date) || { date, inflow: 0, outflow: 0, balance: 0, isProjected: false };
+      if (t.type === TransactionType.DEBIT || t.type === TransactionType.INCOME) entry.inflow += Number(t.amount);
       else entry.outflow += Number(t.amount);
       timelineMap.set(date, entry);
     });
     pending.forEach(t => {
       const date = t.dueDate!.toISOString().split('T')[0];
-      const entry = timelineMap.get(date) || { date, inflow: 0, outflow: 0, balance: 0, isProjeted: true };
-      if (t.type === TransactionType.INCOME) entry.inflow += Number(t.amount);
+      const entry = timelineMap.get(date) || { date, inflow: 0, outflow: 0, balance: 0, isProjected: true };
+      if (t.type === TransactionType.DEBIT || t.type === TransactionType.INCOME) entry.inflow += Number(t.amount);
       else entry.outflow += Number(t.amount);
-      entry.isProjeted = true;
+      entry.isProjected = true;
       timelineMap.set(date, entry);
     });
     let running = opening;
@@ -343,54 +356,88 @@ export class FinancialReportService {
   }
 
   /**
-   * Relatório de Comissões por Vendedor
+   * Relatório de Comissões Detalhado por Membro e Papel
    */
   async generateCommissionReport(filter: DREFilter): Promise<any> {
     const { organizationId, startDate, endDate } = filter;
 
-    const orders = await this.prisma.order.findMany({
+    // Busca as entradas de comissão geradas no período para os pedidos aprovados/finalizados
+    const entries = await this.prisma.commissionEntry.findMany({
       where: {
         organizationId,
-        approvedAt: { gte: startDate, lte: endDate },
-        status: { in: ['APPROVED', 'FINISHED', 'DELIVERED'] }
+        order: {
+          status: { in: ['APPROVED', 'FINISHED', 'DELIVERED'] },
+          OR: [
+            { approvedAt: { gte: startDate, lte: endDate } },
+            { approvedAt: null, createdAt: { gte: startDate, lte: endDate } }
+          ]
+        }
       },
       include: {
-        seller: {
-          select: { id: true, name: true }
-        },
-        items: {
+        user: { select: { id: true, name: true } },
+        role: { select: { id: true, name: true } },
+        order: {
           select: {
-            commissionAmount: true,
-            totalPrice: true,
-            quantity: true
+            id: true,
+            total: true,
+            items: {
+              select: { quantity: true }
+            }
           }
         }
       }
     });
 
-    const commissionBySellerMap = new Map<string, { sellerId: string; sellerName: string; totalSales: number; totalItems: number; totalCommission: number }>();
+    const userCommissionMap = new Map<string, any>();
 
-    orders.forEach(order => {
-      const sellerId = order.sellerId || 'sem_vendedor';
-      const sellerName = order.seller?.name || 'Vendedor Não Identificado';
-
-      const existing = commissionBySellerMap.get(sellerId) || {
-        sellerId,
-        sellerName,
+    entries.forEach(entry => {
+      const userId = entry.userId || 'sem_usuario';
+      const userName = entry.user?.name || 'Usuário Não Identificado';
+      
+      const existing = userCommissionMap.get(userId) || {
+        userId,
+        userName,
         totalSales: 0,
         totalItems: 0,
-        totalCommission: 0
+        totalCommission: 0,
+        roles: {} // armazena quebra por papel: { 'Vendedor': { amount: X, sales: Y } }
       };
 
-      order.items.forEach(item => {
-        existing.totalSales += Number(item.totalPrice || 0);
-        existing.totalItems += item.quantity || 1;
-        existing.totalCommission += Number(item.commissionAmount || 0);
-      });
+      const amount = Number(entry.amount || 0);
+      const roleName = entry.role?.name || 'Papel Não Especificado';
+      
+      existing.totalCommission += amount;
+      
+      // Como a comissão pode derivar do mesmo pedido (para papéis diferentes),
+      // precisamos ter cuidado com totalSales para não duplicar se a pessoa tiver 2 papéis no mesmo pedido.
+      // O mais seguro é contar a venda em cada papel.
+      const orderTotal = Number(entry.order?.total || 0);
+      const orderItemsCount = entry.order?.items.reduce((acc, it) => acc + (it.quantity || 1), 0) || 0;
 
-      commissionBySellerMap.set(sellerId, existing);
+      if (!existing.roles[roleName]) {
+        existing.roles[roleName] = { amount: 0, sales: 0, itemsCount: 0 };
+      }
+      
+      existing.roles[roleName].amount += amount;
+      existing.roles[roleName].sales += orderTotal;
+      existing.roles[roleName].itemsCount += orderItemsCount;
+
+      // Global summary (aproximado)
+      existing.totalSales += orderTotal; 
+      existing.totalItems += orderItemsCount;
+
+      userCommissionMap.set(userId, existing);
     });
 
-    return Array.from(commissionBySellerMap.values()).sort((a, b) => b.totalCommission - a.totalCommission);
+    // Converter roles map para array para facilitar uso no front
+    const result = Array.from(userCommissionMap.values()).map(u => ({
+      ...u,
+      roles: Object.entries(u.roles).map(([name, data]: any) => ({
+        roleName: name,
+        ...data
+      })).sort((a: any, b: any) => b.amount - a.amount)
+    }));
+
+    return result.sort((a, b) => b.totalCommission - a.totalCommission);
   }
 }

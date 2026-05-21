@@ -1,9 +1,11 @@
 # Dependencies
 node_modules/
 */node_modules/
+.agents/
+.claude/
+.history/
 .kiro/
 .vscode/
-.history/
 docs/
 
 # Environment variables

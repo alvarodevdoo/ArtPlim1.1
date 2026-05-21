@@ -98,13 +98,16 @@ export function ContasAReceber() {
     return Math.max(0, Number(r.amount) - paid);
   };
 
-  const totalPending = receivables
-    .filter(r => r.status === 'PENDING')
-    .reduce((s, r) => s + calculateNetBalance(r), 0);
-    
+  // Apenas PENDING com saldo real aparecem na lista de cobrança ativa
+  const activeReceivables = receivables.filter(
+    r => r.status === 'PENDING' && calculateNetBalance(r) > 0
+  );
+
+  const totalPending = activeReceivables.reduce((s, r) => s + calculateNetBalance(r), 0);
+
   const totalReceived = receivables
     .filter(r => r.status === 'PAID')
-    .reduce((s, r) => s + Number(r.amount), 0) + 
+    .reduce((s, r) => s + Number(r.amount), 0) +
     receivables
     .filter(r => r.status === 'PENDING')
     .reduce((s, r) => s + (r.transactions?.reduce((sum, t) => sum + Number(t.amount), 0) || 0), 0);
@@ -130,9 +133,9 @@ export function ContasAReceber() {
       </div>
 
       <div className="space-y-3">
-        {receivables.length === 0 ? (
-          <div className="text-center py-12 border rounded-lg text-muted-foreground">Nenhuma conta a receber.</div>
-        ) : receivables.map(r => (
+        {activeReceivables.length === 0 ? (
+          <div className="text-center py-12 border rounded-lg text-muted-foreground">Nenhuma conta a receber pendente.</div>
+        ) : activeReceivables.map(r => (
           <Card key={r.id} className="shadow-sm">
             <CardContent className="p-4 flex flex-col md:flex-row justify-between items-center gap-4">
               <div className="flex-1 space-y-1">

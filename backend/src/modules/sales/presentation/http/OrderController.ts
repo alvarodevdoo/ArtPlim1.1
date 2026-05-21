@@ -169,7 +169,7 @@ export class OrderController {
 
       const orders = await this.listOrdersUseCase.execute(filters);
 
-      // Para cada      // Buscar detalhes adicionais para cada pedido
+      // Buscar detalhes adicionais para cada pedido
       const prisma = getTenantClient(request.user!.organizationId);
       const ordersWithDetails = await Promise.all(
         orders.map(async (order) => {
@@ -243,6 +243,11 @@ export class OrderController {
       const body = z.object({
         productId: z.string().min(1),
         selectedOptionIds: z.array(z.string()).default([]),
+        // Novo formato com qty customizada por opção (acabamentos)
+        selectedOptions: z.array(z.object({
+          optionId: z.string(),
+          quantity: z.number().nullable().optional()
+        })).optional(),
         quantity: z.number().positive().default(1),
         width: z.number().optional(),
         height: z.number().optional()
@@ -251,6 +256,7 @@ export class OrderController {
       const result = await this.pricingCompositionService.calculate({
         productId: body.productId,
         selectedOptionIds: body.selectedOptionIds,
+        selectedOptions: body.selectedOptions,
         quantity: body.quantity,
         width: body.width,
         height: body.height,
@@ -532,15 +538,65 @@ export class OrderController {
     }
   }
 
+  async getMaterials(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const { id } = request.params as { id: string };
+      const prisma = getTenantClient(request.user!.organizationId);
+
+      const order = await prisma.order.findUnique({
+        where: { id },
+        include: {
+          items: {
+            select: { attributes: true, quantity: true }
+          }
+        }
+      });
+
+      if (!order) {
+        return reply.status(404).send({ success: false, message: 'Pedido não encontrado' });
+      }
+
+      // Extrair materiais únicos dos snapshots de insumos de todos os itens
+      const materialMap = new Map<string, { id: string; name: string; quantity: number; unit: string }>();
+
+      for (const item of order.items) {
+        const attrs = item.attributes as any;
+        const snap: any[] = attrs?.insumos_snapshot || [];
+        for (const insumo of snap) {
+          if (!insumo?.id) continue;
+          const existing = materialMap.get(insumo.id);
+          if (existing) {
+            existing.quantity += Number(insumo.quantidade || 0);
+          } else {
+            materialMap.set(insumo.id, {
+              id: insumo.id,
+              name: insumo.nome || insumo.name || 'Material desconhecido',
+              quantity: Number(insumo.quantidade || 0),
+              unit: insumo.unidade || insumo.unit || 'un'
+            });
+          }
+        }
+      }
+
+      return reply.send({
+        success: true,
+        data: Array.from(materialMap.values())
+      });
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
   async updateStatus(request: FastifyRequest, reply: FastifyReply) {
     try {
       const { id } = request.params as { id: string };
-      const { status, processStatusId, reason, paymentAction, refundAmount } = request.body as {
+      const { status, processStatusId, reason, paymentAction, refundAmount, materiaisConsumidos } = request.body as {
         status?: string;
         processStatusId?: string;
         reason?: string;
         paymentAction?: string;
         refundAmount?: number;
+        materiaisConsumidos?: string[];
       };
 
       const userId = (request as any).user?.userId;
@@ -556,7 +612,8 @@ export class OrderController {
         userId,
         reason,
         paymentAction,
-        refundAmount
+        refundAmount,
+        materiaisConsumidos
       });
 
       // Notificar via WebSocket

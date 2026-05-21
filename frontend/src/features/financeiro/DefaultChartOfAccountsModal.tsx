@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Info, Check, X, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
+import { Info, Check, X, ChevronRight, ChevronDown, Loader2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 interface DefaultChartOfAccountsModalProps {
   onClose: () => void;
@@ -99,6 +100,27 @@ export const DefaultChartOfAccountsModal: React.FC<DefaultChartOfAccountsModalPr
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set<string>());
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const isSearching = normalizedSearch.length > 0;
+
+  /** Returns true if account matches the search (by name, code or description). */
+  const matchesSearch = (acc: AccountEntry): boolean => {
+    if (!isSearching) return true;
+    return (
+      acc.name.toLowerCase().includes(normalizedSearch) ||
+      acc.code.toLowerCase().includes(normalizedSearch) ||
+      (acc.description?.toLowerCase().includes(normalizedSearch) ?? false)
+    );
+  };
+
+  /** Account is visible if it matches OR has a matching descendant (so ancestors stay visible). */
+  const isAccountVisible = (acc: AccountEntry): boolean => {
+    if (!isSearching) return true;
+    if (matchesSearch(acc)) return true;
+    return ALL_ACCOUNTS.some(d => d.code.startsWith(acc.code + '.') && matchesSearch(d));
+  };
 
   // Fetch existing accounts on open
   useEffect(() => {
@@ -154,6 +176,21 @@ export const DefaultChartOfAccountsModal: React.FC<DefaultChartOfAccountsModalPr
         const descendants = getDescendantCodes(acc.code);
         next.delete(acc.code);
         descendants.forEach(dc => next.delete(dc));
+
+        // Limpa ancestrais sintéticos que ficaram sem nenhuma analítica selecionada
+        const ancestors = getAncestorCodes(acc.code);
+        ancestors.reverse().forEach(ancCode => {
+          const anc = ALL_ACCOUNTS.find(a => a.code === ancCode);
+          if (!anc || anc.type !== 'SYNTHETIC') return;
+          const ancIdKey = `${anc.name.trim().toLowerCase()}|${anc.nature}`;
+          if (existingCodes.has(anc.code) || existingIdentity.has(ancIdKey)) return; // já existe no banco, manter
+          const hasSelectedAnalyticDescendant = ALL_ACCOUNTS.some(d =>
+            d.type === 'ANALYTIC' &&
+            d.code.startsWith(anc.code + '.') &&
+            next.has(d.code)
+          );
+          if (!hasSelectedAnalyticDescendant) next.delete(anc.code);
+        });
       } else {
         // MARCAR:
         // 1. Se marcamos um pai, marcamos TODOS os descendentes dele também (conveniência)
@@ -234,7 +271,7 @@ export const DefaultChartOfAccountsModal: React.FC<DefaultChartOfAccountsModalPr
 
 
   return (
-    <div className="modal-overlay z-[9999] flex items-center justify-center p-4">
+    <ModalPortal className="z-[9999] flex items-center justify-center p-4">
       <Card className="modal-content-card max-w-3xl w-full max-h-[90vh] flex flex-col">
         <CardHeader className="bg-slate-50 border-b shrink-0 flex flex-row items-start justify-between">
           <div>
@@ -257,6 +294,26 @@ export const DefaultChartOfAccountsModal: React.FC<DefaultChartOfAccountsModalPr
             </div>
           ) : (
             <>
+              <div className="relative mb-3">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  placeholder="Buscar conta por nome, código ou descrição (ex: ICMS, ST, IRPJ, 2.1.3)"
+                  className="w-full pl-10 pr-10 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary bg-white"
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
               <div className="flex justify-end gap-2 mb-4 bg-slate-50 p-2 rounded-lg border border-slate-100">
                 <Button 
                   type="button"
@@ -278,13 +335,21 @@ export const DefaultChartOfAccountsModal: React.FC<DefaultChartOfAccountsModalPr
                 </Button>
               </div>
               
+              {isSearching && !GROUPS.some(g => ALL_ACCOUNTS.some(a => (a.code === g.code || a.code.startsWith(g.code + '.')) && matchesSearch(a))) && (
+                <div className="text-center py-10 text-sm text-slate-500 border-2 border-dashed border-slate-200 rounded-lg">
+                  Nenhuma conta encontrada para "<strong>{searchTerm}</strong>".
+                </div>
+              )}
+
               {GROUPS.map(group => {
-              const groupAccounts = ALL_ACCOUNTS.filter(a => a.code === group.code || a.code.startsWith(group.code + '.'));
-              const expanded = expandedGroups.has(group.code);
+              const allGroupAccounts = ALL_ACCOUNTS.filter(a => a.code === group.code || a.code.startsWith(group.code + '.'));
+              const groupAccounts = allGroupAccounts.filter(isAccountVisible);
+              if (isSearching && groupAccounts.length === 0) return null;
+              const expanded = isSearching ? true : expandedGroups.has(group.code);
               
-              // Contagem exclusiva de Analíticas para exibição no grupo
-              const totalAnalyticInGroup = groupAccounts.filter(a => a.type === 'ANALYTIC').length;
-              const selectedAnalyticInGroup = groupAccounts.filter(a => {
+              // Contagem exclusiva de Analíticas para exibição no grupo (sempre total, não filtrado)
+              const totalAnalyticInGroup = allGroupAccounts.filter(a => a.type === 'ANALYTIC').length;
+              const selectedAnalyticInGroup = allGroupAccounts.filter(a => {
                 if (a.type !== 'ANALYTIC') return false;
                 const idKey = `${a.name.trim().toLowerCase()}|${a.nature}`;
                 return selectedCodes.has(a.code) || existingCodes.has(a.code) || existingIdentity.has(idKey);
@@ -415,6 +480,6 @@ export const DefaultChartOfAccountsModal: React.FC<DefaultChartOfAccountsModalPr
           </div>
         </CardFooter>
       </Card>
-    </div>
+    </ModalPortal>
   );
 };
