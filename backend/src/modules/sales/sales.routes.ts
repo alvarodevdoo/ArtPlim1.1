@@ -16,6 +16,7 @@ import { OrderFinanceHelper } from '../../shared/utils/OrderFinanceHelper';
 import { InventoryValuationService } from '../../shared/services/InventoryValuationService';
 import { ReportWasteService } from './application/ReportWasteService';
 import { ProfileBalanceService } from '../profiles/services/ProfileBalanceService';
+import { SalesReportService } from './services/SalesReportService';
 
 const listQuerySchema = z.object({
   limit: z.string().transform(val => parseInt(val) || 50).optional(),
@@ -170,6 +171,30 @@ export async function salesRoutes(fastify: FastifyInstance) {
       success: true,
       data: stats
     });
+  });
+
+  // ========== RELATÓRIO DE VENDAS ==========
+
+  const salesReportQuerySchema = z.object({
+    startDate: z.string(),
+    endDate: z.string(),
+  });
+
+  // GET /api/sales/reports/sales?startDate=...&endDate=...
+  fastify.get('/reports/sales', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const query = salesReportQuerySchema.parse(request.query);
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new SalesReportService(prisma);
+
+    const report = await service.generate({
+      organizationId: request.user!.organizationId,
+      startDate: new Date(query.startDate),
+      endDate: new Date(query.endDate),
+    });
+
+    return reply.send({ success: true, data: report });
   });
 
   // ========== PEDIDOS CRUD ==========

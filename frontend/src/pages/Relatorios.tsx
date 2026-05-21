@@ -4,12 +4,12 @@ import { QuickStats } from '@/features/relatorios/components/QuickStats';
 import { RelatorioSelector } from '@/features/relatorios/components/RelatorioSelector';
 import { RelatorioFinanceiro } from '@/features/relatorios/components/RelatorioFinanceiro';
 import { RelatorioComissoes } from '@/features/relatorios/components/RelatorioComissoes';
+import { RelatorioVendas } from '@/features/relatorios/components/RelatorioVendas';
 import { RelatorioPendente } from '@/features/relatorios/components/RelatorioPendente';
 import { useRelatoriosStats } from '@/features/relatorios/hooks/useRelatoriosStats';
 import type { ReportId } from '@/features/relatorios/types';
 
 const PENDING_LABELS: Partial<Record<ReportId, string>> = {
-  vendas: 'Relatório de Vendas',
   clientes: 'Relatório de Clientes',
   produtos: 'Relatório de Produtos',
   producao: 'Relatório de Produção',
@@ -25,6 +25,7 @@ const Relatorios: React.FC = () => {
     if (!selectedReport) return null;
     if (selectedReport === 'financeiro') return <RelatorioFinanceiro />;
     if (selectedReport === 'comissoes') return <RelatorioComissoes />;
+    if (selectedReport === 'vendas') return <RelatorioVendas />;
     const label = PENDING_LABELS[selectedReport as keyof typeof PENDING_LABELS];
     if (label) return <RelatorioPendente title={label} />;
     return null;

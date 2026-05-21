@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "PowerShell(where.exe gh 2>$null; \\(Get-Command gh -ErrorAction SilentlyContinue\\)?.Source)",
+      "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\); where.exe gh)",
+      "Bash(npx tsc *)",
+      "Bash(node scripts/check-orphan-routes.js)"
+    ]
+  }
+}

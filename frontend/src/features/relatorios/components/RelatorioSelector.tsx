@@ -24,11 +24,11 @@ const ALL_REPORTS: ReportTypeConfig[] = [
   {
     id: 'vendas',
     title: 'Relatório de Vendas',
-    description: 'Análise completa de vendas e pedidos',
+    description: 'Análise completa de vendas, pedidos e ranking',
     icon: BarChart3,
     color: 'text-green-500',
     permission: 'finance.reports',
-    implemented: false,
+    implemented: true,
   },
   {
     id: 'clientes',
