@@ -344,6 +344,29 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     });
   });
 
+  // Excluir (soft delete) material
+  fastify.delete('/materials/:id', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const prisma = getTenantClient(request.user!.organizationId);
+    const materialService = new MaterialService(prisma);
+
+    try {
+      const result = await materialService.delete(
+        (request.user as any).id,
+        request.user!.organizationId,
+        id
+      );
+      return reply.send({ success: true, ...result });
+    } catch (error: any) {
+      return reply.code(400).send({
+        success: false,
+        message: error.message || 'Erro ao remover material'
+      });
+    }
+  });
+
   // ========== COMPONENTES DE PRODUTO ==========
 
   // Listar componentes de um produto

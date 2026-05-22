@@ -331,6 +331,10 @@ export class QueryOptimizer {
         expenseAccount: {
           select: { id: true, name: true, code: true }
         },
+        primarySupplierId: true,
+        primarySupplier: {
+          select: { id: true, name: true }
+        },
         _count: {
           select: {
             components: true,

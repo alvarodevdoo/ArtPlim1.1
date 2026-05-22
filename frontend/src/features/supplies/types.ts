@@ -50,6 +50,10 @@ export interface Insumo {
   // Campos adicionais do backend (mapeados no hook)
   name?: string;
   unit?: string;
+  /** Unidade de controle (UN, M, M2, ML) — prevalece sobre `unit` na UI */
+  controlUnit?: string | null;
+  stockUnit?: string | null;
+  purchaseUnit?: string | null;
   costPerUnit?: number;
   averageCost?: number;
 }

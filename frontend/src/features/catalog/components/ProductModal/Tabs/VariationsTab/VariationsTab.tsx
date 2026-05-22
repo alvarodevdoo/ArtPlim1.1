@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { Combobox } from '@/components/ui/Combobox';
 import { MultiInsumoCombobox, SelectedInsumo } from './MultiInsumoCombobox';
 import { useInsumos } from '@/features/supplies/useInsumos';
+import { buildInsumoSublabel } from '@/lib/units';
 import { DraftVariationGroup, DraftOption, ConfigurationKind } from '../../types';
 
 // Temp-ID generator (no external dep needed)
@@ -417,7 +418,7 @@ export const VariationsTab: React.FC<VariationsTabProps> = ({
                               .map((i: any) => ({
                                 id: i.id,
                                 label: i.name || i.nome,
-                                sublabel: `${i.unit || i.unidadeBase} • R$ ${Number(i.averageCost || i.custoUnitario || 0).toFixed(2)}`,
+                                sublabel: buildInsumoSublabel(i),
                               }))}
                             selected={selectedInsumos}
                             onChangeSelected={setSelectedInsumos}
@@ -835,7 +836,7 @@ const OptionCard = ({
                 options={insumos.map((i: any) => ({
                   id: i.id,
                   label: i.name || i.nome,
-                  sublabel: `${i.unit || i.unidadeBase} • R$ ${Number(i.averageCost || i.custoUnitario || 0).toFixed(2)}`,
+                  sublabel: buildInsumoSublabel(i),
                 }))}
               />
             </div>

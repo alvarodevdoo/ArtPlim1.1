@@ -62,6 +62,9 @@ export function useInsumos() {
         categoria: mat.category?.name || mat.categoria || 'Geral',
         unit: mat.unit || mat.unidadeBase,
         unidadeBase: mat.unit || mat.unidadeBase,
+        controlUnit: mat.controlUnit ?? null,
+        stockUnit: mat.stockUnit ?? null,
+        purchaseUnit: mat.purchaseUnit ?? null,
         // custo base cadastrado manualmente
         costPerUnit: Number(mat.costPerUnit || 0),
         // custo médio ponderado atualizado por entradas (pode ser 0 se nunca houve entrada)

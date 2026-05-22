@@ -408,21 +408,32 @@ export const InventoryAdjustment: React.FC<Props> = ({
             </>
           )}
 
-          {watchType === 'ENTRY' && entryMode === 'purchase' && (
-            <div className={cn(styles.field, styles.fullWidth)}>
-              <div className="p-3 bg-primary/5 rounded-xl border border-primary/20 flex flex-col gap-1">
-                <div className="flex items-center gap-2 text-primary">
-                  <RefreshCw size={12} className="animate-spin-slow" />
-                  <span className="text-[9px] font-black uppercase">Conversão Automática</span>
+          {watchType === 'ENTRY' && entryMode === 'purchase' && (() => {
+            const qty = Number(watchQty) || 0;
+            const mult = Number(multiplier) || 1;
+            const factor = Number(conversionFactor) || 1;
+            const internalUnits = qty * mult;
+            const isMeasurementUnit = ['M2', 'M', 'ML'].includes((unit || '').toUpperCase());
+            const totalStock = isMeasurementUnit ? internalUnits * factor : internalUnits;
+            return (
+              <div className={cn(styles.field, styles.fullWidth)}>
+                <div className="p-3 bg-primary/5 rounded-xl border border-primary/20 flex flex-col gap-1">
+                  <div className="flex items-center gap-2 text-primary">
+                    <RefreshCw size={12} className="animate-spin-slow" />
+                    <span className="text-[9px] font-black uppercase">Conversão Automática</span>
+                  </div>
+                  <p className="text-[10px] font-medium text-muted-foreground leading-tight">
+                    {qty} {purchaseUnit} × {mult} (fator) = {internalUnits} unidades internas.
+                    <br/>
+                    Totalizando: <strong className="text-primary">{Number(totalStock.toFixed(4))} {unit}</strong> no estoque.
+                    {isMeasurementUnit && factor !== 1 && (
+                      <> <span className="text-muted-foreground">(× {factor} {unit}/un)</span></>
+                    )}
+                  </p>
                 </div>
-                <p className="text-[10px] font-medium text-muted-foreground leading-tight">
-                  {Number(watchQty) || 0} {purchaseUnit} × {Number(multiplier) || 1} (fator) = {Number((Number(watchQty) || 0) * (Number(multiplier) || 1))} unidades internas.
-                  <br/>
-                  Totalizando: <strong className="text-primary">{Number(((Number(watchQty) || 0) * (Number(multiplier) || 1) * (Number(conversionFactor) || 1)).toFixed(4))} {unit}</strong> no estoque.
-                </p>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           <div className={cn(styles.field, styles.fullWidth)}>
             <div className="p-3 bg-muted/30 rounded-xl flex items-center justify-between border border-dashed">

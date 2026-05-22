@@ -337,8 +337,8 @@ export const ProductiveIntelligence: React.FC<Props> = ({
                     <div className="flex items-center gap-1 bg-green-50 p-1.5 rounded-lg border border-green-100 mt-0.5">
                       <span className="text-[10px] uppercase font-black text-green-700">➜ Custo Unitário (Base):</span>
                       <span className="text-[11px] font-black text-green-900">
-                        R$ {value.purchasePrice.toFixed(2)} ÷ {mult} = 
-                        <span className="ml-1 text-blue-700 underline underline-offset-2">R$ {(value.purchasePrice / mult).toFixed(2)}</span>
+                        R$ {Number(value.purchasePrice).toFixed(2)} ÷ {mult} =
+                        <span className="ml-1 text-blue-700 underline underline-offset-2">R$ {(Number(value.purchasePrice) / mult).toFixed(2)}</span>
                       </span>
                     </div>
                   ) : (

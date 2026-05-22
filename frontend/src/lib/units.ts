@@ -68,3 +68,21 @@ export function formatStockNumber(value: number, source: UnitSource | null | und
 export function formatStockQuantity(value: number, source: UnitSource | null | undefined): string {
     return `${formatStockNumber(value, source)} ${resolveDisplayUnit(source)}`;
 }
+
+/**
+ * Sublabel padrão para listagens de insumos em comboboxes — ex: "un • R$ 0.50".
+ * Aceita o objeto bruto (com possíveis aliases legados: unidadeBase, custoUnitario)
+ * e devolve string normalizada — toda UI de seleção de insumo deve usar esta função
+ * para garantir que a unidade exibida bata com a centralização em resolveDisplayUnit.
+ */
+export function buildInsumoSublabel(material: any): string {
+    if (!material) return '';
+    const unit = resolveDisplayUnit({
+        unit: material.unit || material.unidadeBase,
+        controlUnit: material.controlUnit,
+        stockUnit: material.stockUnit,
+        purchaseUnit: material.purchaseUnit,
+    });
+    const cost = Number(material.averageCost || material.custoUnitario || material.costPerUnit || 0).toFixed(2);
+    return `${unit} • R$ ${cost}`;
+}

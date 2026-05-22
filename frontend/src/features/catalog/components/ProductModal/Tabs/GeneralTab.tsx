@@ -5,6 +5,7 @@ import { Switch } from '@/components/ui/switch';
 import { ShoppingBag, Briefcase, Info, TrendingUp, Lock, Unlock } from 'lucide-react';
 import { ProductDraft } from '../types';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface GeneralTabProps {
   draft: ProductDraft;
@@ -13,6 +14,8 @@ interface GeneralTabProps {
 }
 
 export const GeneralTab: React.FC<GeneralTabProps> = ({ draft, setDraft, pricingRules = [] }) => {
+  const { settings } = useAuth();
+  const commissionsEnabled = settings?.enableCommissions !== false;
   const handleChange = (field: keyof ProductDraft, value: any) => {
     setDraft(prev => ({ ...prev, [field]: value }));
   };
@@ -285,39 +288,43 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({ draft, setDraft, pricing
            {/* Comissão e Descontos */}
            <div className="space-y-4 p-6 bg-emerald-50/30 rounded-2xl border border-emerald-100/50">
               <h4 className="font-black text-emerald-700 uppercase text-xs tracking-widest flex items-center gap-2">
-                <TrendingUp className="w-4 h-4" /> Comissão e Descontos
+                <TrendingUp className="w-4 h-4" /> {commissionsEnabled ? 'Comissão e Descontos' : 'Descontos'}
               </h4>
 
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <p className="text-sm font-bold text-slate-800">Gera Comissão?</p>
-                    <p className="text-[10px] text-slate-400 uppercase font-bold">Inclui este item no cálculo do vendedor</p>
-                  </div>
-                  <Switch 
-                    checked={draft.isCommissionable ?? true}
-                    onCheckedChange={(val) => handleChange('isCommissionable', val)}
-                  />
-                </div>
-
-                {draft.isCommissionable !== false && (
-                  <div className="space-y-2 pt-2 border-t border-emerald-100">
-                    <Label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Taxa de Comissão Diferenciada (%)</Label>
-                    <div className="relative">
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">%</span>
-                      <Input 
-                        type="number"
-                        step="0.1"
-                        value={draft.specificCommissionRate !== undefined ? (draft.specificCommissionRate * 100) : ''}
-                        onChange={(e) => handleChange('specificCommissionRate', e.target.value === '' ? null : (parseFloat(e.target.value) / 100))}
-                        placeholder="Deixe vazio para usar a taxa padrão da empresa"
-                        className="bg-white font-bold h-10 pr-8"
+                {commissionsEnabled && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-bold text-slate-800">Gera Comissão?</p>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold">Inclui este item no cálculo do vendedor</p>
+                      </div>
+                      <Switch
+                        checked={draft.isCommissionable ?? true}
+                        onCheckedChange={(val) => handleChange('isCommissionable', val)}
                       />
                     </div>
-                  </div>
+
+                    {draft.isCommissionable !== false && (
+                      <div className="space-y-2 pt-2 border-t border-emerald-100">
+                        <Label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Taxa de Comissão Diferenciada (%)</Label>
+                        <div className="relative">
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">%</span>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            value={draft.specificCommissionRate !== undefined ? (draft.specificCommissionRate * 100) : ''}
+                            onChange={(e) => handleChange('specificCommissionRate', e.target.value === '' ? null : (parseFloat(e.target.value) / 100))}
+                            placeholder="Deixe vazio para usar a taxa padrão da empresa"
+                            className="bg-white font-bold h-10 pr-8"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
 
-                <div className="space-y-2 pt-4 border-t border-emerald-100">
+                <div className={cn("space-y-2", commissionsEnabled && "pt-4 border-t border-emerald-100")}>
                   <Label className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Teto de Desconto Máximo (%)</Label>
                   <div className="relative">
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">%</span>

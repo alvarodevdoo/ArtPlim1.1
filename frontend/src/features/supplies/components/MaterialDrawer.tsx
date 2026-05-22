@@ -47,6 +47,7 @@ export interface Material {
   trackStock: boolean;
   sourcingMode?: 'STOCK' | 'ON_DEMAND';
   primarySupplierId?: string | null;
+  primarySupplier?: { id: string; name: string } | null;
   ncm?: string;
   ean?: string;
   currentStock?: number;
@@ -58,6 +59,7 @@ interface MaterialDrawerProps {
   onClose: () => void;
   materialId?: string | null;
   initialData?: Partial<Material> | null;
+  existingNames?: string[];
   onSuccess?: (material: Material) => void;
   // Propriedades para o fluxo de "Próximo" da NFe
   onSaveAndNext?: (material: Material) => void;
@@ -69,6 +71,7 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
   onClose,
   materialId,
   initialData,
+  existingNames,
   onSuccess,
   onSaveAndNext,
   hasNext
@@ -193,11 +196,16 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
             largura_unitaria: initialData.largura_unitaria || initialData.width || 0,
             altura_unitaria: initialData.altura_unitaria || initialData.height || 0,
             purchasePrice: initialData.purchasePrice || 0,
-            controlUnit: (initialData.controlUnit || 'M2') as ControlUnit,
-            defaultConsumptionRule: (initialData.defaultConsumptionRule || 'PRODUCT_AREA') as ConsumptionRule,
+            // Em novo cadastro com initialData, se não veio controlUnit definido
+            // e a compra é por Unidade, espelha automaticamente para UN/FIXED_UNIT.
+            controlUnit: (initialData.controlUnit
+              || ((initialData.purchaseUnit || 'UN') === 'UN' ? 'UN' : 'M2')) as ControlUnit,
+            defaultConsumptionRule: (initialData.defaultConsumptionRule
+              || ((initialData.purchaseUnit || 'UN') === 'UN' ? 'FIXED_UNIT' : 'PRODUCT_AREA')) as ConsumptionRule,
             conversionFactor: initialData.conversionFactor ?? 1,
           });
         } else {
+          // Novo cadastro do zero: já abre sincronizado (compra UN → controle UN / Fixo por Unidade).
           reset({
             name: '', categoryId: '', description: '', format: 'SHEET',
             costPerUnit: '', unit: 'm²',
@@ -208,8 +216,8 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
             largura_unitaria: 0,
             altura_unitaria: 0,
             purchasePrice: 0,
-            controlUnit: 'M2' as ControlUnit,
-            defaultConsumptionRule: 'PRODUCT_AREA' as ConsumptionRule,
+            controlUnit: 'UN' as ControlUnit,
+            defaultConsumptionRule: 'FIXED_UNIT' as ConsumptionRule,
             conversionFactor: 1,
           });
         }
@@ -367,7 +375,38 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
 
                 <section className="space-y-2">
                   <label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Nome Comercial do Insumo</label>
-                  <Input {...register('name', { required: true })} className="h-12 text-lg font-medium border-2 focus:border-primary/50" placeholder="Ex: Lona Brilho 440g" />
+                  <Controller
+                    control={control}
+                    name="name"
+                    rules={{
+                      required: 'Nome do Insumo é obrigatório!',
+                      validate: (value: string) => {
+                        if (!existingNames?.length) return true;
+                        const normalized = (value || '').trim().toLowerCase();
+                        const conflict = existingNames.some(
+                          n => n.trim().toLowerCase() === normalized
+                        );
+                        return conflict ? 'Já existe um insumo com este nome.' : true;
+                      }
+                    }}
+                    render={({ field, fieldState }) => (
+                      <div className="flex flex-col gap-1">
+                        <Input
+                          {...field}
+                          className={cn(
+                            "h-12 text-lg font-medium border-2 focus:border-primary/50",
+                            fieldState.error && "border-red-500 focus:border-red-500"
+                          )}
+                          placeholder="Ex: Lona Brilho 440g"
+                        />
+                        {fieldState.error && (
+                          <span className="text-[10px] text-red-500 font-medium">
+                            {fieldState.error.message}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  />
                 </section>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -563,6 +602,8 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
                 const load = async () => {
                   const resp = await api.get(`/api/catalog/materials/${selectedMaterial.id}`);
                   setSelectedMaterial(resp.data.data);
+                  // Propaga para a lista do pai (Insumos) atualizar saldo/status
+                  onSuccess?.(resp.data.data);
                 };
                 load();
               }}

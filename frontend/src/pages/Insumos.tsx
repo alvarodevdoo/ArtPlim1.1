@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import {
-  Plus, Search, Settings2, Package, AlertTriangle, CheckCircle2
+  Plus, Search, Settings2, Package, AlertTriangle, CheckCircle2, Truck, Copy, Trash2
 } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -18,6 +18,7 @@ const Insumos: React.FC = () => {
   const [filterCategory, setFilterCategory] = useState('ALL');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
+  const [cloneInitialData, setCloneInitialData] = useState<Partial<Material> | null>(null);
 
   useEffect(() => {
     loadData();
@@ -36,8 +37,58 @@ const Insumos: React.FC = () => {
   };
 
   const handleOpenDrawer = (id: string | null) => {
+    setCloneInitialData(null);
     setSelectedMaterialId(id);
     setIsDrawerOpen(true);
+  };
+
+  const handleDeleteMaterial = async (e: React.MouseEvent, material: Material) => {
+    e.stopPropagation();
+    const confirmed = window.confirm(
+      `Tem certeza que deseja excluir o insumo "${material.name}"?\n\nEsta ação não pode ser desfeita.`
+    );
+    if (!confirmed) return;
+    try {
+      await api.delete(`/api/catalog/materials/${material.id}`);
+      toast.success('Insumo excluído.');
+      loadData();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Erro ao excluir insumo.';
+      toast.error(msg);
+    }
+  };
+
+  const handleCloneMaterial = async (e: React.MouseEvent, materialId: string) => {
+    e.stopPropagation();
+    try {
+      const resp = await api.get(`/api/catalog/materials/${materialId}`);
+      const full = resp.data.data;
+      const {
+        id, currentStock, averageCost, ean,
+        category, inventoryAccount, expenseAccount, primarySupplier,
+        suppliers, components, inventoryItems, _count,
+        organizationId, createdAt, updatedAt, active,
+        ...rest
+      } = full;
+      const toNum = (v: any) => (v === null || v === undefined || v === '' ? undefined : Number(v));
+      setSelectedMaterialId(null);
+      setCloneInitialData({
+        ...rest,
+        name: full.name,
+        ean: '',
+        costPerUnit: toNum(rest.costPerUnit) ?? 0,
+        purchasePrice: toNum(rest.purchasePrice) ?? 0,
+        conversionFactor: toNum(rest.conversionFactor) ?? 1,
+        multiplicador_padrao_entrada: toNum(rest.multiplicador_padrao_entrada) ?? 1,
+        largura_unitaria: toNum(rest.largura_unitaria ?? rest.width) ?? 0,
+        altura_unitaria: toNum(rest.altura_unitaria ?? rest.height) ?? 0,
+        minStockQuantity: toNum(rest.minStockQuantity) ?? null,
+        defaultConsumptionFactor: toNum(rest.defaultConsumptionFactor),
+      });
+      setIsDrawerOpen(true);
+    } catch (err) {
+      toast.error('Erro ao clonar insumo.');
+    }
   };
 
   const getCategoryName = (cat: any) => {
@@ -111,6 +162,12 @@ const Insumos: React.FC = () => {
                       <div className="flex flex-col">
                         <span className="font-bold text-slate-700">{m.name}</span>
                         <span className="text-[10px] text-muted-foreground font-mono uppercase">{m.id.split('-')[0]} | {resolveDisplayUnit(m)}</span>
+                        {m.primarySupplier?.name && (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-slate-500 mt-1">
+                            <Truck className="w-3 h-3" />
+                            <span className="font-medium">{m.primarySupplier.name}</span>
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -135,9 +192,27 @@ const Insumos: React.FC = () => {
                       )}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Settings2 className="w-4 h-4 text-muted-foreground" />
-                      </Button>
+                      <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Clonar insumo"
+                          onClick={(e) => handleCloneMaterial(e, m.id)}
+                        >
+                          <Copy className="w-4 h-4 text-muted-foreground" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Excluir insumo"
+                          onClick={(e) => handleDeleteMaterial(e, m)}
+                        >
+                          <Trash2 className="w-4 h-4 text-red-500" />
+                        </Button>
+                        <Button variant="ghost" size="icon" title="Editar insumo">
+                          <Settings2 className="w-4 h-4 text-muted-foreground" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -147,10 +222,14 @@ const Insumos: React.FC = () => {
         </div>
       </div>
 
-      <MaterialDrawer 
-        isOpen={isDrawerOpen} 
-        onClose={() => setIsDrawerOpen(false)} 
+      <MaterialDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => { setIsDrawerOpen(false); setCloneInitialData(null); }}
         materialId={selectedMaterialId}
+        initialData={cloneInitialData}
+        existingNames={materiais
+          .filter(m => m.id !== selectedMaterialId)
+          .map(m => m.name)}
         onSuccess={loadData}
       />
     </div>

@@ -20,6 +20,7 @@ interface OrganizationSettings {
   enableFinanceReports: boolean;
   enableAutomation: boolean;
   enableCategoryAppropriation: boolean;
+  enableCommissions: boolean;
   defaultMarkup: number;
   taxRate: number;
   validadeOrcamento: number;
@@ -69,6 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         enableFinanceReports: true,
         enableAutomation: true,
         enableCategoryAppropriation: true,
+        enableCommissions: true,
         defaultMarkup: 2.0,
         taxRate: 0.0,
         validadeOrcamento: 7,
@@ -109,6 +111,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             enableFinanceReports: true,
             enableAutomation: true,
             enableCategoryAppropriation: true,
+            enableCommissions: true,
             defaultMarkup: 2.0,
             taxRate: 0.0,
             validadeOrcamento: 7,
@@ -157,6 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           enableFinanceReports: true,
           enableAutomation: true,
           enableCategoryAppropriation: true,
+          enableCommissions: true,
           defaultMarkup: 2.0,
           taxRate: 0.0,
           validadeOrcamento: 7,

@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/Label';
 import { cn } from '@/lib/utils';
 import { Combobox } from '@/components/ui/Combobox';
 import { useInsumos } from '@/features/supplies/useInsumos';
+import { buildInsumoSublabel } from '@/lib/units';
 import { DraftBOMItem, DraftVariationGroup } from '../../types';
 import { nanoid } from 'nanoid';
 
@@ -195,7 +196,7 @@ export const BOMTab: React.FC<BOMTabProps> = ({ productName, salePrice, items, v
                     options={insumos.map((i) => ({
                       id: i.id,
                       label: (i as any).name || (i as any).nome,
-                      sublabel: `${(i as any).unit || (i as any).unidadeBase} • R$ ${Number((i as any).custoUnitario || (i as any).costPerUnit || (i as any).averageCost || 0).toFixed(2)}`,
+                      sublabel: buildInsumoSublabel(i),
                     }))}
                   />
                 )}

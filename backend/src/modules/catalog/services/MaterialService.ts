@@ -84,9 +84,7 @@ export class MaterialService {
             ? false
             : (data.trackStock ?? true),
         sourcingMode: data.sourcingMode ?? (data.trackStock === false ? 'ON_DEMAND' : 'STOCK'),
-        ...(data.primarySupplierId
-            ? { primarySupplier: { connect: { id: data.primarySupplierId } } }
-            : {}),
+        primarySupplierId: data.primarySupplierId ?? null,
         ncm: data.ncm,
         ean: data.ean,
         spedType: data.spedType,

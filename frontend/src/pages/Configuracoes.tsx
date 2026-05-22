@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Settings,
   Building,
@@ -33,6 +34,9 @@ import PaymentMethodSettings from '@/components/admin/PaymentMethodSettings';
 import ProcessStatusSettings from '@/components/admin/ProcessStatusSettings';
 import PricingRuleSettings from '@/components/admin/PricingRuleSettings';
 import { SpedMappingManager } from '@/features/financeiro/SpedMappingManager';
+import { ChartOfAccountsManager } from '@/features/financeiro/ChartOfAccountsManager';
+import { ModalPortal } from '@/components/ui/ModalPortal';
+import { BookOpen, X } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
@@ -68,8 +72,25 @@ interface OrganizationSettings {
 
 const Configuracoes: React.FC = () => {
   const { user, refreshSettings } = useAuth();
-  const [activeTab, setActiveTab] = useState('empresa');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'empresa');
   const [loading, setLoading] = useState(false);
+  const [showChartOfAccounts, setShowChartOfAccounts] = useState(false);
+
+  // Sincroniza aba com URL: troca de aba escreve ?tab=..., e o estado segue a URL (back/forward funcionam)
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && tab !== activeTab) {
+      setActiveTab(tab);
+    } else if (!tab) {
+      setSearchParams({ tab: 'empresa' }, { replace: true });
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (tabId: string) => {
+    setActiveTab(tabId);
+    setSearchParams({ tab: tabId });
+  };
 
   const [organizationData, setOrganizationData] = useState<any>({
     name: '',
@@ -196,7 +217,7 @@ const Configuracoes: React.FC = () => {
           {visibleTabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabChange(tab.id)}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                 activeTab === tab.id 
                   ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-[1.02]' 
@@ -261,6 +282,27 @@ const Configuracoes: React.FC = () => {
 
           {activeTab === 'financeiro' && (
             <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                        <BookOpen className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <CardTitle>Plano de Contas</CardTitle>
+                        <CardDescription>
+                          Estrutura hierárquica oficial de contas contábeis para DRE, balanço e relatórios. Configure uma vez por ano.
+                        </CardDescription>
+                      </div>
+                    </div>
+                    <Button onClick={() => setShowChartOfAccounts(true)}>
+                      Abrir Plano de Contas
+                    </Button>
+                  </div>
+                </CardHeader>
+              </Card>
+
               <FinanceIntegrationSettings
                 settings={settings}
                 setSettings={setSettings}
@@ -392,6 +434,30 @@ const Configuracoes: React.FC = () => {
           )}
         </div>
       </div>
+
+      {showChartOfAccounts && (
+        <ModalPortal>
+          <div className="bg-white rounded-xl shadow-2xl w-[95vw] max-w-7xl max-h-[92vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b bg-slate-50 rounded-t-xl">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 leading-none mb-1">Plano de Contas</h2>
+                  <p className="text-xs text-slate-500">Estrutura contábil oficial da organização</p>
+                </div>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => setShowChartOfAccounts(false)} className="rounded-full">
+                <X className="w-5 h-5 text-slate-400" />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <ChartOfAccountsManager embedded />
+            </div>
+          </div>
+        </ModalPortal>
+      )}
     </div>
   );
 };
