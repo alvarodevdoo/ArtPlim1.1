@@ -1,12 +1,14 @@
-import React, { useRef } from 'react';
-import { 
-  Shield, 
-  Lock, 
-  Unlock, 
-  Download, 
-  Upload, 
-  Database, 
-  AlertTriangle 
+import React, { useRef, useState } from 'react';
+import {
+  Shield,
+  Lock,
+  Unlock,
+  Download,
+  Upload,
+  Database,
+  AlertTriangle,
+  Settings2,
+  Package
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -27,7 +29,8 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
   userRole 
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+  const [customBackup, setCustomBackup] = useState(false);
+
   const {
     loading,
     backupPassword,
@@ -42,7 +45,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
     handleExportBackup,
     executeRestore,
     handleImportBackup
-  } = useBackup({ selectedModules, loadSettings, userRole });
+  } = useBackup({ selectedModules, loadSettings, userRole, customBackup });
 
   const handleImportClick = () => {
     fileInputRef.current?.click();
@@ -80,64 +83,127 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div className="space-y-2">
+              <div className="mb-6">
+                <div className="space-y-2 max-w-md">
                   <label className="text-xs font-semibold flex items-center gap-1">
                     <Lock className="w-3 h-3" /> Senha do Arquivo (Opcional)
                   </label>
                   <div className="relative">
-                    <Input 
+                    <Input
                       type="password"
                       placeholder="Defina uma senha para este backup..."
                       value={backupPassword}
                       onChange={(e) => setBackupPassword(e.target.value)}
                       className="pr-10 h-9 text-sm"
+                      disabled={unencryptedExport}
                     />
                     <Lock className="absolute right-3 top-2.5 w-4 h-4 text-muted-foreground opacity-50" />
                   </div>
-                  <p className="text-[10px] text-muted-foreground italic">
-                    Se não definida, apenas a senha mestre poderá abrir este arquivo.
-                  </p>
-                </div>
-
-                {userRole === 'OWNER' && (
-                  <div className="flex items-center space-x-2 h-full pt-6">
-                    <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-red-50 transition-colors border-red-100 flex-1">
-                      <input 
-                        type="checkbox" 
-                        checked={unencryptedExport}
-                        onChange={(e) => setUnencryptedExport(e.target.checked)}
-                        className="rounded border-input text-red-500"
-                      />
-                      <div>
-                          <span className="text-xs font-bold text-red-700 block">Exportação Desprotegida</span>
-                          <span className="text-[10px] text-red-500">Remover criptografia (Apenas Proprietário)</span>
-                      </div>
-                    </label>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] text-muted-foreground italic">
+                      Se não definida, apenas a senha mestre poderá abrir este arquivo.
+                    </p>
+                    {(userRole === 'OWNER' || userRole === 'ADMIN') && (
+                      <label
+                        className="flex items-center gap-1 cursor-pointer text-[10px] text-muted-foreground hover:text-red-600 transition-colors whitespace-nowrap"
+                        title="Exporta o pacote sem criptografia AES-256 (apenas Proprietário/Administrador)"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={unencryptedExport}
+                          onChange={(e) => setUnencryptedExport(e.target.checked)}
+                          className="h-3 w-3 rounded border-input"
+                        />
+                        <Unlock className="w-3 h-3" />
+                        <span className={unencryptedExport ? 'text-red-600 font-medium' : ''}>
+                          Sem criptografia
+                        </span>
+                      </label>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
               
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-                {Object.entries(selectedModules).map(([module, active]) => (
-                  <label key={module} className={`flex items-center gap-2 p-2 border rounded-lg cursor-pointer transition-colors ${active ? 'bg-primary/5 border-primary' : 'bg-white border-border'}`}>
-                    <input 
-                      type="checkbox" 
-                      checked={active}
-                      onChange={() => setSelectedModules(prev => ({ ...prev, [module]: !active }))}
-                      className="rounded border-input text-primary"
-                    />
-                    <span className="text-xs font-medium capitalize">
-                      {module === 'config' ? 'Configurações' : 
-                       module === 'profiles' ? 'Clientes/Usuários' :
-                       module === 'materials' ? 'Insumos/Estoque' :
-                       module === 'products' ? 'Produtos/Catálogo' :
-                       module === 'production' ? 'Produção' :
-                       module === 'sales' ? 'Vendas' :
-                       module === 'finance' ? 'Financeiro' : module}
-                    </span>
-                  </label>
-                ))}
+              <div className="mb-6 space-y-3">
+                <div className="flex items-center justify-between gap-3 p-2 rounded-lg border bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    {customBackup ? (
+                      <Settings2 className="w-4 h-4 text-primary" />
+                    ) : (
+                      <Package className="w-4 h-4 text-muted-foreground" />
+                    )}
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold">
+                        {customBackup ? 'Backup personalizado' : 'Backup completo'}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {customBackup
+                          ? 'Selecione abaixo quais módulos exportar'
+                          : selectedModules.audit
+                            ? 'Exporta todos os dados operacionais + logs de auditoria'
+                            : 'Exporta todos os dados operacionais'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {!customBackup && (
+                      <label
+                        className="flex items-center gap-1 cursor-pointer text-[10px] text-muted-foreground hover:text-amber-600 transition-colors whitespace-nowrap"
+                        title="Inclui o módulo Auditoria (logs) — pode aumentar muito o tamanho do backup"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!selectedModules.audit}
+                          onChange={(e) => setSelectedModules(prev => ({ ...prev, audit: e.target.checked }))}
+                          className="h-3 w-3 rounded border-input"
+                        />
+                        <span className={selectedModules.audit ? 'text-amber-600 font-medium' : ''}>
+                          Incluir auditoria
+                        </span>
+                      </label>
+                    )}
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={customBackup}
+                      onClick={() => setCustomBackup(prev => !prev)}
+                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${customBackup ? 'bg-primary' : 'bg-input'}`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${customBackup ? 'translate-x-4' : 'translate-x-0.5'}`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                {customBackup && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {Object.entries(selectedModules).map(([module, active]) => (
+                      <label
+                        key={module}
+                        className={`flex items-center gap-2 p-2 border rounded-lg cursor-pointer transition-colors ${active ? (module === 'audit' ? 'bg-amber-50 border-amber-400' : 'bg-primary/5 border-primary') : 'bg-white border-border'}`}
+                        title={module === 'audit' ? 'Logs de auditoria — pode aumentar muito o tamanho do backup' : undefined}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={active}
+                          onChange={() => setSelectedModules(prev => ({ ...prev, [module]: !active }))}
+                          className={`rounded border-input ${module === 'audit' ? 'text-amber-600' : 'text-primary'}`}
+                        />
+                        <span className="text-xs font-medium capitalize">
+                          {module === 'config' ? 'Configurações' :
+                           module === 'profiles' ? 'Clientes/Usuários' :
+                           module === 'materials' ? 'Insumos/Estoque' :
+                           module === 'products' ? 'Produtos/Catálogo' :
+                           module === 'production' ? 'Produção' :
+                           module === 'sales' ? 'Vendas' :
+                           module === 'finance' ? 'Financeiro' :
+                           module === 'audit' ? 'Auditoria (logs)' : module}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="flex space-x-2">

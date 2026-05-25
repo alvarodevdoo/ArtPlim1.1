@@ -1,25 +1,17 @@
 import React, { useState } from 'react';
-import { Bell, BellRing, Check, Settings, Volume2, VolumeX } from 'lucide-react';
-import { Button } from './button';
+import { Bell, BellRing, Check, Volume2, VolumeX, FileText, Clock, Trash2 } from 'lucide-react';
+import { Button } from './Button';
 import { Badge } from './badge';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from './dropdown-menu';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from './popover';
 import { ScrollArea } from './scroll-area';
-import { Switch } from './switch';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useDraftRegistry } from '../../hooks/useDraftRegistry';
 
 export const NotificationBell: React.FC = () => {
   const {
@@ -34,7 +26,11 @@ export const NotificationBell: React.FC = () => {
   } = useNotifications();
 
   const [isOpen, setIsOpen] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+
+  // Rascunhos prestes a expirar (≤15 min). Aparecem como uma seção dedicada
+  // no popover do sino — não vão para o backend, são apenas locais.
+  const { expiringDrafts, expiringCount, extend: extendDraft, discard: discardDraft } = useDraftRegistry();
+  const totalBadgeCount = unreadCount + expiringCount;
 
   const handleNotificationClick = async (notification: any) => {
     if (!notification.read) {
@@ -78,17 +74,17 @@ export const NotificationBell: React.FC = () => {
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="sm" className="relative">
-          {unreadCount > 0 ? (
+          {totalBadgeCount > 0 ? (
             <BellRing className="h-5 w-5" />
           ) : (
             <Bell className="h-5 w-5" />
           )}
-          {unreadCount > 0 && (
-            <Badge 
-              variant="destructive" 
+          {totalBadgeCount > 0 && (
+            <Badge
+              variant="destructive"
               className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
             >
-              {unreadCount > 99 ? '99+' : unreadCount}
+              {totalBadgeCount > 99 ? '99+' : totalBadgeCount}
             </Badge>
           )}
         </Button>
@@ -98,44 +94,76 @@ export const NotificationBell: React.FC = () => {
         <div className="flex items-center justify-between p-4 border-b">
           <h4 className="font-semibold">Notificações</h4>
           <div className="flex items-center gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Configurações</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {playNotificationSound ? (
-                      <Volume2 className="h-4 w-4" />
-                    ) : (
-                      <VolumeX className="h-4 w-4" />
-                    )}
-                    Som
-                  </div>
-                  <Switch
-                    checked={playNotificationSound}
-                    onCheckedChange={setPlayNotificationSound}
-                  />
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            
+            <Button
+              variant="ghost"
+              size="sm"
+              title={playNotificationSound ? 'Som ativado — clique para desligar' : 'Som desligado — clique para ativar'}
+              onClick={() => setPlayNotificationSound(!playNotificationSound)}
+            >
+              {playNotificationSound ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+            </Button>
+
             {unreadCount > 0 && (
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={markAllAsRead}
                 disabled={loading}
+                title="Marcar todas como lidas"
               >
                 <Check className="h-4 w-4" />
               </Button>
             )}
           </div>
         </div>
+
+        {expiringDrafts.length > 0 && (
+          <div className="border-b bg-amber-50/60">
+            <div className="flex items-center gap-2 px-4 py-2">
+              <FileText className="h-3.5 w-3.5 text-amber-700" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-amber-700">
+                Rascunhos prestes a expirar
+              </span>
+            </div>
+            <div className="divide-y divide-amber-100/60">
+              {expiringDrafts.map(draft => {
+                const minutesLeft = Math.max(0, Math.round(draft.msUntilExpiration / 60_000));
+                return (
+                  <div key={draft.key} className="flex items-start gap-3 px-4 py-3">
+                    <div className="mt-0.5 rounded-md bg-amber-100 p-1 text-amber-700">
+                      <Clock className="h-3.5 w-3.5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-bold text-slate-700">
+                        {draft.label}
+                      </p>
+                      <p className="text-[10px] text-amber-700">
+                        Expira em {minutesLeft} min
+                      </p>
+                      <div className="mt-1.5 flex gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => extendDraft(draft.key)}
+                          className="rounded-md bg-amber-600 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-white transition-colors hover:bg-amber-700"
+                        >
+                          Manter mais 2h
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => discardDraft(draft.key)}
+                          className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-white px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-amber-700 transition-colors hover:bg-amber-50"
+                        >
+                          <Trash2 className="h-2.5 w-2.5" />
+                          Descartar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <ScrollArea className="h-96">
           {loading && notifications.length === 0 ? (

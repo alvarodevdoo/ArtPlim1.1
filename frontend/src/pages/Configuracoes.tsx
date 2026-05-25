@@ -15,7 +15,8 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import api from '@/lib/api';
-import { ShoppingCart, GitBranch } from 'lucide-react';
+import { ShoppingCart, GitBranch, FileText } from 'lucide-react';
+import { NFeImportsHistory } from '@/features/nfe/components/NFeImportsHistory';
 
 // Features (Modular Pattern)
 import { BackupManager } from '@/features/organization/backup/BackupManager';
@@ -130,7 +131,8 @@ const Configuracoes: React.FC = () => {
     products: true,
     production: true,
     sales: true,
-    finance: true
+    finance: true,
+    audit: false
   });
 
   useEffect(() => {
@@ -199,6 +201,7 @@ const Configuracoes: React.FC = () => {
     { id: 'processos', label: 'Processos e Catálogo', icon: Workflow },
     { id: 'producao', label: 'Produção', icon: Package, setting: 'enableProduction' },
     { id: 'seguranca', label: 'Segurança', icon: Shield },
+    { id: 'nfe-imports', label: 'Importações de NF-e', icon: FileText },
     { id: 'backup', label: 'Backup', icon: Database },
     { id: 'aparencia', label: 'Aparência', icon: Palette },
   ];
@@ -411,6 +414,8 @@ const Configuracoes: React.FC = () => {
                loading={loading}
              />
           )}
+
+          {activeTab === 'nfe-imports' && <NFeImportsHistory />}
 
           {activeTab === 'backup' && (
             <BackupManager 

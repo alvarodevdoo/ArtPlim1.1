@@ -19,6 +19,9 @@ import { Cliente, Produto, ItemPedido } from '@/types/sales';
 import { CustomerSelection } from '@/components/sales/CustomerSelection';
 import { OrderItemsList } from '@/components/sales/OrderItemsList';
 import { calculatePricingResult } from '@/lib/pricing/formulaUtils';
+import { useStateDraft } from '@/hooks/useStateDraft';
+import { DraftBanner } from '@/components/ui/DraftBanner';
+import { useRegisterLookupContext } from '@/contexts/QuickLookupContext';
 
 const CriarOrcamento: React.FC = () => {
     const navigate = useNavigate();
@@ -42,6 +45,43 @@ const CriarOrcamento: React.FC = () => {
     const [showEditModal, setShowEditModal] = useState(false);
     const [showAddModal, setShowAddModal] = useState(false);
     const [settings, setSettings] = useState<any>(null);
+
+    // Rascunho local (auto-save TTL 2h). Apenas em modo "Novo Orçamento".
+    type BudgetDraftShape = {
+        clienteSelecionado: Cliente | null;
+        itens: ItemPedido[];
+        validityDate: string;
+        notes: string;
+    };
+    const {
+        hasDraft: budgetHasDraft,
+        savedAt: budgetDraftSavedAt,
+        restore: restoreBudgetDraft,
+        discard: discardBudgetDraft,
+        clear: clearBudgetDraft,
+    } = useStateDraft<BudgetDraftShape>({
+        key: 'budget:new',
+        label: 'Novo Orçamento',
+        enabled: !isEditing,
+        snapshot: () => ({ clienteSelecionado, itens, validityDate, notes }),
+        apply: (d) => {
+            setClienteSelecionado(d.clienteSelecionado);
+            setItens(d.itens || []);
+            // Preserva validityDate restaurado mesmo se o `loadSettings`
+            // tiver aplicado um default — quem decide é o usuário.
+            if (d.validityDate) setValidityDate(d.validityDate);
+            setNotes(d.notes || '');
+        },
+        isEmpty: (d) => !d.clienteSelecionado && (!d.itens || d.itens.length === 0),
+        deps: [clienteSelecionado, itens, validityDate, notes],
+    });
+
+    // Registra o cliente atual no contexto da consulta rápida (Ctrl+K).
+    useRegisterLookupContext(
+        clienteSelecionado
+            ? { clienteId: clienteSelecionado.id, clienteNome: clienteSelecionado.name }
+            : undefined
+    );
 
     useEffect(() => {
         loadClientes();
@@ -332,6 +372,8 @@ const CriarOrcamento: React.FC = () => {
             } else {
                 await api.post('/api/sales/budgets', orcamentoData);
                 toast.success('Orçamento salvo com sucesso!');
+                // Submit OK em novo orçamento descarta o rascunho.
+                clearBudgetDraft();
             }
 
             navigate('/orcamentos');
@@ -377,6 +419,16 @@ const CriarOrcamento: React.FC = () => {
                     </Button>
                 </div>
             </div>
+
+            {!isEditing && (
+                <DraftBanner
+                    visible={budgetHasDraft}
+                    savedAt={budgetDraftSavedAt}
+                    label="Novo Orçamento"
+                    onRestore={restoreBudgetDraft}
+                    onDiscard={discardBudgetDraft}
+                />
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Formulário Principal */}

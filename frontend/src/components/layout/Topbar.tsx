@@ -3,12 +3,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import {
   Menu,
-  Bell,
   Search,
   User,
   LogOut,
   Settings
 } from 'lucide-react';
+import { NotificationBell } from '@/components/ui/NotificationBell';
 
 interface TopbarProps {
   onToggleSidebar: () => void;
@@ -43,13 +43,8 @@ const Topbar: React.FC<TopbarProps> = ({ onToggleSidebar, sidebarOpen }) => {
 
         {/* Right side */}
         <div className="flex items-center space-x-4">
-          {/* Notifications */}
-          <button className="p-2 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors relative">
-            <Bell className="w-5 h-5" />
-            <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-xs rounded-full w-5 h-5 flex items-center justify-center">
-              3
-            </span>
-          </button>
+          {/* Notifications — sino real com popover (NotificationBell) */}
+          <NotificationBell />
 
           {/* User menu */}
           <div className="flex items-center space-x-3">

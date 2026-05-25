@@ -59,7 +59,7 @@ export async function authMiddleware(request: FastifyRequest, reply: FastifyRepl
       if (userExists.role === 'OWNER') {
         permissions = ['admin.organization', 'admin.settings', 'admin.users', 'finance.view', 'sales.view', 'production.view', 'inventory.view'];
       } else if (userExists.role === 'ADMIN') {
-        permissions = ['admin.organization', 'admin.settings', 'admin.users', 'finance.view', 'sales.view', 'production.view', 'inventory.view', 'finance.reports'];
+        permissions = ['admin.organization', 'admin.settings', 'admin.users', 'finance.view', 'sales.view', 'production.view', 'inventory.view', 'finance.reports', 'backup.export', 'backup.import'];
       }
     }
 

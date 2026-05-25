@@ -17,15 +17,18 @@ export class BackupController {
 
       // Obter módulos solicitados (padrão todos se não informado)
       const { modules, password, unencrypted } = request.query as { modules?: string, password?: string, unencrypted?: string };
-      const allModules: BackupModule[] = ['config', 'profiles', 'materials', 'products', 'production', 'sales', 'finance'];
+      const allModules: BackupModule[] = ['config', 'profiles', 'materials', 'products', 'production', 'sales', 'finance', 'audit'];
       const requestedModules = modules 
         ? (modules.split(',') as BackupModule[])
         : allModules;
 
-      const filename = `backup-artplim-${organizationId}-${new Date().toISOString().split('T')[0]}.bdb`;
+      // Timestamp local YYYYMMDDHHMM como nome do arquivo (fonte única de verdade).
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const filename = `bkp-erp-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}.bdb`;
 
-      if (unencrypted === 'true' && request.user!.role !== 'OWNER') {
-        return reply.status(403).send({ error: { message: 'Apenas proprietários podem exportar backups descriptografados.' } });
+      if (unencrypted === 'true' && !['OWNER', 'ADMIN'].includes(request.user!.role)) {
+        return reply.status(403).send({ error: { message: 'Apenas proprietários ou administradores podem exportar backups descriptografados.' } });
       }
 
       // Buscar a senha mestre nas configurações
@@ -41,7 +44,9 @@ export class BackupController {
       reply.raw.writeHead(200, {
         'Content-Type': 'application/octet-stream',
         'Content-Disposition': `attachment; filename="${filename}"`,
-        'X-Content-Type-Options': 'nosniff'
+        'X-Content-Type-Options': 'nosniff',
+        // Permite que o frontend leia o filename via header (necessário em CORS).
+        'Access-Control-Expose-Headers': 'Content-Disposition'
       });
 
       // Inicializa o arquivador ZIP
@@ -86,7 +91,8 @@ export class BackupController {
           products: 'produtos_catalogo.json',
           production: 'producao.json',
           sales: 'vendas.json',
-          finance: 'financeiro.json'
+          finance: 'financeiro.json',
+          audit: 'auditoria.json'
         };
 
         const internalName = fileNameMap[module] || `${module}.json`;
@@ -170,7 +176,8 @@ export class BackupController {
         'produtos_catalogo.json': 'products',
         'producao.json': 'production',
         'vendas.json': 'sales',
-        'financeiro.json': 'finance'
+        'financeiro.json': 'finance',
+        'auditoria.json': 'audit'
       };
 
       for (const zipEntry of zipEntries) {

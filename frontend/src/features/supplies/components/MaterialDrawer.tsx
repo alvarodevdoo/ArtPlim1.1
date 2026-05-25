@@ -9,17 +9,20 @@ import { toast } from 'sonner';
 import { Combobox } from '@/components/ui/Combobox';
 import { createPortal } from 'react-dom';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { 
-  ProductiveIntelligence, 
+import {
+  ProductiveIntelligence,
 } from './ProductiveIntelligence/ProductiveIntelligence';
 import { InventoryAdjustment } from './InventoryAdjustment/InventoryAdjustment';
 import { MovementHistory } from './InventoryAdjustment/MovementHistory';
-import { 
-  type ProductiveIntelligenceData, 
-  type ControlUnit, 
-  type ConsumptionRule 
+import {
+  type ProductiveIntelligenceData,
+  type ControlUnit,
+  type ConsumptionRule
 } from './ProductiveIntelligence/types';
 import { cn } from '@/lib/utils';
+import { useFormDraft } from '@/hooks/useFormDraft';
+import { DraftBanner } from '@/components/ui/DraftBanner';
+import { DraftCancelDialog } from '@/components/ui/DraftCancelDialog';
 
 export interface Material {
   id: string;
@@ -82,7 +85,7 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
   const [batches, setBatches] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string; paymentMode?: string; paymentTerms?: number | null; paymentDayOfMonth?: number | null }>>([]);
 
-  const { control, handleSubmit, register, reset, watch, setValue } = useForm({
+  const { control, handleSubmit, register, reset, watch, setValue, formState } = useForm({
     defaultValues: {
       name: '',
       categoryId: '',
@@ -114,6 +117,32 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
 
   const productiveData = watch(); // Agora a "inteligência" vem direto do formulário oficial
   const trackStock = watch('trackStock');
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Rascunho local (auto-save em localStorage, TTL 2h).
+  // Ativo apenas em "Novo Insumo" — em edição a fonte da verdade é o backend
+  // e restaurar valores antigos por cima poderia corromper o registro.
+  // ──────────────────────────────────────────────────────────────────────────
+  const isNewMaterial = !materialId && !selectedMaterial;
+  const draftEnabled = isOpen && isNewMaterial && activeTab === 'cadastro';
+  const {
+    hasDraft,
+    savedAt: draftSavedAt,
+    restore: restoreDraft,
+    discard: discardDraft,
+    clear: clearDraft,
+  } = useFormDraft({
+    key: 'material:new',
+    label: 'Novo Insumo',
+    watch,
+    reset,
+    enabled: draftEnabled,
+    // Só persiste depois que o usuário realmente alterou algo. Defaults do
+    // form (unit: 'm²', purchaseUnit: 'UN', etc.) não são "vazios" pela
+    // heurística genérica, então sem esse guard o draft seria criado já na
+    // abertura — disparando confirmação de descarte ao fechar imediatamente.
+    shouldPersist: () => formState.isDirty,
+  });
   const setProductiveData = (data: Partial<ProductiveIntelligenceData>) => {
     Object.entries(data).forEach(([key, val]) => {
       setValue(key as any, val);
@@ -315,6 +344,8 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
       }
       
       const material = result.data.data;
+      // Submit OK em "Novo Insumo" descarta o rascunho local — não faz mais sentido manter.
+      if (isNewMaterial) clearDraft();
       if (andNext && onSaveAndNext) {
         onSaveAndNext(material);
       } else if (onSuccess) {
@@ -326,11 +357,39 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
     }
   };
 
+  /**
+   * Fechamento "leve": X do header, clique no backdrop e ESC. NÃO descarta
+   * rascunho — usuário pode estar saindo para criar um pré-requisito (ex:
+   * categoria/fornecedor) e voltar. O auto-save garante recuperação.
+   */
+  const handleSoftClose = () => {
+    onClose();
+  };
+
+  /**
+   * Fechamento explícito via botão "Cancelar". Se há rascunho salvo, oferece
+   * descartar; caso contrário, fecha direto. Mantém a regra: "fechar ≠ descartar"
+   * (decisão deliberada).
+   */
+  // Modal de confirmação com 3 ações claras: Descartar / Continuar mais tarde /
+  // Voltar ao preenchimento. Substitui o `window.confirm` (OK/Cancel nativo
+  // semanticamente pobre).
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const handleCancelClick = () => {
+    // `draftSavedAt` reflete a existência atual do rascunho no storage,
+    // mesmo após o usuário ter aceito recuperá-lo (o auto-save segue gravando).
+    if (isNewMaterial && draftSavedAt != null) {
+      setShowCancelDialog(true);
+      return;
+    }
+    onClose();
+  };
+
   if (!isOpen) return null;
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex justify-end">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity animate-in fade-in" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity animate-in fade-in" onClick={handleSoftClose} />
       <div className="relative w-full max-w-xl bg-background shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
         <div className="p-6 border-b flex justify-between items-center bg-card">
           <div className="flex items-center gap-3">
@@ -342,7 +401,7 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
               <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Catálogo Técnico</p>
             </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full"><X className="w-5 h-5" /></Button>
+          <Button variant="ghost" size="icon" onClick={handleSoftClose} className="rounded-full"><X className="w-5 h-5" /></Button>
         </div>
 
         <div className="flex bg-muted/30 p-1 mx-6 mt-4 rounded-xl border">
@@ -370,7 +429,14 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {activeTab === 'cadastro' && (
             <form id="material-form" onSubmit={handleSubmit((d) => onSubmit(d), onError)} className="space-y-6">
-                            
+
+                <DraftBanner
+                  visible={hasDraft}
+                  savedAt={draftSavedAt}
+                  label="Novo Insumo"
+                  onRestore={restoreDraft}
+                  onDiscard={discardDraft}
+                />
 
 
                 <section className="space-y-2">
@@ -628,7 +694,7 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
         </div>
 
         <div className="p-6 border-t bg-muted/20 flex gap-3">
-          <Button variant="outline" onClick={onClose} className="flex-1 h-12 uppercase font-black text-xs">Cancelar</Button>
+          <Button variant="outline" onClick={handleCancelClick} className="flex-1 h-12 uppercase font-black text-xs">Cancelar</Button>
           
           {activeTab === 'cadastro' && (
             hasNext ? (
@@ -647,6 +713,21 @@ export const MaterialDrawer: React.FC<MaterialDrawerProps> = ({
           )}
         </div>
       </div>
+
+      <DraftCancelDialog
+        open={showCancelDialog}
+        label="Novo Insumo"
+        onDiscard={() => {
+          discardDraft();
+          setShowCancelDialog(false);
+          onClose();
+        }}
+        onKeepForLater={() => {
+          setShowCancelDialog(false);
+          onClose();
+        }}
+        onResume={() => setShowCancelDialog(false)}
+      />
     </div>,
     document.body
   );

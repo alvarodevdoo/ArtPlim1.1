@@ -23,6 +23,8 @@ import {
   FinancialSummary,
 } from './types';
 import './ProductModal.scss';
+import { useStateDraft } from '@/hooks/useStateDraft';
+import { DraftBanner } from '@/components/ui/DraftBanner';
 
 interface ProductModalContainerProps {
   productId?: string;
@@ -69,6 +71,41 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
   const [selectedOptionIds, setSelectedOptionIds] = useState<Record<string, string>>({});
   const [deletedGroupIds, setDeletedGroupIds] = useState<string[]>([]);
   const [deletedOptionIds, setDeletedOptionIds] = useState<{ groupId: string; optionId: string }[]>([]);
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Rascunho local (auto-save TTL 2h). Apenas em "Novo Produto".
+  // Em edição, o backend é a fonte de verdade.
+  // ──────────────────────────────────────────────────────────────────────────
+  const isNewProduct = !productId;
+  type ProductDraftShape = {
+    draft: ProductDraft;
+    bomItems: DraftBOMItem[];
+    varGroups: DraftVariationGroup[];
+  };
+  const {
+    hasDraft: productHasDraft,
+    savedAt: productDraftSavedAt,
+    restore: restoreProductDraft,
+    discard: discardProductDraft,
+    clear: clearProductDraft,
+  } = useStateDraft<ProductDraftShape>({
+    key: 'product:new',
+    label: 'Novo Produto',
+    enabled: isNewProduct,
+    snapshot: () => ({ draft, bomItems, varGroups }),
+    apply: (d) => {
+      setDraft(d.draft || emptyDraft());
+      setBomItems(d.bomItems || []);
+      setVarGroups(d.varGroups || []);
+    },
+    // Considera "vazio" enquanto o usuário não nomeou o produto nem adicionou
+    // insumos/variações — defaults do emptyDraft não devem virar rascunho.
+    isEmpty: (d) =>
+      !d.draft?.name &&
+      (!d.bomItems || d.bomItems.length === 0) &&
+      (!d.varGroups || d.varGroups.length === 0),
+    deps: [draft, bomItems, varGroups],
+  });
 
   const handleUpdateGroups = (newGroups: DraftVariationGroup[]) => {
     // 1. Detect removed groups (only those already in DB)
@@ -416,6 +453,8 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
       await api.post(`/api/catalog/products/${savedId}/ficha-tecnica`, { items: bomPayload });
 
       toast.success('Produto salvo com sucesso!');
+      // Submit OK em novo produto descarta o rascunho local.
+      if (isNewProduct) clearProductDraft();
       onSave();
       onClose();
     } catch (err: any) {
@@ -506,6 +545,16 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
           {/* Main content */}
           <main className="flex-1 overflow-y-auto bg-white">
             <div className="p-8 h-full max-w-5xl mx-auto">
+              {isNewProduct && (
+                <DraftBanner
+                  visible={productHasDraft}
+                  savedAt={productDraftSavedAt}
+                  label="Novo Produto"
+                  onRestore={restoreProductDraft}
+                  onDiscard={discardProductDraft}
+                  className="mb-6"
+                />
+              )}
               {activeTab === 'geral' && (
                 <GeneralTab 
                   draft={draft} 

@@ -25,6 +25,9 @@ import { OrderHistoryModal } from '@/components/sales/OrderHistoryModal';
 import { WasteModal } from '@/components/pedidos/modals/WasteModal';
 import { CustomerBalanceAlert } from '@/components/sales/CustomerBalanceAlert';
 import { ModalPortal } from '@/components/ui/ModalPortal';
+import { useStateDraft } from '@/hooks/useStateDraft';
+import { DraftBanner } from '@/components/ui/DraftBanner';
+import { useRegisterLookupContext } from '@/contexts/QuickLookupContext';
 
 
 const CriarPedido: React.FC = () => {
@@ -73,6 +76,75 @@ const CriarPedido: React.FC = () => {
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [profileDetails, setProfileDetails] = useState<any>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Rascunho local (auto-save TTL 2h). Ativo apenas em "Novo Pedido" do zero.
+  // Edição, clonagem e geração a partir de orçamento pulam o draft, pois já
+  // têm fonte de verdade externa (backend/origem) e poderiam ser corrompidos
+  // ao se misturar com um rascunho antigo.
+  // ──────────────────────────────────────────────────────────────────────────
+  const isNewOrderFromScratch = !isEditing && !cloneId && !fromBudgetId;
+  type OrderDraftShape = {
+    clienteSelecionado: Cliente | null;
+    itens: ItemPedido[];
+    globalDiscount: number;
+    deliveryDate: string;
+    notes: string;
+    payments: any[];
+    artDesignerId: string;
+    productionUserId: string;
+    packagingUserId: string;
+    billingOverride: any;
+  };
+  const {
+    hasDraft: orderHasDraft,
+    savedAt: orderDraftSavedAt,
+    restore: restoreOrderDraft,
+    discard: discardOrderDraft,
+    clear: clearOrderDraft,
+  } = useStateDraft<OrderDraftShape>({
+    key: 'order:new',
+    label: 'Novo Pedido',
+    enabled: isNewOrderFromScratch,
+    snapshot: () => ({
+      clienteSelecionado,
+      itens,
+      globalDiscount,
+      deliveryDate,
+      notes,
+      payments,
+      artDesignerId,
+      productionUserId,
+      packagingUserId,
+      billingOverride,
+    }),
+    apply: (d) => {
+      setClienteSelecionado(d.clienteSelecionado);
+      setItens(d.itens || []);
+      setGlobalDiscount(d.globalDiscount || 0);
+      setDeliveryDate(d.deliveryDate || '');
+      setNotes(d.notes || '');
+      setPayments(d.payments || []);
+      setArtDesignerId(d.artDesignerId || '');
+      setProductionUserId(d.productionUserId || '');
+      setPackagingUserId(d.packagingUserId || '');
+      setBillingOverride(d.billingOverride || null);
+    },
+    // Considera "vazio" enquanto o usuário não escolheu cliente nem adicionou itens.
+    isEmpty: (d) => !d.clienteSelecionado && (!d.itens || d.itens.length === 0),
+    deps: [
+      clienteSelecionado, itens, globalDiscount, deliveryDate, notes,
+      payments, artDesignerId, productionUserId, packagingUserId, billingOverride,
+    ],
+  });
+
+  // Registra o cliente atual no contexto do "Lateral bar de consulta rápida".
+  // O drawer (Ctrl+K) pré-filtra pedidos antigos deste cliente.
+  useRegisterLookupContext(
+    clienteSelecionado
+      ? { clienteId: clienteSelecionado.id, clienteNome: clienteSelecionado.name }
+      : undefined
+  );
 
   useEffect(() => {
     loadClientes();
@@ -817,6 +889,8 @@ const CriarPedido: React.FC = () => {
         // Criar novo pedido
         await api.post('/api/sales/orders', pedidoData);
         toast.success('Pedido criado com sucesso!');
+        // Submit OK em novo pedido descarta o rascunho local.
+        if (isNewOrderFromScratch) clearOrderDraft();
       }
 
       if (!skipNavigate) {
@@ -937,6 +1011,16 @@ const CriarPedido: React.FC = () => {
             </Button>
           </div>
         </div>
+
+        {isNewOrderFromScratch && (
+          <DraftBanner
+            visible={orderHasDraft}
+            savedAt={orderDraftSavedAt}
+            label="Novo Pedido"
+            onRestore={restoreOrderDraft}
+            onDiscard={discardOrderDraft}
+          />
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Formulrio Principal */}

@@ -115,8 +115,14 @@ export class NFeController {
         materialTypeId: z.string().optional(),
         inventoryAccountId: z.string().optional(),
         expenseAccountId: z.string().optional(),
+        minStockQuantity: z.number().nonnegative().optional(),
+        width: z.number().positive().optional(),
+        height: z.number().positive().optional(),
       }).passthrough()),
-      costDistributionMode: z.enum(['STRICT', 'REDISTRIBUTE']).optional()
+      costDistributionMode: z.enum(['STRICT', 'REDISTRIBUTE']).optional(),
+      extraFreightCost: z.number().nonnegative().optional(),
+      extraTaxesCost: z.number().nonnegative().optional(),
+      extraOtherCost: z.number().nonnegative().optional()
     }).passthrough();
 
     let body;
@@ -146,11 +152,32 @@ export class NFeController {
       return reply.code(201).send({ success: true, data: receipt });
     } catch (error: any) {
       request.log.error(error);
-      return reply.code(400).send({ 
-        success: false, 
-        message: `Erro na importação: ${error.message}`,
-        error: error.name,
-        details: error.meta // Prisma errors usually have meta
+
+      // Traduz erros conhecidos para mensagens claras ao usuário
+      const friendlyMessage = (() => {
+        if (error?.code === 'P2002') {
+          const target = Array.isArray(error?.meta?.target) ? error.meta.target.join(', ') : String(error?.meta?.target || '');
+          if (target.includes('name')) {
+            return 'Já existe um insumo com este nome no catálogo. Marque o item para "Vincular ao existente" no mapeamento.';
+          }
+          return `Valor duplicado em campo único (${target}).`;
+        }
+        if (error?.code === 'P2003') {
+          return 'Referência inválida: verifique se a categoria, conta contábil ou fornecedor selecionado ainda existe.';
+        }
+        if (error?.code === 'P2025') {
+          return 'Registro não encontrado. Recarregue a página e tente novamente.';
+        }
+        if (error?.name === 'AppError' && error?.message) {
+          return error.message;
+        }
+        // Fallback genérico — não vaza stack trace do Prisma para o usuário
+        return 'Não foi possível importar a NF-e. Confira os dados e tente novamente.';
+      })();
+
+      return reply.code(400).send({
+        success: false,
+        message: friendlyMessage
       });
     }
   }
@@ -171,11 +198,91 @@ export class NFeController {
       return reply.code(200).send({ success: true, data: result });
     } catch (error: any) {
       request.log.error(error);
-      return reply.code(error instanceof z.ZodError ? 400 : 400).send({
+      const message = error instanceof z.ZodError
+        ? `Chave de acesso inválida: ${error.errors[0]?.message || 'verifique o formato.'}`
+        : (error?.name === 'AppError' ? error.message : 'Não foi possível buscar a nota na SEFAZ. Verifique sua conexão e se o certificado está configurado corretamente.');
+      return reply.code(400).send({
         success: false,
-        message: error.message || 'Erro ao buscar nota na SEFAZ',
-        stack: error.stack
+        message
       });
     }
+  }
+
+  async listImports(request: FastifyRequest, reply: FastifyReply) {
+    const prisma = getTenantClient(request.user!.organizationId);
+    const receipts = await prisma.materialReceipt.findMany({
+      where: {
+        organizationId: request.user!.organizationId,
+        invoiceNumber: { not: null }
+      },
+      include: {
+        supplier: { select: { name: true, document: true } },
+        items: { select: { id: true } }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200
+    });
+
+    const data = receipts.map((r: any) => {
+      let meta: any = {};
+      try { meta = r.notes ? JSON.parse(r.notes) : {}; } catch { meta = {}; }
+      // Considera "chave de acesso" apenas invoiceNumber com 44 caracteres (NF-e)
+      const isNfe = typeof r.invoiceNumber === 'string' && r.invoiceNumber.length === 44;
+      return {
+        id: r.id,
+        chaveAcesso: isNfe ? r.invoiceNumber : null,
+        invoiceNumber: r.invoiceNumber,
+        nfeNumero: meta.nfeNumero || null,
+        issueDate: r.issueDate,
+        importedAt: r.createdAt,
+        totalAmount: r.totalAmount,
+        supplierName: r.supplier?.name || '—',
+        supplierDocument: r.supplier?.document || null,
+        itemsImported: r.items.length,
+        itemsSkipped: Array.isArray(meta.skippedItems) ? meta.skippedItems.length : 0,
+        isReimport: !!meta.isReimport,
+        skippedItems: meta.skippedItems || [],
+        extras: meta.extras || null
+      };
+    });
+
+    return reply.send({ success: true, data });
+  }
+
+  async checkImport(request: FastifyRequest, reply: FastifyReply) {
+    const schema = z.object({ chave: z.string().length(44, 'A chave deve ter 44 dígitos') });
+    let chave: string;
+    try {
+      ({ chave } = schema.parse(request.query));
+    } catch (err: any) {
+      return reply.code(400).send({ success: false, message: 'Chave inválida.' });
+    }
+
+    const prisma = getTenantClient(request.user!.organizationId);
+    const receipts = await prisma.materialReceipt.findMany({
+      where: { organizationId: request.user!.organizationId, invoiceNumber: chave },
+      include: { items: { select: { notes: true } } },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const importedCodes = new Set<string>();
+    for (const r of receipts) {
+      for (const it of r.items) {
+        try {
+          const meta = it.notes ? JSON.parse(it.notes) : null;
+          if (meta?.nfeItemCode) importedCodes.add(String(meta.nfeItemCode));
+        } catch {}
+      }
+    }
+
+    return reply.send({
+      success: true,
+      data: {
+        exists: receipts.length > 0,
+        importsCount: receipts.length,
+        lastImportedAt: receipts[0]?.createdAt || null,
+        importedCodes: Array.from(importedCodes)
+      }
+    });
   }
 }

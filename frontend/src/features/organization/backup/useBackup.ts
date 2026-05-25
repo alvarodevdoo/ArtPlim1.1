@@ -6,9 +6,21 @@ interface UseBackupProps {
   selectedModules: Record<string, boolean>;
   loadSettings: () => Promise<void>;
   userRole?: string;
+  customBackup?: boolean;
 }
 
-export function useBackup({ selectedModules, loadSettings, userRole }: UseBackupProps) {
+// Módulos incluídos no "backup completo" padrão (auditoria fica opt-in mesmo aqui).
+const FULL_BACKUP_MODULES = [
+  'config',
+  'profiles',
+  'materials',
+  'products',
+  'production',
+  'sales',
+  'finance'
+];
+
+export function useBackup({ selectedModules, loadSettings, userRole, customBackup = false }: UseBackupProps) {
   const [loading, setLoading] = useState(false);
   const [backupPassword, setBackupPassword] = useState('');
   const [unencryptedExport, setUnencryptedExport] = useState(false);
@@ -19,9 +31,14 @@ export function useBackup({ selectedModules, loadSettings, userRole }: UseBackup
   const handleExportBackup = async () => {
     setLoading(true);
     try {
-      const activeModules = Object.entries(selectedModules)
-        .filter(([_, active]) => active)
-        .map(([module]) => module);
+      const activeModules = customBackup
+        ? Object.entries(selectedModules)
+            .filter(([_, active]) => active)
+            .map(([module]) => module)
+        : // Modo "completo": todos os módulos operacionais + audit se o usuário marcou.
+          selectedModules.audit
+            ? [...FULL_BACKUP_MODULES, 'audit']
+            : FULL_BACKUP_MODULES;
 
       if (activeModules.length === 0) {
         toast.error('Selecione pelo menos um módulo para exportar');
@@ -40,8 +57,13 @@ export function useBackup({ selectedModules, loadSettings, userRole }: UseBackup
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      const date = new Date().toISOString().split('T')[0];
-      link.setAttribute('download', `backup-artplim-${date}.bdb`);
+
+      // Extrai o nome do arquivo definido pelo backend (fonte única).
+      // Fallback usa um timestamp local caso o header não esteja exposto.
+      const disposition = response.headers?.['content-disposition'] as string | undefined;
+      const match = disposition?.match(/filename\s*=\s*"?([^";]+)"?/i);
+      const filename = match?.[1] ?? `backup-${Date.now()}.bdb`;
+      link.setAttribute('download', filename);
       document.body.appendChild(link);
       link.click();
       link.parentNode?.removeChild(link);

@@ -295,10 +295,20 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         request.log.error({ zodErrors: error.errors }, 'Erro de validação no cadastro de material');
-        return reply.code(400).send({ 
-          success: false, 
+        return reply.code(400).send({
+          success: false,
           message: `Erro de validação: ${error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
-          errors: error.errors 
+          errors: error.errors
+        });
+      }
+      if (error?.code === 'P2002') {
+        const target = Array.isArray(error?.meta?.target) ? error.meta.target.join(', ') : String(error?.meta?.target || '');
+        const isNameConflict = target.includes('name') || target.includes('organizationId_name');
+        return reply.code(409).send({
+          success: false,
+          message: isNameConflict
+            ? 'Já existe um insumo com este nome. Use um nome diferente ou vincule ao existente.'
+            : `Valor duplicado em campo único (${target}).`
         });
       }
       throw error;

@@ -27,6 +27,10 @@ export interface NFeItem {
   materialTypeId?: string;
   inventoryAccountId?: string;
   expenseAccountId?: string;
+  minStockQuantity?: number;
+  width?: number;
+  height?: number;
+  dimensionUnit?: 'm' | 'cm' | 'mm';
 }
 
 export interface NFeData {
@@ -39,6 +43,9 @@ export interface NFeData {
   valorOutros?: number;
   valorDesconto?: number;
   costDistributionMode?: 'STRICT' | 'REDISTRIBUTE';
+  extraFreightCost?: number;
+  extraTaxesCost?: number;
+  extraOtherCost?: number;
   emitente: {
     cnpj: string;
     razaoSocial: string;

@@ -35,8 +35,17 @@ interface NFeImportPayload {
     inventoryAccountId?: string;
     expenseAccountId?: string;
     skip?: boolean;
+    // Dados opcionais quando o usuário escolhe criar o material via NF-e
+    minStockQuantity?: number;
+    width?: number;
+    height?: number;
   }>;
   costDistributionMode?: 'STRICT' | 'REDISTRIBUTE';
+  // Custos pagos fora da NF-e (ex.: frete pago em separado, impostos adicionais).
+  // São sempre rateados proporcionalmente ao valor de cada item importado.
+  extraFreightCost?: number;
+  extraTaxesCost?: number;
+  extraOtherCost?: number;
 }
 
 export class NFeImportService {
@@ -70,15 +79,52 @@ export class NFeImportService {
         });
       }
 
-      // 2. Criar a Receita/Entrada de Material
+      // 2. Verificar histórico de importações desta mesma chave (parcial ou completa)
+      // Se algum item já foi trazido em uma importação anterior, ele é pulado aqui também.
+      const previousReceipts = await tx.materialReceipt.findMany({
+        where: { organizationId, invoiceNumber: payload.chaveAcesso },
+        include: { items: { select: { notes: true } } }
+      });
+      const previouslyImportedCodes = new Set<string>();
+      for (const r of previousReceipts) {
+        for (const it of r.items) {
+          try {
+            const meta = it.notes ? JSON.parse(it.notes) : null;
+            if (meta?.nfeItemCode) previouslyImportedCodes.add(String(meta.nfeItemCode));
+          } catch {}
+        }
+      }
+
+      // Se TODOS os itens não-descartados já foram importados antes, aborta com mensagem clara.
+      const itemsToImport = payload.items.filter(i => !i.skip && !previouslyImportedCodes.has(String(i.codigo)));
+      if (itemsToImport.length === 0 && previousReceipts.length > 0) {
+        throw new AppError('Esta NF-e já foi totalmente importada anteriormente. Nada novo a registrar.');
+      }
+
+      // Criar a Receita/Entrada de Material
+      const receiptNotes = {
+        nfeNumero: (payload as any).numero || null,
+        importedAt: new Date().toISOString(),
+        skippedItems: payload.items
+          .filter(i => i.skip)
+          .map(i => ({ codigo: i.codigo, descricao: i.descricao })),
+        extras: {
+          frete: payload.extraFreightCost || 0,
+          impostos: payload.extraTaxesCost || 0,
+          outras: payload.extraOtherCost || 0
+        },
+        isReimport: previousReceipts.length > 0
+      };
+
       const receipt = await tx.materialReceipt.create({
         data: {
           organizationId,
           supplierId: supplier.id,
-          invoiceNumber: payload.chaveAcesso, // Podemos guardar a chave
+          invoiceNumber: payload.chaveAcesso,
           totalAmount: new Prisma.Decimal(payload.valorTotalNota),
           issueDate: new Date(payload.dataEmissao || new Date()),
-          status: 'BILLED'
+          status: 'BILLED',
+          notes: JSON.stringify(receiptNotes)
         }
       });
 
@@ -99,15 +145,64 @@ export class NFeImportService {
         }, 0);
       }
 
+      // Sempre incluir custos extras pagos fora da nota no pool de rateio
+      const externalExtras =
+        (payload.extraFreightCost || 0)
+        + (payload.extraTaxesCost || 0)
+        + (payload.extraOtherCost || 0);
+      extraCostToRedistribute += externalExtras;
+
       const totalImportedValue = importedItems.reduce((acc, i) => acc + i.valorTotal, 0);
 
       // 4. Processar Itens
       for (const item of payload.items) {
         if (item.skip) continue;
+        // Dedupe: itens com mesmo código já trazidos por outra importação da mesma chave
+        if (previouslyImportedCodes.has(String(item.codigo))) continue;
 
         let materialId = item.mappedMaterialId;
 
         if (item.createNew) {
+          // Se já existe um material com o mesmo nome (case-insensitive) na organização,
+          // reutiliza em vez de quebrar a transação com violação de unique constraint.
+          // Caso esteja inativo (soft-deleted), reativa e aplica os dados ajustados na NF-e.
+          const existing = await tx.material.findFirst({
+            where: {
+              organizationId,
+              name: { equals: item.descricao, mode: 'insensitive' }
+            },
+            select: { id: true, active: true }
+          });
+          if (existing) {
+            const updateData: any = {};
+            if (!existing.active) updateData.active = true;
+            // Atualiza dados que o usuário pode ter ajustado no fluxo de entrada
+            updateData.purchasePrice = new Prisma.Decimal(item.valorUnitario);
+            updateData.primarySupplierId = supplier.id;
+            if (item.categoryId) updateData.categoryId = item.categoryId;
+            if (item.materialTypeId) updateData.materialTypeId = item.materialTypeId;
+            if (item.inventoryAccountId) updateData.inventoryAccountId = item.inventoryAccountId;
+            if (item.expenseAccountId) updateData.expenseAccountId = item.expenseAccountId;
+            if (item.minStockQuantity !== undefined && item.minStockQuantity !== null) {
+              updateData.minStockQuantity = item.minStockQuantity;
+            }
+            if (item.width !== undefined && item.width !== null) {
+              updateData.width = item.width;
+              updateData.purchaseWidth = item.width;
+            }
+            if (item.height !== undefined && item.height !== null) {
+              updateData.height = item.height;
+              updateData.purchaseHeight = item.height;
+            }
+            if (item.ncm) updateData.ncm = item.ncm;
+            if (item.ean) updateData.ean = item.ean;
+
+            await tx.material.update({
+              where: { id: existing.id },
+              data: updateData
+            });
+            materialId = existing.id;
+          } else {
           const importedUnit = (item.unidade || 'un').toLowerCase();
           let controlUnit = 'UN';
           let consumptionRule = 'FIXED_UNIT';
@@ -137,7 +232,10 @@ export class NFeImportService {
               name: item.descricao,
               format: format as any,
               costPerUnit: new Prisma.Decimal(item.valorUnitario),
-              unit: item.unidade || 'un', 
+              purchasePrice: new Prisma.Decimal(item.valorUnitario),
+              primarySupplierId: supplier.id,
+              unit: item.unidade || 'un',
+              purchaseUnit: item.unidade || 'un',
               controlUnit: controlUnit as any,
               defaultConsumptionRule: consumptionRule as any,
               categoryId: selectedCategory?.id || '',
@@ -147,22 +245,35 @@ export class NFeImportService {
               trackStock: true,
               ncm: item.ncm,
               ean: item.ean,
+              ...(item.minStockQuantity !== undefined && item.minStockQuantity !== null && {
+                minStockQuantity: item.minStockQuantity
+              }),
+              ...(item.width !== undefined && item.width !== null && {
+                width: item.width,
+                purchaseWidth: item.width
+              }),
+              ...(item.height !== undefined && item.height !== null && {
+                height: item.height,
+                purchaseHeight: item.height
+              }),
             }
           });
           materialId = newMaterial.id;
+          } // fecha o else do "material já existe"
         }
 
         const material = await tx.material.findUnique({ where: { id: materialId } });
         if (!material) throw new AppError(`Material não encontrado para o mapeamento: ${item.descricao}`);
 
-        // Criar item da Receipt
+        // Criar item da Receipt — guardar o código original da NF-e para dedupe futuro
         await tx.materialReceiptItem.create({
           data: {
             receiptId: receipt.id,
             materialId: material.id,
             quantity: new Prisma.Decimal(item.quantidade),
             unitPrice: new Prisma.Decimal(item.valorUnitario),
-            totalPrice: new Prisma.Decimal(item.valorTotal)
+            totalPrice: new Prisma.Decimal(item.valorTotal),
+            notes: JSON.stringify({ nfeItemCode: item.codigo, nfeItemDesc: item.descricao })
           }
         });
 
@@ -223,7 +334,7 @@ export class NFeImportService {
             quantity: new Prisma.Decimal(stockQuantityToAdd),
             unitCost: new Prisma.Decimal(finalEffectiveUnitInternalCost),
             totalCost: new Prisma.Decimal(totalEffectiveCostForItem),
-            notes: `NF-e Chave: ${payload.chaveAcesso}${itemExtraCostFromSkip > 0 ? ' | Inclui Rateio de Itens Ignorados' : ''}`,
+            notes: `NF-e Chave: ${payload.chaveAcesso}${itemExtraCostFromSkip > 0 ? ' | Inclui rateio de custos extras' : ''}${externalExtras > 0 ? ' (frete/impostos pagos fora da nota)' : ''}`,
             documentKey: payload.chaveAcesso,
             supplierId: supplier.id,
           }

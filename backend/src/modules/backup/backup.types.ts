@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export type BackupModule = 'config' | 'profiles' | 'materials' | 'products' | 'production' | 'sales' | 'finance';
+export type BackupModule = 'config' | 'profiles' | 'materials' | 'products' | 'production' | 'sales' | 'finance' | 'audit';
 
 export interface ImportResult {
   module: BackupModule;

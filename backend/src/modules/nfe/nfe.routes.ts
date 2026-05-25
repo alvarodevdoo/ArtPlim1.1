@@ -17,4 +17,14 @@ export async function nfeRoutes(fastify: FastifyInstance) {
   fastify.post('/fetch', {
     preHandler: [fastify.authenticate]
   }, nfeController.fetchByChave.bind(nfeController));
+
+  // 4. Histórico de importações de NF-e
+  fastify.get('/imports', {
+    preHandler: [fastify.authenticate]
+  }, nfeController.listImports.bind(nfeController));
+
+  // 5. Checar se uma chave já foi importada (e quais itens)
+  fastify.get('/imports/check', {
+    preHandler: [fastify.authenticate]
+  }, nfeController.checkImport.bind(nfeController));
 }

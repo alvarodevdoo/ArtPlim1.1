@@ -3,7 +3,7 @@ import { BackupModule, ImportResult } from '../backup.types';
 
 export class ImportBackupUseCase {
   private readonly executionOrder: BackupModule[] = [
-    'config', 'profiles', 'materials', 'products', 'production', 'sales', 'finance'
+    'config', 'profiles', 'materials', 'products', 'production', 'sales', 'finance', 'audit'
   ];
 
   constructor(private prisma: PrismaClient) {}

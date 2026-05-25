@@ -7,9 +7,10 @@ import { NFeData } from '../types';
 interface NFeSupplierSummaryProps {
   nfeData: NFeData;
   onContinue: () => void;
+  isLoading?: boolean;
 }
 
-export const NFeSupplierSummary: React.FC<NFeSupplierSummaryProps> = ({ nfeData, onContinue }) => {
+export const NFeSupplierSummary: React.FC<NFeSupplierSummaryProps> = ({ nfeData, onContinue, isLoading = false }) => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       <Card className="md:col-span-2 shadow-sm border-slate-200">
@@ -53,8 +54,13 @@ export const NFeSupplierSummary: React.FC<NFeSupplierSummaryProps> = ({ nfeData,
           <p className="text-4xl font-black tabular-nums">
             R$ {nfeData.valorTotalNota.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </p>
-          <Button className="mt-8 shadow-lg shadow-emerald-500/20" variant="default" onClick={onContinue}>
-            Continuar: Mapear Itens <ChevronRight className="ml-2 w-4 h-4"/>
+          <Button
+            className="mt-8 shadow-lg shadow-emerald-500/20"
+            variant="default"
+            onClick={onContinue}
+            disabled={isLoading}
+          >
+            {isLoading ? 'Verificando fornecedor...' : (<>Continuar: Mapear Itens <ChevronRight className="ml-2 w-4 h-4"/></>)}
           </Button>
         </CardContent>
       </Card>

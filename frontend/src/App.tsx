@@ -3,8 +3,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
+import { QuickLookupProvider } from '@/contexts/QuickLookupContext';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import Layout from '@/components/layout/Layout';
+import { QuickLookupTrigger } from '@/components/quick-lookup/QuickLookupTrigger';
+import { QuickLookupDrawer } from '@/components/quick-lookup/QuickLookupDrawer';
+import { QuickLookupOrderViewer } from '@/components/quick-lookup/QuickLookupOrderViewer';
+import { QuickLookupRouteWatcher } from '@/components/quick-lookup/QuickLookupRouteWatcher';
 
 // Pages
 import LoginPage from '@/pages/auth/LoginPage';
@@ -44,6 +49,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <NotificationProvider>
+          <QuickLookupProvider>
           <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <div className="min-h-screen bg-background">
             <Routes>
@@ -221,8 +227,15 @@ function App() {
             </Routes>
 
             <Toaster position="top-right" />
+
+            {/* Consulta rápida global (drawer + popup + atalho Ctrl+K) */}
+            <QuickLookupRouteWatcher />
+            <QuickLookupTrigger />
+            <QuickLookupDrawer />
+            <QuickLookupOrderViewer />
           </div>
         </Router>
+          </QuickLookupProvider>
         </NotificationProvider>
       </AuthProvider>
     </QueryClientProvider>

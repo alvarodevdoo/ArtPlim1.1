@@ -15,6 +15,7 @@ export class ExportBackupUseCase {
     production: ['processStatus', 'machine', 'productionQueue', 'productionOperation'],
     sales: ['budget', 'budgetItem', 'order', 'orderItem', 'delivery', 'deliveryItem'],
     finance: ['account', 'chartOfAccount', 'category', 'paymentMethod', 'transaction', 'accountPayable', 'accountReceivable'],
+    audit: ['auditLog'],
   };
 
   /**
