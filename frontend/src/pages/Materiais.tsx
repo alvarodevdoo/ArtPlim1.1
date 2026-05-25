@@ -257,7 +257,7 @@ const Materiais: React.FC = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Materiais</h1>
+          <h1 className="text-display">Materiais</h1>
           <p className="text-muted-foreground">
             Gerencie matérias-primas e insumos (Partidas Dobradas)
           </p>

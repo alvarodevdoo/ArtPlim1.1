@@ -175,7 +175,14 @@ export class NFeImportService {
           });
           if (existing) {
             const updateData: any = {};
-            if (!existing.active) updateData.active = true;
+            if (!existing.active) {
+              // Material foi removido (soft-delete) e está sendo recadastrado.
+              // Zera o estoque e custo médio para que a entrada da NF-e seja a base nova,
+              // sem acumular o saldo "fantasma" anterior à remoção.
+              updateData.active = true;
+              updateData.currentStock = new Prisma.Decimal(0);
+              updateData.averageCost = new Prisma.Decimal(0);
+            }
             // Atualiza dados que o usuário pode ter ajustado no fluxo de entrada
             updateData.purchasePrice = new Prisma.Decimal(item.valorUnitario);
             updateData.primarySupplierId = supplier.id;

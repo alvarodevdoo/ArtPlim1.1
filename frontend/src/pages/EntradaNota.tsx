@@ -188,10 +188,10 @@ export default function EntradaNota() {
   }, [step, nfeData]);
 
   return (
-    <div className="h-full flex flex-col space-y-6 max-w-7xl mx-auto px-4 pb-20">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mt-4">
+    <div className="h-full flex flex-col space-y-4 max-w-7xl mx-auto px-4 pb-6">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mt-2">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Entrada de Notas</h1>
+          <h1 className="text-display">Entrada de Notas</h1>
           <p className="text-muted-foreground">Processamento inteligente de XML e automação de estoque.</p>
         </div>
         {headerSummary}
@@ -208,7 +208,7 @@ export default function EntradaNota() {
       />
 
       {step === 1 && (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
           <NFeKeyInput
             onSearch={fetchNFeByChave}
             isLoading={isLoading}
@@ -216,7 +216,7 @@ export default function EntradaNota() {
             onErrorCleared={clearKeyError}
           />
 
-          <div className="relative flex items-center justify-center py-4">
+          <div className="relative flex items-center justify-center py-2">
             <div className="absolute inset-0 flex items-center">
               <span className="w-full border-t" />
             </div>

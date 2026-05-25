@@ -263,7 +263,7 @@ const Clientes: React.FC = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Clientes</h1>
+          <h1 className="text-display">Clientes</h1>
           <p className="text-muted-foreground">
             Gerencie seus clientes e prospects
           </p>

@@ -66,7 +66,7 @@ const Pendencias: React.FC = () => {
     return (
         <div className="p-6 max-w-5xl mx-auto space-y-6">
             <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-bold text-slate-800">Pendências de Autorização</h1>
+                <h1 className="text-display text-slate-800">Pendências de Autorização</h1>
                 <Button variant="outline" onClick={loadRequests} size="sm">
                     Atualizar
                 </Button>

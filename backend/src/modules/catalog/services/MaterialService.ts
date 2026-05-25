@@ -336,11 +336,14 @@ export class MaterialService {
 
     const oldMaterial = await this.prisma.material.findUnique({ where: { id } });
 
-    // Soft delete
+    // Soft delete — zera o saldo de estoque junto, pois "removido" implica saída
+    // de inventário; reabilitar o item depois começa do zero (sem saldo fantasma).
     const deleted = await this.prisma.material.update({
       where: { id },
       data: {
         active: false,
+        currentStock: 0,
+        averageCost: 0,
         updatedAt: new Date()
       }
     });

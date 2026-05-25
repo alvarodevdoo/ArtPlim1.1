@@ -136,7 +136,7 @@ const Produtos: React.FC = () => {
       <div className="container mx-auto p-4 md:p-8 space-y-8 max-w-7xl animate-in fade-in duration-500">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Catálogo de Produtos</h1>
+            <h1 className="text-display">Catálogo de Produtos</h1>
             <p className="text-muted-foreground">Gerencie seus produtos, serviços e regras de precificação.</p>
           </div>
           <Button onClick={handleNewProduct}>

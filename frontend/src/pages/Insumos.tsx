@@ -111,7 +111,7 @@ const Insumos: React.FC = () => {
     <div className="h-full flex flex-col space-y-4">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Gestão de Insumos</h1>
+          <h1 className="text-display">Gestão de Insumos</h1>
           <p className="text-muted-foreground">Controle técnico e financeiro do estoque.</p>
         </div>
         <Button onClick={() => handleOpenDrawer(null)} className="h-12 px-6 shadow-lg shadow-primary/20">

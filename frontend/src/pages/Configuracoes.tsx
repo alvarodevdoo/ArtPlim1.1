@@ -214,8 +214,8 @@ const Configuracoes: React.FC = () => {
         {/* Sidebar Navigation */}
         <aside className="w-full md:w-64 space-y-1">
           <div className="mb-6 px-4">
-             <h2 className="text-2xl font-bold tracking-tight">Configurações</h2>
-             <p className="text-muted-foreground text-xs">Gerencie sua organização</p>
+             <h2 className="text-h2">Configurações</h2>
+             <p className="text-caption text-muted-foreground mt-1">Gerencie sua organização</p>
           </div>
           {visibleTabs.map((tab) => (
             <button

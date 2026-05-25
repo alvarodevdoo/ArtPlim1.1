@@ -184,7 +184,7 @@ const Funcionarios: React.FC = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Funcionários</h1>
+          <h1 className="text-display">Funcionários</h1>
           <p className="text-muted-foreground">
             Gerencie sua equipe e colaboradores
           </p>

@@ -64,7 +64,7 @@ const Pedidos: React.FC = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Pedidos</h1>
+          <h1 className="text-display">Pedidos</h1>
           <p className="text-muted-foreground">Gerencie pedidos e ordens de serviço</p>
         </div>
         <div className="flex items-center space-x-2">

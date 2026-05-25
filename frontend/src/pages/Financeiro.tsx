@@ -446,7 +446,7 @@ const Financeiro: React.FC = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Financeiro</h1>
+          <h1 className="text-display">Financeiro</h1>
           <p className="text-muted-foreground">
             Controle financeiro completo - contas, transações e fluxo de caixa
           </p>

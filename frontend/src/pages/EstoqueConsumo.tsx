@@ -341,8 +341,8 @@ export default function EstoqueConsumo() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Estoque & Custos</h1>
-          <p className="text-sm text-muted-foreground italic">Controle multilinear de notas fiscais e custos médios</p>
+          <h1 className="text-display">Estoque & Custos</h1>
+          <p className="text-body text-muted-foreground italic">Controle multilinear de notas fiscais e custos médios</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={refresh} className="p-2 rounded-md hover:bg-muted transition-colors mr-2" title="Atualizar">

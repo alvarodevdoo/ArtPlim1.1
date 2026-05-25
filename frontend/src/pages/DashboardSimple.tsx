@@ -148,7 +148,7 @@ const DashboardSimple: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Olá, {user?.name}! 👋</h1>
+          <h1 className="text-display">Olá, {user?.name}! 👋</h1>
           <p className="text-muted-foreground">
             Bem-vindo ao sistema. Aqui está um resumo do seu dia.
           </p>

@@ -400,7 +400,7 @@ const CriarOrcamento: React.FC = () => {
                         Voltar
                     </Button>
                     <div>
-                        <h1 className="text-3xl font-bold text-foreground flex items-center space-x-2">
+                        <h1 className="text-display flex items-center space-x-2">
                             <span>{isEditing ? 'Editar Orçamento' : 'Novo Orçamento'}</span>
                             <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-medium">
                                 Simulação

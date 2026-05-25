@@ -37,7 +37,7 @@ const Relatorios: React.FC = () => {
     <div className="space-y-6">
       {/* Cabeçalho */}
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Relatórios</h1>
+        <h1 className="text-display">Relatórios</h1>
         <p className="text-muted-foreground">Análises e insights do seu negócio</p>
       </div>
 

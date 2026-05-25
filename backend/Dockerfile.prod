@@ -1,0 +1,47 @@
+# ============================================================
+# Backend (Fastify + Prisma) — build de produção
+# ============================================================
+
+# ---- Stage 1: build ----------------------------------------
+FROM node:18 AS build
+
+RUN npm install -g pnpm
+
+WORKDIR /app
+
+COPY package*.json pnpm-lock.yaml* ./
+RUN pnpm install --frozen-lockfile
+
+COPY . .
+
+RUN pnpm exec prisma generate \
+ && pnpm run build
+
+# ---- Stage 2: runtime --------------------------------------
+FROM node:18
+
+RUN npm install -g pnpm \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends postgresql-client \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copia artefatos do build
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/dist         ./dist
+COPY --from=build /app/prisma       ./prisma
+COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/pnpm-lock.yaml ./pnpm-lock.yaml
+
+# Script de inicialização (espera o postgres e sobe o servidor)
+COPY start.prod.sh ./start.prod.sh
+RUN chmod +x ./start.prod.sh
+
+# Diretório de uploads (volume montado em runtime pelo compose)
+RUN mkdir -p /app/uploads
+
+ENV NODE_ENV=production
+EXPOSE 3001
+
+CMD ["./start.prod.sh"]

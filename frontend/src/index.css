@@ -1,3 +1,5 @@
+@import url('https://rsms.me/inter/inter.css');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -53,8 +55,25 @@
   * {
     @apply border-border;
   }
+  html {
+    /* Base 14px (em vez do default 16px) — encolhe proporcionalmente todo o
+       sistema rem-based do Tailwind (textos, paddings, gaps). Densidade de ERP
+       profissional. Volte o zoom do navegador para 100%. */
+    font-size: 14px;
+    font-family: 'Inter var', 'Inter', ui-sans-serif, system-ui, -apple-system,
+      'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground text-body;
+    font-synthesis: none;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply tracking-tight text-foreground;
+    font-feature-settings: 'ss01';
   }
 
   /* Removes default arrows from number inputs */

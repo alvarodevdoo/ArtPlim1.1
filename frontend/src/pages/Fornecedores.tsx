@@ -239,7 +239,7 @@ const Fornecedores: React.FC = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Fornecedores</h1>
+          <h1 className="text-display">Fornecedores</h1>
           <p className="text-muted-foreground">
             Gerencie seus fornecedores de insumos e serviços
           </p>

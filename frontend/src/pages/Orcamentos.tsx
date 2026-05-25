@@ -72,7 +72,7 @@ const Orcamentos: React.FC = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Orçamentos</h1>
+          <h1 className="text-display">Orçamentos</h1>
           <p className="text-muted-foreground">
             Gerencie orçamentos e simulações
           </p>

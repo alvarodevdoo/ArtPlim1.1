@@ -1,0 +1,174 @@
+# ============================================================
+# docker-compose de PRODUCAO
+#
+# Uso:
+#   cp .env.prod.example .env.prod   # primeira vez
+#   # editar .env.prod com as senhas reais
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+# Acesso:
+#   - Externo (Cloudflare Tunnel): https://erp.artplim.com.br
+#   - Intranet local:              http://<ip-da-maquina>
+#
+# Observacoes:
+#   - Postgres e Redis NAO expoem portas ao host (so rede interna).
+#   - Codigo nao tem bind mount: tudo vai dentro da imagem.
+#   - Volumes nomeados guardam dados persistentes.
+# ============================================================
+
+# Nome do projeto isolado do dev (que usa o nome do diretorio).
+# Garante que volumes (postgres_data, etc) NAO colidam entre
+# os dois compose files.
+name: artplim-prod
+
+services:
+
+  # ---- Banco de dados ---------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: artplim_postgres_prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-artplim_erp}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env.prod}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - artplim_prod
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-artplim_erp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- Cache / filas / pubsub --------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: artplim_redis_prod
+    restart: unless-stopped
+    command: >
+      sh -c 'redis-server
+      --appendonly yes
+      --requirepass "$$REDIS_PASSWORD"'
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?defina REDIS_PASSWORD no .env.prod}
+    volumes:
+      - redis_data:/data
+    networks:
+      - artplim_prod
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "$$REDIS_PASSWORD", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- Backend (Fastify) -------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: artplim_backend_prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+
+      # Conexao postgres
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_DB:   ${POSTGRES_DB:-artplim_erp}
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-artplim_erp}?schema=public"
+
+      # Conexao redis
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379"
+
+      # Seguranca
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env.prod}
+    volumes:
+      - backend_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - artplim_prod
+
+  # ---- Frontend (nginx servindo o build do Vite) -------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        # Vazio -> axios usa caminho relativo. O proprio nginx
+        # proxia /api, /auth, /socket.io para o backend.
+        VITE_API_URL: ""
+    container_name: artplim_frontend_prod
+    restart: unless-stopped
+    ports:
+      # Exposto para acesso pela intranet (http://<ip-local>)
+      # Cloudflare Tunnel acessa via rede interna, sem precisar desta porta.
+      - "${FRONTEND_HOST_PORT:-80}:80"
+    depends_on:
+      - backend
+    networks:
+      - artplim_prod
+
+  # ---- Cloudflare Tunnel -------------------------------------
+  # Conecta-se a Cloudflare por outbound e expoe o frontend.
+  # No painel do tunel (Zero Trust > Networks > Tunnels), configure:
+  #   Public hostname: erp.artplim.com.br
+  #   Service:         http://frontend:80
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: artplim_cloudflared_prod
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?defina CLOUDFLARE_TUNNEL_TOKEN no .env.prod}
+    depends_on:
+      - frontend
+    networks:
+      - artplim_prod
+
+  # ---- Backup automatico do Postgres -------------------------
+  # Dump diario, retencao: 7 diarios, 4 semanais, 6 mensais.
+  # Restaurar:
+  #   docker compose -f docker-compose.prod.yml exec postgres \
+  #     pg_restore -U postgres -d artplim_erp < /backups/.../dump.sql.gz
+  db_backup:
+    image: prodrigestivill/postgres-backup-local:15
+    container_name: artplim_db_backup_prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-artplim_erp}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_EXTRA_OPTS: "-Z6 --schema=public --blobs"
+      SCHEDULE: "@daily"
+      BACKUP_KEEP_DAYS: 7
+      BACKUP_KEEP_WEEKS: 4
+      BACKUP_KEEP_MONTHS: 6
+      HEALTHCHECK_PORT: 8080
+    volumes:
+      - db_backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - artplim_prod
+
+# ============================================================
+
+volumes:
+  postgres_data:
+  redis_data:
+  backend_uploads:
+  db_backups:
+
+networks:
+  artplim_prod:
+    driver: bridge

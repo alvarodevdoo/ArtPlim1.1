@@ -216,7 +216,7 @@ export const Producao: React.FC = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold">Produção</h1>
+          <h1 className="text-display">Produção</h1>
           <p className="text-muted-foreground">
             Gestão visual de produção e solicitações
           </p>

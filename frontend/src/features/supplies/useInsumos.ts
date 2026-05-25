@@ -13,7 +13,7 @@ import { Insumo, InsumoFormData } from './types';
 
 // ─── Configuração da API ──────────────────────────────────────────────────────
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 /** Recupera o token JWT do localStorage (mesmo padrão usado no restante do app) */
 function getAuthHeaders(): HeadersInit {

@@ -166,7 +166,7 @@ const Estoque: React.FC = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Controle de Estoque</h1>
+          <h1 className="text-display">Controle de Estoque</h1>
           <p className="text-muted-foreground">
             Gestão avançada de materiais, rolos e retalhos
           </p>
