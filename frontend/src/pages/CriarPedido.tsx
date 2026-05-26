@@ -1209,20 +1209,22 @@ const CriarPedido: React.FC = () => {
                   </div>
                 </div>
 
-                <Button
-                  className="w-full"
-                  size="lg"
-                  onClick={() => salvarPedido()}
-                  disabled={
-                    loading || 
-                    loadingSettings || 
-                    !clienteSelecionado || 
-                    itens.length === 0 || 
-                    (!globalDiscountValidation.ok && !canEditPriceByRole)
-                  }
-                >
-                  {loading ? 'Processando...' : loadingSettings ? 'Validando...' : (isEditing ? 'Atualizar Pedido' : 'Finalizar Pedido')}
-                </Button>
+                {isEditing && (
+                  <Button
+                    className="w-full"
+                    size="lg"
+                    onClick={() => salvarPedido()}
+                    disabled={
+                      loading ||
+                      loadingSettings ||
+                      !clienteSelecionado ||
+                      itens.length === 0 ||
+                      (!globalDiscountValidation.ok && !canEditPriceByRole)
+                    }
+                  >
+                    {loading ? 'Processando...' : loadingSettings ? 'Validando...' : 'Atualizar Pedido'}
+                  </Button>
+                )}
               </div>
 
               {/* Situao Financeira */}

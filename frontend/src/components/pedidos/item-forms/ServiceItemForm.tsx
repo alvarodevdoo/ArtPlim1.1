@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import CurrencyInput from '@/components/ui/CurrencyInput';
@@ -30,6 +30,7 @@ const ServiceItemForm: React.FC<ServiceItemFormProps> = ({
     isEditing = false,
     maxDiscountThreshold = 0.15
 }) => {
+    const [quantity, setQuantity] = useState<number>(1);
     const [unitPrice, setUnitPrice] = useState<number>(0);
     const [discountItem, setDiscountItem] = useState<number>(0);
     const [description, setDescription] = useState('');

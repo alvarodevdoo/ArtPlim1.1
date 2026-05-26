@@ -1,0 +1,74 @@
+# ============================================================
+# .dockerignore na raiz - aplica-se aos builds dos Dockerfile.prod
+# do backend e do frontend (ambos usam context=.).
+#
+# Quanto menor o contexto, mais rapido o build e menor a imagem.
+# ============================================================
+
+# Node / build outputs
+**/node_modules
+**/dist
+**/build
+**/.next
+**/.nuxt
+**/coverage
+
+# Logs / cache
+**/*.log
+**/npm-debug.log*
+**/pnpm-debug.log*
+**/.eslintcache
+**/.cache
+**/.parcel-cache
+**/*.tsbuildinfo
+
+# Git / VCS
+.git
+.gitignore
+.gitattributes
+
+# IDE / Editor
+.vscode
+.idea
+**/*.swp
+**/*.swo
+
+# Diretorios internos do agente
+.agents
+.claude
+.history
+.kiro
+
+# Docs (nao precisa pra runtime)
+docs
+
+# Ambientes / segredos (NUNCA copiar pra imagem)
+**/.env
+**/.env.*
+!**/.env.example
+.env.prod
+!.env.prod.example
+
+# Reference / legacy
+frontend/src/legacy_reference
+Reference
+Legacy
+
+# Arquivos de OS
+**/.DS_Store
+**/Thumbs.db
+
+# Dockerfiles e compose (nao precisa no contexto)
+Dockerfile
+**/Dockerfile
+docker-compose*.yml
+**/.dockerignore
+
+# Uploads do dev (nao copiar pra imagem)
+**/uploads
+public/uploads
+
+# Sqlite / dumps
+*.db
+*.sqlite
+*.bdb

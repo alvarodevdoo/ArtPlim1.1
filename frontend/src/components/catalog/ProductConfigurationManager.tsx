@@ -411,7 +411,7 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
 
       {/* Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="modal-overlay">
           <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <CardHeader>
               <CardTitle>
@@ -566,7 +566,7 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
 
       {/* Option Form Modal */}
       {showOptionForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="modal-overlay">
           <Card className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <CardHeader>
               <CardTitle>
@@ -696,7 +696,7 @@ export const ProductConfigurationManager: React.FC<ProductConfigurationManagerPr
 
       {/* Bulk Generator Modal */}
       {showBulkForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 animate-in fade-in">
+        <div className="modal-overlay animate-in fade-in">
           <Card className="w-full max-w-4xl max-h-[90vh] flex flex-col bg-slate-50 border-0 shadow-2xl">
             <CardHeader className="bg-white border-b sticky top-0 z-10 px-6 py-4">
               <CardTitle className="text-xl font-black text-indigo-900">Gerador Rápido de Opções</CardTitle>

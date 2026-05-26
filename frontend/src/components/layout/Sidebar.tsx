@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { useOrganizationBranding } from '@/hooks/useOrganizationBranding';
 import { PermissionType } from '@/lib/permissions';
 import {
   LayoutDashboard,
@@ -246,6 +247,7 @@ const menuGroups: MenuGroup[] = [
 const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
   const location = useLocation();
   const { hasPermission } = useAuth();
+  const branding = useOrganizationBranding();
 
   const [expandedMenu, setExpandedMenu] = React.useState<string | null>(null);
 
@@ -351,17 +353,39 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
     )}>
       {/* Logo */}
       <div className={cn('p-4 border-b border-border transition-all', !isOpen && 'flex justify-center')}>
-        <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shrink-0">
-            <span className="text-primary-foreground font-bold text-sm">A</span>
+        {isOpen && branding?.logoFull ? (
+          <div className="flex items-center justify-center w-full">
+            <img
+              src={branding.logoFull}
+              alt={branding.name || 'Logo'}
+              className="max-h-12 max-w-full object-contain"
+            />
           </div>
-          {isOpen && (
-            <div className="transition-all duration-300 transform origin-left">
-              <h1 className="font-bold text-lg text-foreground leading-tight">ArtPlim</h1>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-widest">ERP Gráfico</p>
+        ) : !isOpen && (branding?.logoIcon || branding?.logoFull) ? (
+          <div className="w-8 h-8 flex items-center justify-center shrink-0">
+            <img
+              src={branding.logoIcon || branding.logoFull!}
+              alt={branding.name || 'Logo'}
+              className="max-h-8 max-w-8 object-contain"
+            />
+          </div>
+        ) : (
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shrink-0">
+              <span className="text-primary-foreground font-bold text-sm">
+                {(branding?.name || 'A').charAt(0).toUpperCase()}
+              </span>
             </div>
-          )}
-        </div>
+            {isOpen && (
+              <div className="transition-all duration-300 transform origin-left">
+                <h1 className="font-bold text-lg text-foreground leading-tight">
+                  {branding?.name || 'ArtPlim'}
+                </h1>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-widest">ERP Gráfico</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Navigation */}

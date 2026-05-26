@@ -28,6 +28,8 @@ import { analyticsRoutes } from './modules/analytics/analytics.routes';
 import { paymentMethodRoutes } from './modules/finance/payment-method.routes';
 import { insumosRoutes } from './modules/insumos/insumos.routes';
 import { budgetRoutes } from './modules/sales/budget.routes';
+import { automationRoutes } from './modules/sales/automation.routes';
+import { publicOrderRoutes, publicAccessRoutes } from './modules/sales/public-order.routes';
 import { fichaTecnicaRoutes } from './modules/catalog/ficha-tecnica.routes';
 import { backupRoutes } from './modules/backup/infrastructure/http/routes';
 import { roleRoutes } from './modules/roles/infrastructure/http/role.routes';
@@ -84,6 +86,9 @@ async function registerRoutes(fastify: FastifyInstance, options: { websocketServ
     };
   });
 
+  // Rota pública (sem auth) — registrada na instância raiz para evitar qualquer hook/plugin do bloco /api
+  await fastify.register(publicAccessRoutes, { prefix: '/api/public' });
+
   await fastify.register(async function (api) {
     await api.register(authRoutes, { prefix: '/auth' });
     
@@ -121,6 +126,8 @@ async function registerRoutes(fastify: FastifyInstance, options: { websocketServ
     await api.register(paymentMethodRoutes, { prefix: '/payment-methods' });
     await api.register(insumosRoutes, { prefix: '/insumos' });
     await api.register(budgetRoutes, { prefix: '/sales/budgets' });
+    await api.register(automationRoutes, { prefix: '/sales/automation' });
+    await api.register(publicOrderRoutes, { prefix: '/sales' });
     await api.register(fichaTecnicaRoutes, { prefix: '/catalog/ficha-tecnica' });
     await api.register(roleRoutes, { prefix: '/roles' });
     await api.register(backupRoutes, { prefix: '/backup' });
@@ -185,13 +192,18 @@ function setupErrorHandler(fastify: FastifyInstance) {
 
 export async function buildApp() {
   const fastify = Fastify({
+    // 10 MB — necessário para uploads de logo/ícone em base64 e certificado A1.
+    bodyLimit: 10 * 1024 * 1024,
     logger: process.env.NODE_ENV === 'production' ? false : {
-      level: 'info',
+      // 'warn' silencia o log por-request do Fastify (que era 'info').
+      // Reduz drasticamente o overhead de serialização em dev (sobretudo com payloads grandes).
+      level: process.env.LOG_LEVEL || 'warn',
       transport: {
         target: 'pino-pretty',
         options: { colorize: true, translateTime: 'HH:MM:ss', ignore: 'pid,hostname,reqId' }
       }
-    }
+    },
+    disableRequestLogging: true
   });
   
   const websocketServer = new WebSocketServer(fastify.server, prisma);

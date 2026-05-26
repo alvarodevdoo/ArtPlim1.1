@@ -2,13 +2,16 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Eye, Edit, Package, Phone, Plus, Printer, RotateCcw, Clock, CheckCircle2, AlertCircle, User as UserIcon, X, ChevronDown, ChevronUp, RefreshCcw, Wrench, Copy, MoreHorizontal } from 'lucide-react';
+import { Eye, Edit, Package, Phone, Plus, Printer, RotateCcw, Clock, CheckCircle2, AlertCircle, User as UserIcon, X, ChevronDown, ChevronUp, RefreshCcw, Wrench, Copy, MoreHorizontal, Zap, Link as LinkIcon, ExternalLink, Check } from 'lucide-react';
+import { OrderAutomationModal } from '@/components/pedidos/modals/OrderAutomationModal';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { DatasOrcamento } from '@/components/ui/DatasOrcamento';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import { Pedido, ProcessStatus, statusConfig, shouldShowDimensions } from '@/types/pedidos';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { printOrder, generateOrderPdf, copyOrderToClipboard } from '@/lib/printOrder';
+import { FileText, Receipt, FileDown, ClipboardCopy } from 'lucide-react';
 
 interface PedidosListProps {
   filteredPedidos: Pedido[];
@@ -37,6 +40,52 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
   const [loadingHistory, setLoadingHistory] = React.useState(false);
   const [expandedPedidos, setExpandedPedidos] = React.useState<Record<string, boolean>>({});
   const [loadingAction, setLoadingAction] = React.useState<string | null>(null);
+  const [automationPedido, setAutomationPedido] = React.useState<Pedido | null>(null);
+  const [shareLinkPedido, setShareLinkPedido] = React.useState<Pedido | null>(null);
+  const [shareLinkUrl, setShareLinkUrl] = React.useState<string>('');
+  const [shareLinkLoading, setShareLinkLoading] = React.useState(false);
+  const [shareLinkCopied, setShareLinkCopied] = React.useState(false);
+
+  const generateShareLink = async (pedido: Pedido) => {
+    setShareLinkPedido(pedido);
+    setShareLinkUrl('');
+    setShareLinkCopied(false);
+    setShareLinkLoading(true);
+    try {
+      const res = await api.post(`/api/sales/orders/${pedido.id}/share-link`);
+      if (res.data.success) {
+        setShareLinkUrl(res.data.data.url);
+      } else {
+        toast.error('Erro ao gerar link');
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Erro ao gerar link');
+    } finally {
+      setShareLinkLoading(false);
+    }
+  };
+
+  const copyShareLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareLinkUrl);
+      setShareLinkCopied(true);
+      toast.success('Link copiado!');
+      setTimeout(() => setShareLinkCopied(false), 1500);
+    } catch {
+      toast.error('Não foi possível copiar');
+    }
+  };
+
+  const openShareLinkWhatsApp = () => {
+    if (!shareLinkPedido?.customer?.phone) {
+      toast.error('Cliente sem telefone cadastrado');
+      return;
+    }
+    const phone = shareLinkPedido.customer.phone.replace(/\D/g, '');
+    const fullPhone = phone.startsWith('55') ? phone : `55${phone}`;
+    const msg = `Olá ${shareLinkPedido.customer.name}! Acompanhe o seu pedido ${shareLinkPedido.orderNumber} por este link: ${shareLinkUrl}`;
+    window.open(`https://wa.me/${fullPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+  };
 
   // Reabre o pedido para o status anterior (sem impacto financeiro)
   const handleReopen = async (pedido: Pedido) => {
@@ -259,19 +308,6 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
                   </div>
 
                   <div className="flex items-center space-x-1">
-                    {/* Botão de Histórico / Rastreio */}
-                    <Button 
-                      size="icon" 
-                      variant="ghost" 
-                      title="Histórico de Movimentações"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        fetchHistory(pedido.id);
-                      }}
-                    >
-                      <Clock className="w-4 h-4 text-muted-foreground hover:text-primary transition-colors" />
-                    </Button>
-
                     <Button size="icon" variant="ghost" onClick={() => setSelectedPedido(pedido)} title="Visualizar"><Eye className="w-4 h-4" /></Button>
                     {(() => {
                       const isCancelled = pedido?.status === 'CANCELLED';
@@ -295,63 +331,200 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
                       // Pedidos em produção (APPROVED, IN_PRODUCTION) não têm botão de reabrir aqui.
                       return null;
                     })()}
-                    <Button size="icon" variant="ghost" title="Imprimir"><Printer className="w-4 h-4" /></Button>
-
-                    {/* Botão Clonar — para copiar pedidos (especialmente útil para cancelados) */}
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
-                      title="Copiar / Duplicar Pedido"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/pedidos/criar?clone=${pedido.id}`);
-                      }}
-                    >
-                      <Copy className="w-4 h-4" />
-                    </Button>
-
-                    {/* Menu de ações para pedidos FINISHED ou DELIVERED */}
-                    {(pedido?.status === 'FINISHED' || pedido?.status === 'DELIVERED') && (
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            title="Ações do pedido finalizado"
-                            disabled={loadingAction === pedido.id + '_reopen' || loadingAction === pedido.id + '_regenerate'}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {(loadingAction === pedido.id + '_reopen' || loadingAction === pedido.id + '_regenerate')
-                              ? <RefreshCcw className="w-4 h-4 animate-spin" />
-                              : <MoreHorizontal className="w-4 h-4" />
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title="Imprimir"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Printer className="w-4 h-4" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-56 p-2" align="end">
+                        <button
+                          className="flex items-start gap-3 w-full rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50 transition-colors"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              let full = pedido;
+                              if (!pedido.items || pedido.items.length === 0) {
+                                const r = await api.get(`/api/sales/orders/${pedido.id}`);
+                                if (r.data?.success) full = r.data.data;
+                              }
+                              await printOrder(full, 'A4');
+                            } catch (err) {
+                              toast.error('Erro ao preparar impressão.');
                             }
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-56 p-2" align="end">
-                          <button
-                            className="flex items-start gap-3 w-full rounded-md px-3 py-2 text-left text-sm hover:bg-blue-50 transition-colors"
-                            onClick={(e) => { e.stopPropagation(); handleReopen(pedido); }}
-                          >
-                            <RefreshCcw className="w-4 h-4 mt-0.5 text-blue-600 shrink-0" />
-                            <span>
-                              <span className="font-medium text-blue-700 block">Reabrir pedido</span>
-                              <span className="text-xs text-muted-foreground">Corrigir clique acidental, sem impacto financeiro</span>
-                            </span>
-                          </button>
-                          <button
-                            className="flex items-start gap-3 w-full rounded-md px-3 py-2 text-left text-sm hover:bg-orange-50 transition-colors"
-                            onClick={(e) => { e.stopPropagation(); handleRegenerate(pedido); }}
-                          >
-                            <Wrench className="w-4 h-4 mt-0.5 text-orange-600 shrink-0" />
-                            <span>
-                              <span className="font-medium text-orange-700 block">Regerar produção</span>
-                              <span className="text-xs text-muted-foreground">Produto com defeito — baixa estoque novamente</span>
-                            </span>
-                          </button>
-                        </PopoverContent>
-                      </Popover>
-                    )}
+                          }}
+                        >
+                          <FileText className="w-4 h-4 mt-0.5 text-slate-700 shrink-0" />
+                          <span>
+                            <span className="font-medium block">Folha A4</span>
+                            <span className="text-xs text-muted-foreground">Impressora comum</span>
+                          </span>
+                        </button>
+                        <button
+                          className="flex items-start gap-3 w-full rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50 transition-colors"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              let full = pedido;
+                              if (!pedido.items || pedido.items.length === 0) {
+                                const r = await api.get(`/api/sales/orders/${pedido.id}`);
+                                if (r.data?.success) full = r.data.data;
+                              }
+                              await printOrder(full, 'THERMAL_80');
+                            } catch (err) {
+                              toast.error('Erro ao preparar impressão.');
+                            }
+                          }}
+                        >
+                          <Receipt className="w-4 h-4 mt-0.5 text-slate-700 shrink-0" />
+                          <span>
+                            <span className="font-medium block">Térmica 80mm</span>
+                            <span className="text-xs text-muted-foreground">Cupom / bobina</span>
+                          </span>
+                        </button>
+                        <button
+                          className="flex items-start gap-3 w-full rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50 transition-colors"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            const loadingToast = toast.loading('Gerando PDF...');
+                            try {
+                              let full = pedido;
+                              if (!pedido.items || pedido.items.length === 0) {
+                                const r = await api.get(`/api/sales/orders/${pedido.id}`);
+                                if (r.data?.success) full = r.data.data;
+                              }
+                              await generateOrderPdf(full);
+                              toast.success('PDF gerado com sucesso!', { id: loadingToast });
+                            } catch (err) {
+                              console.error(err);
+                              toast.error('Erro ao gerar PDF.', { id: loadingToast });
+                            }
+                          }}
+                        >
+                          <FileDown className="w-4 h-4 mt-0.5 text-slate-700 shrink-0" />
+                          <span>
+                            <span className="font-medium block">Gerar PDF</span>
+                          </span>
+                        </button>
+                        <button
+                          className="flex items-start gap-3 w-full rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50 transition-colors border-t mt-1 pt-2"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              let full = pedido;
+                              if (!pedido.items || pedido.items.length === 0) {
+                                const r = await api.get(`/api/sales/orders/${pedido.id}`);
+                                if (r.data?.success) full = r.data.data;
+                              }
+                              await copyOrderToClipboard(full);
+                              toast.success('Pedido copiado para a área de transferência!');
+                            } catch (err) {
+                              console.error(err);
+                              toast.error('Não foi possível copiar. Verifique as permissões do navegador.');
+                            }
+                          }}
+                        >
+                          <ClipboardCopy className="w-4 h-4 mt-0.5 text-slate-700 shrink-0" />
+                          <span>
+                            <span className="font-medium block">Área de Transferência</span>
+                          </span>
+                        </button>
+                      </PopoverContent>
+                    </Popover>
+
+                    {/* Menu unificado de ações */}
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title="Mais ações"
+                          disabled={loadingAction === pedido.id + '_reopen' || loadingAction === pedido.id + '_regenerate'}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {(loadingAction === pedido.id + '_reopen' || loadingAction === pedido.id + '_regenerate')
+                            ? <RefreshCcw className="w-4 h-4 animate-spin" />
+                            : <MoreHorizontal className="w-4 h-4" />
+                          }
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-60 p-2" align="end">
+                        <button
+                          className="flex items-start gap-3 w-full rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50 transition-colors"
+                          onClick={(e) => { e.stopPropagation(); fetchHistory(pedido.id); }}
+                        >
+                          <Clock className="w-4 h-4 mt-0.5 text-slate-600 shrink-0" />
+                          <span>
+                            <span className="font-medium block">Histórico</span>
+                            <span className="text-xs text-muted-foreground">Movimentações e justificativas</span>
+                          </span>
+                        </button>
+
+                        <button
+                          className="flex items-start gap-3 w-full rounded-md px-3 py-2 text-left text-sm hover:bg-indigo-50 transition-colors"
+                          onClick={(e) => { e.stopPropagation(); navigate(`/pedidos/criar?clone=${pedido.id}`); }}
+                        >
+                          <Copy className="w-4 h-4 mt-0.5 text-indigo-600 shrink-0" />
+                          <span>
+                            <span className="font-medium text-indigo-700 block">Clonar pedido</span>
+                            <span className="text-xs text-muted-foreground">Duplicar como novo orçamento</span>
+                          </span>
+                        </button>
+
+                        <button
+                          className="flex items-start gap-3 w-full rounded-md px-3 py-2 text-left text-sm hover:bg-emerald-50 transition-colors"
+                          onClick={(e) => { e.stopPropagation(); generateShareLink(pedido); }}
+                        >
+                          <LinkIcon className="w-4 h-4 mt-0.5 text-emerald-600 shrink-0" />
+                          <span>
+                            <span className="font-medium text-emerald-700 block">Link público</span>
+                            <span className="text-xs text-muted-foreground">Compartilhar acompanhamento com o cliente</span>
+                          </span>
+                        </button>
+
+                        <button
+                          className="flex items-start gap-3 w-full rounded-md px-3 py-2 text-left text-sm hover:bg-amber-50 transition-colors"
+                          onClick={(e) => { e.stopPropagation(); setAutomationPedido(pedido); }}
+                        >
+                          <Zap className="w-4 h-4 mt-0.5 text-amber-600 shrink-0" />
+                          <span>
+                            <span className="font-medium text-amber-700 block">Automações</span>
+                            <span className="text-xs text-muted-foreground">Executar regras neste pedido</span>
+                          </span>
+                        </button>
+
+                        {(pedido?.status === 'FINISHED' || pedido?.status === 'DELIVERED') && (
+                          <>
+                            <div className="border-t my-1" />
+                            <button
+                              className="flex items-start gap-3 w-full rounded-md px-3 py-2 text-left text-sm hover:bg-blue-50 transition-colors"
+                              onClick={(e) => { e.stopPropagation(); handleReopen(pedido); }}
+                            >
+                              <RefreshCcw className="w-4 h-4 mt-0.5 text-blue-600 shrink-0" />
+                              <span>
+                                <span className="font-medium text-blue-700 block">Reabrir pedido</span>
+                                <span className="text-xs text-muted-foreground">Corrigir clique acidental</span>
+                              </span>
+                            </button>
+                            <button
+                              className="flex items-start gap-3 w-full rounded-md px-3 py-2 text-left text-sm hover:bg-orange-50 transition-colors"
+                              onClick={(e) => { e.stopPropagation(); handleRegenerate(pedido); }}
+                            >
+                              <Wrench className="w-4 h-4 mt-0.5 text-orange-600 shrink-0" />
+                              <span>
+                                <span className="font-medium text-orange-700 block">Regerar produção</span>
+                                <span className="text-xs text-muted-foreground">Baixa estoque novamente</span>
+                              </span>
+                            </button>
+                          </>
+                        )}
+                      </PopoverContent>
+                    </Popover>
                   </div>
                 </div>
               </div>
@@ -479,6 +652,63 @@ const PedidosList: React.FC<PedidosListProps> = React.memo(({
               <Button className="w-full" variant="outline" onClick={() => setHistoryPedidoId(null)}>
                 Fechar Histórico
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Automações por pedido */}
+      <OrderAutomationModal
+        isOpen={!!automationPedido}
+        pedido={automationPedido}
+        onClose={() => setAutomationPedido(null)}
+      />
+
+      {/* Modal de Link Público */}
+      {shareLinkPedido && (
+        <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4" onClick={() => setShareLinkPedido(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b">
+              <div className="flex items-center gap-2">
+                <LinkIcon className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-lg font-bold">Link Público do Pedido</h3>
+              </div>
+              <Button size="icon" variant="ghost" onClick={() => setShareLinkPedido(null)}>
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Compartilhe este link com <strong>{shareLinkPedido.customer?.name}</strong> para que ele acompanhe o pedido <strong>{shareLinkPedido.orderNumber}</strong>. Validade: <strong>30 dias</strong>.
+              </p>
+              {shareLinkLoading ? (
+                <div className="flex items-center justify-center py-6">
+                  <RefreshCcw className="w-5 h-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={shareLinkUrl}
+                      className="flex-1 px-3 py-2 border rounded-lg text-xs font-mono bg-slate-50"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                    />
+                    <Button variant="outline" size="icon" onClick={copyShareLink} title="Copiar">
+                      {shareLinkCopied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <Button variant="outline" className="flex-1" onClick={() => window.open(shareLinkUrl, '_blank')}>
+                      <ExternalLink className="w-4 h-4 mr-2" /> Abrir
+                    </Button>
+                    <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={openShareLinkWhatsApp}>
+                      <Phone className="w-4 h-4 mr-2" /> Enviar no WhatsApp
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

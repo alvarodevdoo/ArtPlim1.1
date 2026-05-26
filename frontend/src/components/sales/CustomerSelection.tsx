@@ -487,7 +487,7 @@ export const CustomerSelection: React.FC<CustomerSelectionProps> = ({
         </Card>
 
         {showBillingModal && selectedCustomer && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="modal-overlay">
                 <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 flex flex-col max-h-[90vh]">
 
                     {/* Header */}
@@ -675,7 +675,7 @@ export const CustomerSelection: React.FC<CustomerSelectionProps> = ({
         )}
         {/* Modal de Cadastro Rápido */}
         {showQuickRegister && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="modal-overlay">
                 <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
                     <div className="flex items-center justify-between px-6 py-4 border-b">
                         <div className="flex items-center gap-2">

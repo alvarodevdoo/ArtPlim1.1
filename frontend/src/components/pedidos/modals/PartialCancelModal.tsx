@@ -49,7 +49,7 @@ const PartialCancelModal: React.FC<PartialCancelModalProps> = ({ pedido, itemsTo
   };
 
   return (
-    <ModalPortal className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <ModalPortal className="modal-overlay">
       <Card className="modal-content-card max-w-md w-full relative">
         <CardHeader>
           <div className="flex items-center space-x-2 text-red-600 mb-2">

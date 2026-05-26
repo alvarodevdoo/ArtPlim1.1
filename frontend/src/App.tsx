@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { AuthProvider } from '@/contexts/AuthContext';
@@ -14,6 +14,7 @@ import { QuickLookupRouteWatcher } from '@/components/quick-lookup/QuickLookupRo
 // Pages
 import LoginPage from '@/pages/auth/LoginPage';
 import RegisterPage from '@/pages/auth/RegisterPage';
+import PublicOrderView from '@/pages/PublicOrderView';
 import DashboardSimple from '@/pages/DashboardSimple';
 import Clientes from '@/pages/Clientes';
 import Fornecedores from '@/pages/Fornecedores';
@@ -44,6 +45,22 @@ const queryClient = new QueryClient({
   },
 });
 
+const PUBLIC_PATH_PREFIXES = ['/p/', '/login', '/register'];
+
+function GlobalOverlays() {
+  const location = useLocation();
+  const isPublic = PUBLIC_PATH_PREFIXES.some(p => location.pathname.startsWith(p));
+  if (isPublic) return null;
+  return (
+    <>
+      <QuickLookupRouteWatcher />
+      <QuickLookupTrigger />
+      <QuickLookupDrawer />
+      <QuickLookupOrderViewer />
+    </>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -56,6 +73,8 @@ function App() {
               {/* Rotas públicas */}
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              <Route path="/p/pedido" element={<PublicOrderView />} />
+              <Route path="/p/pedido/:token" element={<PublicOrderView />} />
 
               {/* Rotas protegidas */}
               <Route path="/" element={
@@ -228,11 +247,8 @@ function App() {
 
             <Toaster position="top-right" />
 
-            {/* Consulta rápida global (drawer + popup + atalho Ctrl+K) */}
-            <QuickLookupRouteWatcher />
-            <QuickLookupTrigger />
-            <QuickLookupDrawer />
-            <QuickLookupOrderViewer />
+            {/* Consulta rápida global (drawer + popup + atalho Ctrl+K) — somente em rotas autenticadas */}
+            <GlobalOverlays />
           </div>
         </Router>
           </QuickLookupProvider>

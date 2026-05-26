@@ -469,7 +469,8 @@ export class ProductConfigurationService {
                     trackStock: true,
                     currentStock: true,
                     minStockQuantity: true,
-                    sourcingMode: true
+                    sourcingMode: true,
+                    ean: true
                   }
                 }
               }

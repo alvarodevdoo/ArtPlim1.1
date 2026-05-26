@@ -14,7 +14,7 @@ import { formatCurrency } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { calculatePricingResult } from '@/lib/pricing/formulaUtils';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 
 interface BudgetItem {
     id: string;
@@ -199,7 +199,7 @@ export const BudgetDetailsModal: React.FC<BudgetDetailsModalProps> = ({ budget, 
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="modal-overlay">
             <Card className="w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
                 <CardHeader className="border-b bg-gray-50 flex flex-row items-center justify-between p-4 rounded-t-xl">
                     <CardTitle className="text-xl flex items-center space-x-2">

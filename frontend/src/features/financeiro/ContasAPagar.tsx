@@ -742,7 +742,7 @@ export function ContasAPagar() {
 
       {/* Modal: Pagar Fatura */}
       {paymentModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="modal-overlay">
           <Card className="w-full max-w-md shadow-2xl">
             <CardHeader>
               <CardTitle>Registrar Pagamento</CardTitle>
@@ -795,7 +795,7 @@ export function ContasAPagar() {
 
       {/* Modal: Fechar Fatura (recibos → conta a pagar) */}
       {closeModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="modal-overlay">
           <Card className="w-full max-w-md shadow-2xl">
             <CardHeader>
               <CardTitle>Gerar Conta a Pagar</CardTitle>
@@ -837,7 +837,7 @@ export function ContasAPagar() {
 
       {/* Modal: Novo Recibo de Material */}
       {receiptModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="modal-overlay">
           <Card className="w-full max-w-md shadow-2xl">
             <CardHeader>
               <CardTitle>Novo Recibo de Material</CardTitle>
@@ -883,7 +883,7 @@ export function ContasAPagar() {
 
       {/* Modal: Nova Despesa Direta */}
       {directModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="modal-overlay">
           <Card className="w-full max-w-md shadow-2xl">
             <CardHeader>
               <CardTitle>Nova Despesa</CardTitle>
@@ -928,7 +928,7 @@ export function ContasAPagar() {
 
       {/* Modal: Conta Recorrente */}
       {recurringModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="modal-overlay">
           <Card className="w-full max-w-md shadow-2xl">
             <CardHeader>
               <CardTitle>{selectedRecurring ? 'Editar' : 'Nova'} Conta Recorrente</CardTitle>

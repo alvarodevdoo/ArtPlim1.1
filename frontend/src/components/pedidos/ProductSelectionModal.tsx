@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, X, ArrowRight, PackageSearch, Package, AlertTriangle, Boxes } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 import { ItemType } from '@/types/item-types';
 import { getProductDisplayInfo } from '@/lib/pricing/displayUtils';
 import { Produto } from '@/types/sales';
@@ -26,6 +27,7 @@ type LoadedMaterial = {
     currentStock?: number;
     minStockQuantity?: number | null;
     sourcingMode?: 'STOCK' | 'ON_DEMAND';
+    ean?: string | null;
 };
 
 type LoadedConfig = {
@@ -393,7 +395,8 @@ const ProductSelectionModal: React.FC<ProductSelectionModalProps> = ({
                                         minStockQuantity: o.material.minStockQuantity != null
                                             ? Number(o.material.minStockQuantity)
                                             : null,
-                                        sourcingMode: o.material.sourcingMode === 'ON_DEMAND' ? 'ON_DEMAND' : 'STOCK'
+                                        sourcingMode: o.material.sourcingMode === 'ON_DEMAND' ? 'ON_DEMAND' : 'STOCK',
+                                        ean: o.material.ean ?? null
                                     }
                                     : null
                             }))
@@ -420,8 +423,28 @@ const ProductSelectionModal: React.FC<ProductSelectionModalProps> = ({
         [produtos, configsByProductId]
     );
 
+    // Detecta se o termo de busca parece um código de barras (EAN/UPC):
+    // apenas dígitos e comprimento típico (8, 12, 13 ou 14).
+    const eanCandidate = useMemo(() => {
+        const t = searchTerm.trim();
+        if (!/^\d{8,14}$/.test(t)) return null;
+        return t;
+    }, [searchTerm]);
+
     const filteredSKUs = useMemo(() => {
         const trimmed = searchTerm.trim();
+        // Match exato por EAN do material (insumo) tem prioridade
+        if (eanCandidate) {
+            const byEan = allSKUs.filter(sku =>
+                sku.materials.some(m => (m.ean || '').trim() === eanCandidate)
+            );
+            if (byEan.length > 0) {
+                return byEan
+                    .sort((a, b) => a.displayName.localeCompare(b.displayName))
+                    .map(sku => ({ sku, ranges: [] as Array<[number, number]> }));
+            }
+            // Sem match exato por EAN → cai para o fluxo normal de busca textual
+        }
         if (!trimmed) {
             // Agrupa por produto: ordena produtos por uso/nome, mantém SKUs do mesmo
             // produto juntos e em ordem alfabética entre si.
@@ -452,7 +475,23 @@ const ProductSelectionModal: React.FC<ProductSelectionModalProps> = ({
             a.sku.displayName.localeCompare(b.sku.displayName)
         );
         return results.map(r => ({ sku: r.sku, ranges: r.ranges }));
-    }, [allSKUs, searchTerm]);
+    }, [allSKUs, searchTerm, eanCandidate]);
+
+    // Auto-seleção quando o termo é um EAN e há exatamente 1 SKU vinculado.
+    // Se houver mais de um, apenas filtra (comportamento padrão da lista).
+    useEffect(() => {
+        if (!eanCandidate || allSKUs.length === 0) return;
+        const matches = allSKUs.filter(sku =>
+            sku.materials.some(m => (m.ean || '').trim() === eanCandidate)
+        );
+        if (matches.length === 1) {
+            const sku = matches[0];
+            onSelect(
+                sku.product,
+                sku.presets.length > 0 ? { optionLabels: sku.presets } : undefined
+            );
+        }
+    }, [eanCandidate, allSKUs, onSelect]);
 
     useEffect(() => {
         if (filteredSKUs.length > 0) setHoveredIndex(0);
@@ -523,7 +562,7 @@ const ProductSelectionModal: React.FC<ProductSelectionModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[8vh] bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-150">
+        <ModalPortal className="items-start pt-[8vh] animate-in fade-in duration-150" onBackdropClick={onCancel}>
             <div className="w-full max-w-3xl mx-4 rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh]">
                 {/* ── Header ── */}
                 <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-indigo-50/60 to-white">
@@ -797,7 +836,7 @@ const ProductSelectionModal: React.FC<ProductSelectionModalProps> = ({
                     </Button>
                 </div>
             </div>
-        </div>
+        </ModalPortal>
     );
 };
 

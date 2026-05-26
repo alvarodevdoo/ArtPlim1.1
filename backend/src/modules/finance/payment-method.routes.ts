@@ -5,6 +5,7 @@ import { getTenantClient } from '../../shared/infrastructure/database/tenant';
 const createPaymentMethodSchema = z.object({
   name: z.string().min(1, 'Nome é obrigatório'),
   type: z.enum(['PIX', 'CARD', 'CASH', 'TRANSFER', 'BOLETO', 'OTHER']),
+  cardSubtype: z.enum(['CREDIT', 'DEBIT']).nullish(),
   usageScope: z.enum(['SALES', 'PURCHASES', 'BOTH']).optional().default('SALES'),
   cardClosingDay: z.number().int().min(1).max(31).nullish(),
   cardDueDay: z.number().int().min(1).max(31).nullish(),

@@ -164,7 +164,7 @@ export function ContasAReceber() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="modal-overlay">
           <Card className="w-full max-w-lg">
             <CardHeader>
               <div className="flex items-center justify-between">

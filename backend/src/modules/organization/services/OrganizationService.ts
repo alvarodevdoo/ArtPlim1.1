@@ -139,36 +139,25 @@ export class OrganizationService {
   }
 
   async updateSettings(organizationId: string, data: UpdateSettingsInput) {
-    // Verificar se configurações existem
-    const existingSettings = await this.prisma.organizationSettings.findUnique({
-      where: { organizationId }
+    // Upsert: 1 query SQL em vez de findUnique + update
+    return await this.prisma.organizationSettings.upsert({
+      where: { organizationId },
+      update: data,
+      create: {
+        organizationId,
+        enableWMS: false,
+        enableProduction: false,
+        enableFinance: true,
+        enableFinanceReports: true,
+        enableAutomation: true,
+        enableCommissions: true,
+        defaultMarkup: 2.0,
+        taxRate: 0.0,
+        validadeOrcamento: 7,
+        allowDuplicatePhones: true,
+        ...data,
+      },
     });
-
-    if (existingSettings) {
-      // Atualizar configurações existentes
-      return await this.prisma.organizationSettings.update({
-        where: { organizationId },
-        data
-      });
-    } else {
-      // Criar novas configurações
-      return await this.prisma.organizationSettings.create({
-        data: {
-          organizationId,
-          enableWMS: false,
-          enableProduction: false,
-          enableFinance: true,
-          enableFinanceReports: true,
-          enableAutomation: true,
-          enableCommissions: true,
-          defaultMarkup: 2.0,
-          taxRate: 0.0,
-          validadeOrcamento: 7,
-          allowDuplicatePhones: true,
-          ...data
-        }
-      });
-    }
   }
 
   async getStats(organizationId: string) {

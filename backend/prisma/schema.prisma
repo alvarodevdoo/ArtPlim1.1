@@ -23,6 +23,9 @@ model Organization {
   neighborhood           String?
   city                   String?
   state                  String?
+  logoFull               String?
+  logoIcon               String?
+  logoScale              Int                      @default(100)
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime                 @updatedAt
   defaultCommissionRate  Decimal                  @default(0) @db.Decimal(10, 2)
@@ -114,6 +117,16 @@ model OrganizationSettings {
   enableCommissions           Boolean      @default(true)
   workflowMode                String       @default("FREE")
   requiredCustomerFields      Json         @default("[]")
+
+  // Textos editáveis para impressão de pedidos/orçamentos
+  printFooterNotes            String?
+  printBudgetNotes            String?
+
+  // Chave PIX para cobrança em links públicos
+  pixKey                      String?
+  pixKeyType                  String?      // CPF | CNPJ | EMAIL | PHONE | RANDOM
+  pixBeneficiary              String?      // Nome do beneficiário
+
   organization                Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("organization_settings")
@@ -988,6 +1001,7 @@ model PaymentMethod {
   organizationId      String
   name                String
   type                PaymentMethodType
+  cardSubtype         String?           // 'CREDIT' ou 'DEBIT' quando type = CARD
   usageScope          PaymentScope      @default(SALES)
   feePercentage       Decimal           @default(0) @db.Decimal(5, 2)
   installmentRules    Json?

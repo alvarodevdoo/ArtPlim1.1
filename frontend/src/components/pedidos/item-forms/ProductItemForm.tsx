@@ -759,7 +759,7 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
             </div>
 
             {showAuthModal && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200]">
+                <div className="modal-overlay z-[10000]">
                     <div className="bg-white rounded-2xl w-[400px] overflow-hidden shadow-2xl p-6 space-y-4 animate-in zoom-in-95">
                         <div className="flex items-center justify-between border-b pb-2">
                             <h3 className="font-bold">Liberação Gerencial</h3>

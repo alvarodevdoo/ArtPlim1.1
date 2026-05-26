@@ -1,11 +1,13 @@
 import React from 'react';
-import { Building, Award, MapPin, Phone, Mail, Loader2, Search } from 'lucide-react';
+import { Building, Award, MapPin, Phone, Mail, Loader2, Search, Image as ImageIcon, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { maskCnpj, maskCep, toTitleCaseBR } from '@/services/lookup';
 import { useCnpjLookup } from '@/hooks/useCnpjLookup';
 import { useCepLookup } from '@/hooks/useCepLookup';
+import { toast } from 'sonner';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 interface OrganizationData {
   name: string;
@@ -21,7 +23,113 @@ interface OrganizationData {
   neighborhood?: string;
   city?: string;
   state?: string;
+  logoFull?: string | null;
+  logoIcon?: string | null;
+  logoScale?: number;
 }
+
+const MAX_LOGO_SIZE = 512 * 1024; // 512KB
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+interface LogoUploaderProps {
+  title: string;
+  subtitle: string;
+  hint: string;
+  value?: string | null;
+  aspect: 'wide' | 'square';
+  onChange: (dataUrl: string | null) => void;
+}
+
+const LogoUploader: React.FC<LogoUploaderProps> = ({ title, subtitle, hint, value, aspect, onChange }) => {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = React.useState(false);
+
+  const handleFile = async (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Selecione um arquivo de imagem (PNG, JPG, SVG).');
+      return;
+    }
+    if (file.size > MAX_LOGO_SIZE) {
+      toast.error('Imagem muito grande. Limite: 512 KB.');
+      return;
+    }
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      onChange(dataUrl);
+    } catch {
+      toast.error('Não foi possível ler o arquivo.');
+    }
+  };
+
+  const previewClass = aspect === 'wide' ? 'aspect-[16/7]' : 'aspect-square max-w-[180px] mx-auto';
+
+  return (
+    <div className="rounded-xl border bg-white shadow-sm overflow-hidden flex flex-col">
+      <div className="px-4 py-3 border-b bg-slate-50/70">
+        <h4 className="text-sm font-bold text-slate-800">{title}</h4>
+        <p className="text-[11px] text-muted-foreground leading-snug">{subtitle}</p>
+      </div>
+      <div className="p-4 flex-1 flex flex-col gap-3">
+        <div
+          className={`relative rounded-lg border-2 border-dashed transition-all ${previewClass} ${
+            dragOver ? 'border-primary bg-primary/5' : value ? 'border-slate-200 bg-[linear-gradient(45deg,#f8fafc_25%,transparent_25%),linear-gradient(-45deg,#f8fafc_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#f8fafc_75%),linear-gradient(-45deg,transparent_75%,#f8fafc_75%)] bg-[length:16px_16px] bg-[position:0_0,0_8px,8px_-8px,-8px_0px]' : 'border-slate-200 bg-slate-50'
+          }`}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            handleFile(e.dataTransfer.files?.[0]);
+          }}
+          onClick={() => !value && inputRef.current?.click()}
+          style={{ cursor: value ? 'default' : 'pointer' }}
+        >
+          <div className="absolute inset-0 flex items-center justify-center p-3">
+            {value
+              ? <img src={value} alt={title} className="max-w-full max-h-full object-contain" />
+              : (
+                <div className="text-center text-slate-400">
+                  <Upload className="w-7 h-7 mx-auto mb-1.5 opacity-60" />
+                  <p className="text-[11px] font-medium">Clique ou arraste a imagem</p>
+                </div>
+              )
+            }
+          </div>
+        </div>
+
+        <p className="text-[10px] text-muted-foreground leading-snug">{hint}</p>
+
+        <div className="flex gap-2 mt-auto">
+          <Button type="button" variant="outline" size="sm" className="flex-1" onClick={() => inputRef.current?.click()}>
+            <Upload className="w-3.5 h-3.5 mr-1.5" /> {value ? 'Trocar imagem' : 'Selecionar arquivo'}
+          </Button>
+          {value && (
+            <Button type="button" variant="ghost" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => onChange(null)}>
+              <X className="w-3.5 h-3.5" />
+            </Button>
+          )}
+        </div>
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+          className="hidden"
+          onChange={(e) => handleFile(e.target.files?.[0])}
+        />
+      </div>
+    </div>
+  );
+};
 
 interface GeneralSettingsProps {
   organizationData: OrganizationData;
@@ -36,6 +144,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   handleSaveOrganization,
   loading
 }) => {
+  const [showLogoModal, setShowLogoModal] = React.useState(false);
   // Referência para o campo número para focar após buscar CEP
   const addressNumberRef = React.useRef<HTMLInputElement>(null);
 
@@ -253,12 +362,151 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
               </div>
             </div>
 
+            {/* Seção: Identidade Visual (atalho para modal) */}
+            <div className="space-y-3 pt-2">
+              <h3 className="text-sm font-semibold flex items-center gap-2 text-primary border-b pb-2">
+                <ImageIcon className="w-4 h-4" /> Identidade Visual
+              </h3>
+              <div className="flex flex-col md:flex-row md:items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-indigo-50/50 to-slate-50 border border-indigo-100/60">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="flex -space-x-2 shrink-0">
+                    <div className="w-16 h-12 rounded-md border-2 border-white bg-white shadow flex items-center justify-center overflow-hidden">
+                      {organizationData.logoFull
+                        ? <img src={organizationData.logoFull} className="max-w-full max-h-full object-contain" alt="Logo" />
+                        : <ImageIcon className="w-5 h-5 text-slate-300" />}
+                    </div>
+                    <div className="w-12 h-12 rounded-md border-2 border-white bg-white shadow flex items-center justify-center overflow-hidden">
+                      {organizationData.logoIcon
+                        ? <img src={organizationData.logoIcon} className="max-w-full max-h-full object-contain" alt="Ícone" />
+                        : <ImageIcon className="w-4 h-4 text-slate-300" />}
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-800">Logo e ícone da empresa</p>
+                    <p className="text-[11px] text-muted-foreground leading-snug">Exibidos em comprovantes impressos (A4 e cupom térmico 80mm).</p>
+                  </div>
+                </div>
+                <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => setShowLogoModal(true)}>
+                  <ImageIcon className="w-3.5 h-3.5 mr-1.5" />
+                  {(organizationData.logoFull || organizationData.logoIcon) ? 'Gerenciar' : 'Adicionar logo'}
+                </Button>
+              </div>
+            </div>
+
             <Button type="submit" disabled={loading || fetchingCnpj || fetchingCep} className="w-full md:w-auto px-10 shadow-lg">
               {loading ? 'Sincronizando...' : 'Salvar Dados Cadastrais'}
             </Button>
           </form>
         </CardContent>
       </Card>
+
+      {showLogoModal && (
+        <ModalPortal onBackdropClick={() => setShowLogoModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b flex items-center justify-between bg-gradient-to-r from-indigo-50 to-white">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+                  <ImageIcon className="w-5 h-5 text-indigo-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold">Identidade Visual</h3>
+                  <p className="text-xs text-muted-foreground">Logo e ícone usados nos comprovantes impressos</p>
+                </div>
+              </div>
+              <Button variant="ghost" size="icon" type="button" onClick={() => setShowLogoModal(false)}>
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <LogoUploader
+                  title="Logo Completa"
+                  subtitle="Usada na impressão em folha A4"
+                  hint="Recomendado: PNG ou SVG com fundo transparente, proporção horizontal. Máx. 512 KB."
+                  aspect="wide"
+                  value={organizationData.logoFull}
+                  onChange={(v) => setOrganizationData(prev => ({ ...prev, logoFull: v }))}
+                />
+                <LogoUploader
+                  title="Ícone / Símbolo"
+                  subtitle="Usado no cupom térmico (80mm)"
+                  hint="Recomendado: PNG ou SVG quadrado com fundo transparente. Máx. 512 KB."
+                  aspect="square"
+                  value={organizationData.logoIcon}
+                  onChange={(v) => setOrganizationData(prev => ({ ...prev, logoIcon: v }))}
+                />
+              </div>
+
+              {/* Slider de tamanho da logo no A4 */}
+              <div className="mt-5 p-4 rounded-xl border bg-slate-50">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-800">Tamanho da Logo no Pedido (A4)</h4>
+                    <p className="text-[11px] text-muted-foreground leading-snug">A logo nunca passa da altura do bloco de dados ao lado.</p>
+                  </div>
+                  <span className="text-sm font-bold text-primary tabular-nums px-2 py-1 rounded bg-white border min-w-[58px] text-center">
+                    {organizationData.logoScale ?? 100}%
+                  </span>
+                </div>
+
+                {/* Preview da relação logo × texto (espelha o cálculo do printOrder: base 70px × scale%) */}
+                <div className="mb-3 p-3 bg-white border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-center shrink-0" style={{ width: '180px' }}>
+                      {organizationData.logoFull ? (
+                        <img
+                          src={organizationData.logoFull}
+                          alt="Preview"
+                          className="object-contain"
+                          style={{
+                            maxHeight: `${Math.round(70 * ((organizationData.logoScale ?? 100) / 100))}px`,
+                            maxWidth: '100%'
+                          }}
+                        />
+                      ) : (
+                        <ImageIcon className="w-5 h-5 text-slate-300" />
+                      )}
+                    </div>
+                    <div className="flex flex-col justify-center text-xs text-slate-700 leading-relaxed flex-1 min-w-0">
+                      <div className="font-bold text-sm truncate">{organizationData.name || 'Nome da Empresa'}</div>
+                      {organizationData.cnpj && <div className="text-[11px] text-slate-500 truncate">CNPJ: {organizationData.cnpj}</div>}
+                      <div className="text-[11px] text-slate-500 truncate">Endereço completo • Cidade/UF</div>
+                      <div className="text-[11px] text-slate-500 truncate">Contato • E-mail</div>
+                    </div>
+                  </div>
+                </div>
+
+                <input
+                  type="range"
+                  min={50}
+                  max={100}
+                  step={5}
+                  value={organizationData.logoScale ?? 100}
+                  onChange={(e) => setOrganizationData(prev => ({ ...prev, logoScale: parseInt(e.target.value, 10) }))}
+                  className="w-full accent-primary"
+                  disabled={!organizationData.logoFull}
+                />
+                <div className="flex justify-between text-[10px] text-muted-foreground mt-1 px-0.5">
+                  <span>50%</span>
+                  <span>75%</span>
+                  <span>100% (mesma altura do texto)</span>
+                </div>
+              </div>
+
+              <div className="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
+                As alterações de logo serão aplicadas ao clicar em <strong>"Salvar Dados Cadastrais"</strong> na tela principal.
+              </div>
+            </div>
+
+            <div className="px-6 py-3 border-t bg-slate-50 flex justify-end gap-2">
+              <Button variant="outline" type="button" onClick={() => setShowLogoModal(false)}>
+                Concluir
+              </Button>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
     </div>
   );
 };

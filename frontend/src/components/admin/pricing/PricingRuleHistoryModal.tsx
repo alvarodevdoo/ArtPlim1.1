@@ -43,7 +43,7 @@ const PricingRuleHistoryModal: React.FC<PricingRuleHistoryModalProps> = ({ ruleI
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-sm">
+        <div className="modal-overlay justify-end !p-0">
             <div className="w-full max-w-2xl bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
                 
                 {/* Cabeçalho */}

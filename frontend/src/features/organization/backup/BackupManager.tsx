@@ -235,7 +235,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
             
             {/* Modal de Senha para Importação */}
             {showImportPasswordModal && (
-              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+              <div className="modal-overlay">
                 <Card className="w-full max-w-sm shadow-2xl border-primary/20 animate-in fade-in zoom-in duration-200">
                   <CardHeader className="text-center pb-2">
                     <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-2 text-primary">

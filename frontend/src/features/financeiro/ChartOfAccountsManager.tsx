@@ -354,7 +354,7 @@ export const ChartOfAccountsManager: React.FC<ChartOfAccountsManagerProps> = ({ 
 
       {/* Info Modal */}
       {showChartInfo && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[9999] overflow-y-auto">
+        <div className="modal-overlay overflow-y-auto">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col my-8">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50 rounded-t-xl sticky top-0 z-10">
               <div className="flex items-center gap-3">

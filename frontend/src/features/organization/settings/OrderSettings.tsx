@@ -1,14 +1,25 @@
 import React from 'react';
-import { ShoppingCart, CreditCard, Truck, Calendar } from 'lucide-react';
+import { ShoppingCart, CreditCard, Truck, Calendar, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
+
+const DEFAULT_PRINT_FOOTER = `*Funcionamento: Segunda a Sexta das 8h às 18h.
+*Informamos que podem ocorrer alterações de tons das cores na impressão.
+*Após 10 dias o serviço não retirado poderá ser descartado, sem reembolso.
+*Após 30 dias sem comunicação, será considerado abandono de pedido e a OS será finalizada sem reembolso.`;
+
+const DEFAULT_BUDGET_NOTES = `*Este orçamento é válido por {validade} dias a partir da data de emissão.
+*Os valores e prazos estão sujeitos a alteração após o vencimento.
+*A produção será iniciada somente após aprovação e, quando aplicável, pagamento da entrada.`;
 
 interface OrderSettingsData {
   requireOrderDeposit: boolean;
   minDepositPercent: number;
   allowDeliveryWithBalance: boolean;
   defaultDueDateDays: number;
+  printFooterNotes?: string | null;
+  printBudgetNotes?: string | null;
 }
 
 interface OrderSettingsProps {
@@ -113,6 +124,63 @@ export const OrderSettings: React.FC<OrderSettingsProps> = ({
                   </div>
                   <p className="text-[10px] text-indigo-600/70 italic">Define quantos dias para o vencimento da conta a receber gerada no faturamento.</p>
                 </div>
+              )}
+            </div>
+          </div>
+
+          {/* Seção 3: Textos do Comprovante Impresso */}
+          <div className="space-y-4 pt-2">
+            <h4 className="font-medium flex items-center gap-2 text-sm text-primary border-b pb-2">
+              <Printer className="w-4 h-4" /> Textos do Comprovante (Impressão A4 e Térmica)
+            </h4>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                Rodapé Padrão (Pedidos e Orçamentos)
+              </label>
+              <textarea
+                rows={6}
+                placeholder={DEFAULT_PRINT_FOOTER}
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono leading-relaxed focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                value={settings.printFooterNotes ?? ''}
+                onChange={(e) => setSettings((prev: any) => ({ ...prev, printFooterNotes: e.target.value }))}
+              />
+              <p className="text-[10px] text-muted-foreground italic">
+                Exibido no rodapé de todos os comprovantes impressos. Use uma linha por aviso. Deixe em branco para usar o texto padrão.
+              </p>
+              {!settings.printFooterNotes && (
+                <button
+                  type="button"
+                  className="text-[11px] text-primary underline hover:opacity-80"
+                  onClick={() => setSettings((prev: any) => ({ ...prev, printFooterNotes: DEFAULT_PRINT_FOOTER }))}
+                >
+                  Inserir texto padrão sugerido
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                Informações de Orçamento (somente em Orçamentos / DRAFT)
+              </label>
+              <textarea
+                rows={5}
+                placeholder={DEFAULT_BUDGET_NOTES}
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono leading-relaxed focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                value={settings.printBudgetNotes ?? ''}
+                onChange={(e) => setSettings((prev: any) => ({ ...prev, printBudgetNotes: e.target.value }))}
+              />
+              <p className="text-[10px] text-muted-foreground italic">
+                Texto extra que aparece apenas em orçamentos. Use <code className="bg-slate-100 px-1 rounded">{'{validade}'}</code> para inserir o número de dias e <code className="bg-slate-100 px-1 rounded">{'{dataValidade}'}</code> para a data limite.
+              </p>
+              {!settings.printBudgetNotes && (
+                <button
+                  type="button"
+                  className="text-[11px] text-primary underline hover:opacity-80"
+                  onClick={() => setSettings((prev: any) => ({ ...prev, printBudgetNotes: DEFAULT_BUDGET_NOTES }))}
+                >
+                  Inserir texto padrão sugerido
+                </button>
               )}
             </div>
           </div>

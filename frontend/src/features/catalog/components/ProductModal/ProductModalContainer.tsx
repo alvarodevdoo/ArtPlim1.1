@@ -480,7 +480,7 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
   ];
 
   if (loading) return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center">
+    <div className="modal-overlay">
       <div className="bg-white rounded-2xl p-16 text-slate-400 font-black uppercase tracking-widest animate-pulse">
         Carregando Produto...
       </div>
@@ -488,7 +488,7 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
+    <div className="modal-overlay animate-in fade-in duration-300">
       <Card className="w-full max-w-[95vw] xl:max-w-[1280px] h-[92vh] flex flex-col shadow-2xl border-0 overflow-hidden product-modal">
 
         {/* ── Header ── */}

@@ -74,7 +74,7 @@ const PartialDeliveryModal: React.FC<PartialDeliveryModalProps> = ({ pedido, ite
   };
 
   return (
-    <ModalPortal className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <ModalPortal className="modal-overlay">
       <Card className="modal-content-card max-w-xl w-full relative">
         <CardHeader>
           <div className="flex items-center space-x-2 text-emerald-600 mb-2">

@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { MaterialCalculator } from '@/components/ui/MaterialCalculator';
-import { OrderAutomation } from '@/components/ui/OrderAutomation';
-import { Bell, Download, List, Kanban, Plus } from 'lucide-react';
+import { Download, List, Kanban, Plus } from 'lucide-react';
 import { WhatsAppService } from '@/lib/whatsapp';
 import { toast } from 'sonner';
 
@@ -36,7 +35,6 @@ const Pedidos: React.FC = () => {
     showMaterialCalculator, setShowMaterialCalculator,
     calculatorItem, setCalculatorItem,
     showWhatsAppModal, setShowWhatsAppModal,
-    showAutomation, setShowAutomation,
     showCancelModal, setShowCancelModal,
     autoOpenPaymentPedidoId, setAutoOpenPaymentPedidoId,
     // Derivações
@@ -55,8 +53,6 @@ const Pedidos: React.FC = () => {
     handleViewOrder,
     sendOverdueReminders,
     exportPedidos,
-    // Settings
-    settings,
   } = usePedidos();
 
   return (
@@ -71,11 +67,6 @@ const Pedidos: React.FC = () => {
           <Button variant="outline" onClick={exportPedidos}>
             <Download className="w-4 h-4 mr-2" /> Exportar
           </Button>
-          {settings?.enableAutomation && (
-            <Button variant="outline" onClick={() => setShowAutomation(!showAutomation)}>
-              <Bell className="w-4 h-4 mr-2" /> Automação
-            </Button>
-          )}
           <div className="flex border rounded-lg">
             <Button variant={viewMode === 'list' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('list')}>
               <List className="w-4 h-4" />
@@ -121,15 +112,6 @@ const Pedidos: React.FC = () => {
           pedidos={pedidos}
           hasFinancialAccess={hasFinancialAccess}
           sendOverdueReminders={sendOverdueReminders}
-        />
-      )}
-
-      {/* Automação */}
-      {showAutomation && settings?.enableAutomation && (
-        <OrderAutomation
-          orders={pedidos}
-          onComplete={() => loadPedidos(debouncedSearch)}
-          onRuleExecute={(_, orderIds) => { toast.success(`Automação executada para ${orderIds?.length || 0} pedido(s)!`); }}
         />
       )}
 

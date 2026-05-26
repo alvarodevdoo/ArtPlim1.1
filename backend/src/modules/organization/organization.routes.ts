@@ -21,7 +21,10 @@ const updateOrganizationSchema = z.object({
   complement: z.string().nullable().optional().transform(v => v === '' ? null : v),
   neighborhood: z.string().nullable().optional().transform(v => v === '' ? null : v),
   city: z.string().nullable().optional().transform(v => v === '' ? null : v),
-  state: z.string().length(2).or(z.literal('')).nullable().optional().transform(v => v === '' ? null : (v ? v.toUpperCase() : null))
+  state: z.string().length(2).or(z.literal('')).nullable().optional().transform(v => v === '' ? null : (v ? v.toUpperCase() : null)),
+  logoFull: z.string().nullable().optional().transform(v => v === '' ? null : v),
+  logoIcon: z.string().nullable().optional().transform(v => v === '' ? null : v),
+  logoScale: z.number().int().min(50).max(100).optional()
 });
 
 const updateSettingsSchema = z.object({
@@ -56,6 +59,11 @@ const updateSettingsSchema = z.object({
   enableCommissions: z.boolean().optional(),
   requiredCustomerFields: z.array(z.string()).optional(),
   workflowMode: z.enum(['STRICT', 'SKIP', 'FREE']).optional(),
+  printFooterNotes: z.string().nullable().optional().transform(v => v === '' ? null : v),
+  printBudgetNotes: z.string().nullable().optional().transform(v => v === '' ? null : v),
+  pixKey: z.string().nullable().optional().transform(v => v === '' ? null : v),
+  pixKeyType: z.enum(['CPF', 'CNPJ', 'EMAIL', 'PHONE', 'RANDOM']).or(z.literal('')).nullable().optional().transform(v => v === '' ? null : v),
+  pixBeneficiary: z.string().nullable().optional().transform(v => v === '' ? null : v),
 });
 
 const createUserSchema = z.object({
@@ -143,10 +151,6 @@ export async function organizationRoutes(fastify: FastifyInstance) {
       }
 
       const organizationService = new OrganizationService(prisma);
-      const existingSettings = await prisma.organizationSettings.findUnique({
-        where: { organizationId: request.user!.organizationId }
-      });
-      
       const updateData: any = { ...body };
 
       // Remoção explícita do Certificado Digital: força todos os campos relacionados a null
@@ -161,8 +165,13 @@ export async function organizationRoutes(fastify: FastifyInstance) {
         updateData.nfeCertificateExpiry = null;
       }
 
-      // Lógica de Certificado Digital
+      // Lógica de Certificado Digital — só busca o registro existente se realmente houver certificado para processar
+      let existingSettings: any = null;
       if (body.nfeCertificate && body.nfeCertificatePassword) {
+        existingSettings = await prisma.organizationSettings.findUnique({
+          where: { organizationId: request.user!.organizationId },
+          select: { nfeCertificatePassword: true },
+        });
         // Se a senha enviada for igual à criptografada existente, pula a re-validação e re-criptografia
         if (body.nfeCertificatePassword !== existingSettings?.nfeCertificatePassword) {
           try {

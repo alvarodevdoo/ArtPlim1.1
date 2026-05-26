@@ -282,7 +282,7 @@ export const DefaultCategoriesModal: React.FC<DefaultCategoriesModalProps> = ({ 
   const expenses = DEFAULT_CATEGORIES.filter(c => c.type === 'EXPENSE');
 
   return (
-    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-300">
+    <div className="modal-overlay animate-in fade-in duration-300">
       <Card className="max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl border-none rounded-[32px] overflow-hidden bg-white/95">
         <CardHeader className="bg-white px-8 py-8 border-b border-slate-50 shrink-0 flex flex-row items-start justify-between">
           <div>

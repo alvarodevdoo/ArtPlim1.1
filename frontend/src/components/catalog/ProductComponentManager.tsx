@@ -359,7 +359,7 @@ const EditComponentModal: React.FC<EditComponentModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="modal-overlay">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Editar Componente</CardTitle>

@@ -9,7 +9,8 @@ import { Combobox } from '@/components/ui/Combobox';
 import { useInsumos } from '@/features/supplies/useInsumos';
 import { buildInsumoSublabel } from '@/lib/units';
 import { DraftBOMItem, DraftVariationGroup } from '../../types';
-import { nanoid } from 'nanoid';
+// nanoid substituido por crypto.randomUUID() (nativo no browser e Node 16+)
+const nanoid = () => crypto.randomUUID();
 
 interface BOMTabProps {
   productName: string;

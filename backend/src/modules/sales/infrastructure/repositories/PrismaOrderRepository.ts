@@ -127,7 +127,7 @@ export class PrismaOrderRepository implements OrderRepository {
             },
             transactions: {
               include: {
-                paymentMethod: { select: { name: true } }
+                paymentMethod: { select: { name: true, type: true, cardSubtype: true } }
               }
             }
           }
@@ -223,7 +223,7 @@ export class PrismaOrderRepository implements OrderRepository {
           },
           transactions: {
             include: {
-              paymentMethod: { select: { name: true } }
+              paymentMethod: { select: { name: true, type: true, cardSubtype: true } }
             }
           }
         }
@@ -265,7 +265,7 @@ export class PrismaOrderRepository implements OrderRepository {
         transactions: {
           include: {
             paymentMethod: {
-              select: { name: true }
+              select: { name: true, type: true, cardSubtype: true }
             }
           }
         }
@@ -373,7 +373,7 @@ export class PrismaOrderRepository implements OrderRepository {
       transactions: {
         include: {
           paymentMethod: {
-            select: { name: true }
+            select: { name: true, type: true, cardSubtype: true }
           }
         }
       }

@@ -10,7 +10,8 @@ import {
   Palette,
   Workflow,
   Database,
-  UserCheck
+  UserCheck,
+  Zap
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -26,7 +27,9 @@ import { SystemSettings } from '@/features/organization/settings/SystemSettings'
 import { FinanceIntegrationSettings } from '@/features/organization/settings/FinanceIntegrationSettings';
 import { CommissionRulesSettings } from '@/features/organization/settings/CommissionRulesSettings';
 import { OrderSettings } from '@/features/organization/settings/OrderSettings';
+import { PixSettings } from '@/features/organization/settings/PixSettings';
 import { CustomerFieldSettings } from '@/features/organization/settings/CustomerFieldSettings';
+import { AutomationRulesManager } from '@/features/organization/automation/AutomationRulesManager';
 
 // Shared Components
 import UserManagement from '@/components/admin/UserManagement';
@@ -69,6 +72,8 @@ interface OrganizationSettings {
   minDepositPercent: number;
   allowDeliveryWithBalance: boolean;
   defaultDueDateDays: number;
+  printFooterNotes?: string | null;
+  printBudgetNotes?: string | null;
 }
 
 const Configuracoes: React.FC = () => {
@@ -136,6 +141,15 @@ const Configuracoes: React.FC = () => {
   });
 
   useEffect(() => {
+    // Stale-while-revalidate: hidrata do cache local (renderiza instantâneo) e revalida em background.
+    try {
+      const cachedOrg = localStorage.getItem('cfg.org');
+      const cachedSettings = localStorage.getItem('cfg.settings');
+      if (cachedOrg) setOrganizationData(JSON.parse(cachedOrg));
+      if (cachedSettings) setSettings(JSON.parse(cachedSettings));
+    } catch {
+      // ignore corrompido
+    }
     loadSettings();
   }, []);
 
@@ -145,10 +159,14 @@ const Configuracoes: React.FC = () => {
         api.get('/api/organization'),
         api.get('/api/organization/settings')
       ]);
-
-      setOrganizationData(orgResponse.data.data);
-
-      setSettings(settingsResponse.data.data);
+      const orgData = orgResponse.data.data;
+      const settingsData = settingsResponse.data.data;
+      setOrganizationData(orgData);
+      setSettings(settingsData);
+      try {
+        localStorage.setItem('cfg.org', JSON.stringify(orgData));
+        localStorage.setItem('cfg.settings', JSON.stringify(settingsData));
+      } catch {/* quota */ }
     } catch (error) {
       console.error('Erro ao carregar configurações:', error);
       toast.error('Erro ao carregar configurações');
@@ -161,9 +179,11 @@ const Configuracoes: React.FC = () => {
     try {
       // Limpar campos que não devem ser enviados para o update (ID, Slug, etc)
       const { id, slug, active, createdAt, updatedAt, ...cleanData } = organizationData;
-      
+
       await api.put('/api/organization', cleanData);
       toast.success('Dados da empresa atualizados!');
+      const { invalidateOrganizationBranding } = await import('@/hooks/useOrganizationBranding');
+      invalidateOrganizationBranding();
       loadSettings();
     } catch (error: any) {
       const msg = error.response?.data?.message || error.response?.data?.error?.message || 'Erro ao salvar organização';
@@ -178,10 +198,14 @@ const Configuracoes: React.FC = () => {
     if (e) e.preventDefault();
     setLoading(true);
     try {
-      await api.put('/api/organization/settings', settings);
+      const resp = await api.put('/api/organization/settings', settings);
+      if (resp.data?.data) {
+        // Usa o retorno do próprio PUT em vez de refetch, mantendo o state em sincronia.
+        setSettings(resp.data.data);
+      }
       toast.success('Configurações salvas com sucesso!');
-      await refreshSettings();
-      loadSettings();
+      // Refresh do contexto de auth em background (não bloqueia a UI)
+      refreshSettings();
     } catch (error: any) {
       const msg = error.response?.data?.message || error.response?.data?.error?.message || 'Erro ao salvar configurações';
       toast.error(msg);
@@ -199,6 +223,7 @@ const Configuracoes: React.FC = () => {
     { id: 'clientes', label: 'Clientes', icon: UserCheck },
     { id: 'financeiro', label: 'Financeiro', icon: DollarSign, setting: 'enableFinance' },
     { id: 'processos', label: 'Processos e Catálogo', icon: Workflow },
+    { id: 'automacoes', label: 'Automações', icon: Zap, setting: 'enableAutomation' },
     { id: 'producao', label: 'Produção', icon: Package, setting: 'enableProduction' },
     { id: 'seguranca', label: 'Segurança', icon: Shield },
     { id: 'nfe-imports', label: 'Importações de NF-e', icon: FileText },
@@ -312,6 +337,12 @@ const Configuracoes: React.FC = () => {
                 handleSaveSettings={handleSaveSettings}
                 loading={loading}
               />
+              <PixSettings
+                settings={settings}
+                setSettings={setSettings}
+                handleSaveSettings={handleSaveSettings}
+                loading={loading}
+              />
               <CommissionRulesSettings />
               <PaymentMethodSettings
                 scope="SALES"
@@ -397,6 +428,10 @@ const Configuracoes: React.FC = () => {
               <Card><CardContent className="pt-6"><PricingRuleSettings /></CardContent></Card>
               <Card><CardContent className="pt-6"><ProcessStatusSettings /></CardContent></Card>
             </div>
+          )}
+
+          {activeTab === 'automacoes' && (
+            <AutomationRulesManager automationEnabled={settings.enableAutomation} />
           )}
 
           {activeTab === 'producao' && (

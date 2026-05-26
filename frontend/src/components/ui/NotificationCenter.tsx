@@ -10,7 +10,7 @@ import {
   BellRing
 } from 'lucide-react';
 import { useRealTimeNotifications } from '../../hooks/useRealTimeNotifications';
-import { Button } from './button';
+import { Button } from './Button';
 import { Badge } from './badge';
 
 const NotificationIcon: React.FC<{ type: string }> = ({ type }) => {

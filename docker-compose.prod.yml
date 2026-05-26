@@ -66,8 +66,9 @@ services:
   # ---- Backend (Fastify) -------------------------------------
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile.prod
+      # Contexto = raiz do repo (precisa do pnpm-lock.yaml da raiz)
+      context: .
+      dockerfile: backend/Dockerfile.prod
     container_name: artplim_backend_prod
     restart: unless-stopped
     environment:
@@ -99,8 +100,9 @@ services:
   # ---- Frontend (nginx servindo o build do Vite) -------------
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile.prod
+      # Contexto = raiz do repo (precisa do pnpm-lock.yaml da raiz)
+      context: .
+      dockerfile: frontend/Dockerfile.prod
       args:
         # Vazio -> axios usa caminho relativo. O proprio nginx
         # proxia /api, /auth, /socket.io para o backend.

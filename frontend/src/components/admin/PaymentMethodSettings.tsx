@@ -11,6 +11,7 @@ interface PaymentMethod {
     id: string;
     name: string;
     type: 'PIX' | 'CARD' | 'CASH' | 'TRANSFER' | 'BOLETO' | 'OTHER';
+    cardSubtype?: 'CREDIT' | 'DEBIT' | null;
     usageScope?: 'SALES' | 'PURCHASES' | 'BOTH';
     cardClosingDay?: number | null;
     cardDueDay?: number | null;
@@ -54,6 +55,7 @@ const PaymentMethodSettings: React.FC<PaymentMethodSettingsProps> = ({ scope, ti
     // Form states
     const [name, setName] = useState('');
     const [type, setType] = useState('PIX');
+    const [cardSubtype, setCardSubtype] = useState<'CREDIT' | 'DEBIT'>('CREDIT');
     const [usageScope, setUsageScope] = useState<'SALES' | 'PURCHASES' | 'BOTH'>('SALES');
     const [cardClosingDay, setCardClosingDay] = useState<string>('');
     const [cardDueDay, setCardDueDay] = useState<string>('');
@@ -125,6 +127,7 @@ const PaymentMethodSettings: React.FC<PaymentMethodSettingsProps> = ({ scope, ti
             setEditingMethod(method);
             setName(method.name);
             setType(method.type);
+            setCardSubtype((method.cardSubtype as 'CREDIT' | 'DEBIT') || 'CREDIT');
             setUsageScope(method.usageScope || 'SALES');
             setCardClosingDay(method.cardClosingDay != null ? String(method.cardClosingDay) : '');
             setCardDueDay(method.cardDueDay != null ? String(method.cardDueDay) : '');
@@ -140,6 +143,7 @@ const PaymentMethodSettings: React.FC<PaymentMethodSettingsProps> = ({ scope, ti
             setEditingMethod(null);
             setName('');
             setType('PIX');
+            setCardSubtype('CREDIT');
             setUsageScope(scope || 'SALES');
             setCardClosingDay('');
             setCardDueDay('');
@@ -155,22 +159,29 @@ const PaymentMethodSettings: React.FC<PaymentMethodSettingsProps> = ({ scope, ti
         setIsModalOpen(true);
     };
 
+    // Cartão de crédito tem comportamento de fatura (parcelas, fechamento, vencimento).
+    // Débito é à vista — entra como dinheiro/Pix no caixa.
+    const isCreditCard = type === 'CARD' && cardSubtype !== 'DEBIT';
+    const isDebitCard = type === 'CARD' && cardSubtype === 'DEBIT';
+    const isAnyCard = type === 'CARD';
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
             const payload = {
                 name,
                 type,
+                cardSubtype: isAnyCard ? cardSubtype : null,
                 usageScope,
-                // Cartão em compras não tem conta de débito imediato (vai pra fatura)
-                accountId: (usageScope === 'PURCHASES' && type === 'CARD') ? null : (accountId || null),
-                // Fatura do cartão: persistir quando CARD (independente de scope)
-                cardClosingDay: type === 'CARD' && cardClosingDay !== '' ? Number(cardClosingDay) : null,
-                cardDueDay: type === 'CARD' && cardDueDay !== '' ? Number(cardDueDay) : null,
+                // Cartão DE CRÉDITO em compras não tem conta de débito imediato (vai pra fatura)
+                accountId: (usageScope === 'PURCHASES' && isCreditCard) ? null : (accountId || null),
+                // Fatura: só faz sentido em cartão de crédito
+                cardClosingDay: isCreditCard && cardClosingDay !== '' ? Number(cardClosingDay) : null,
+                cardDueDay: isCreditCard && cardDueDay !== '' ? Number(cardDueDay) : null,
                 // Compras: não aplicam taxa de processador (vem do fornecedor, não do método)
                 feePercentage: usageScope === 'PURCHASES' ? 0 : Number(feePercentage),
                 feeCategoryId: usageScope === 'PURCHASES' ? null : (feeCategoryId || null),
-                installmentRules: (type === 'CARD' && usageScope !== 'PURCHASES') ? {
+                installmentRules: (isCreditCard && usageScope !== 'PURCHASES') ? {
                     maxInstallments: Number(maxInstallments),
                     interestFreeInstallments: Number(interestFreeInstallments),
                     installmentFees: installmentFees.length > 0 ? installmentFees : undefined,
@@ -262,27 +273,29 @@ const PaymentMethodSettings: React.FC<PaymentMethodSettingsProps> = ({ scope, ti
                                             {/* Para compras, omitimos taxa do processador. Para CARD em compras,
                                                 mostramos os dias de fechamento/vencimento. Para outros tipos em
                                                 compras, indicamos "À vista" + conta de origem. */}
-                                            {method.usageScope === 'PURCHASES' ? (
-                                                <>
-                                                    {method.type === 'CARD' ? (
-                                                        <>
-                                                            {method.cardClosingDay != null && method.cardDueDay != null
-                                                                ? `Fecha dia ${method.cardClosingDay} • Vence dia ${method.cardDueDay}`
-                                                                : 'Cartão de crédito (fatura)'}
-                                                        </>
-                                                    ) : (
-                                                        <>À vista{method.account && ` • Conta: ${method.account.name}`}</>
-                                                    )}
-                                                </>
-                                            ) : (
-                                                <>
-                                                    Taxa: {Number(method.feePercentage).toFixed(2)}% •
-                                                    {method.type === 'CARD'
-                                                        ? ` Até ${method.installmentRules?.maxInstallments ?? 1}x`
-                                                        : ' À vista'}
-                                                    {method.account && ` • Conta: ${method.account.name}`}
-                                                </>
-                                            )}
+                                            {(() => {
+                                                const methodIsCredit = method.type === 'CARD' && method.cardSubtype !== 'DEBIT';
+                                                const methodIsDebit = method.type === 'CARD' && method.cardSubtype === 'DEBIT';
+                                                if (method.usageScope === 'PURCHASES') {
+                                                    if (methodIsCredit) {
+                                                        return method.cardClosingDay != null && method.cardDueDay != null
+                                                            ? `Cartão de Crédito • Fecha dia ${method.cardClosingDay} • Vence dia ${method.cardDueDay}`
+                                                            : 'Cartão de Crédito (fatura)';
+                                                    }
+                                                    return <>{methodIsDebit ? 'Cartão de Débito • ' : ''}À vista{method.account && ` • Conta: ${method.account.name}`}</>;
+                                                }
+                                                return (
+                                                    <>
+                                                        Taxa: {Number(method.feePercentage).toFixed(2)}% •
+                                                        {methodIsCredit
+                                                            ? ` Cartão de Crédito • Até ${method.installmentRules?.maxInstallments ?? 1}x`
+                                                            : methodIsDebit
+                                                                ? ' Cartão de Débito • À vista'
+                                                                : ' À vista'}
+                                                        {method.account && ` • Conta: ${method.account.name}`}
+                                                    </>
+                                                );
+                                            })()}
                                         </p>
                                     </div>
                                 </div>
@@ -326,12 +339,18 @@ const PaymentMethodSettings: React.FC<PaymentMethodSettingsProps> = ({ scope, ti
                                     <div>
                                         <label className="text-sm font-medium">Tipo</label>
                                         <select
-                                            value={type}
-                                            onChange={e => setType(e.target.value)}
+                                            value={isAnyCard ? (cardSubtype === 'DEBIT' ? 'DEBIT_CARD' : 'CREDIT_CARD') : type}
+                                            onChange={e => {
+                                                const v = e.target.value;
+                                                if (v === 'CREDIT_CARD') { setType('CARD'); setCardSubtype('CREDIT'); }
+                                                else if (v === 'DEBIT_CARD') { setType('CARD'); setCardSubtype('DEBIT'); }
+                                                else { setType(v); }
+                                            }}
                                             className="w-full h-10 px-3 border rounded-md"
                                         >
                                             <option value="PIX">Pix</option>
-                                            <option value="CARD">Cartão de Crédito/Débito</option>
+                                            <option value="CREDIT_CARD">Cartão de Crédito</option>
+                                            <option value="DEBIT_CARD">Cartão de Débito</option>
                                             <option value="BOLETO">Boleto</option>
                                             <option value="CASH">Dinheiro</option>
                                             <option value="TRANSFER">Transferência</option>
@@ -356,10 +375,10 @@ const PaymentMethodSettings: React.FC<PaymentMethodSettingsProps> = ({ scope, ti
                                             </p>
                                         </div>
                                     )}
-                                    {/* Conta vinculada — não aparece para CARD em COMPRAS,
+                                    {/* Conta vinculada — não aparece para CARTÃO DE CRÉDITO em COMPRAS,
                                         pois cartão de crédito não debita conta no momento da compra
-                                        (vai pra fatura paga depois). */}
-                                    {!(usageScope === 'PURCHASES' && type === 'CARD') && (
+                                        (vai pra fatura paga depois). Débito tem débito imediato normal. */}
+                                    {!(usageScope === 'PURCHASES' && isCreditCard) && (
                                         <div>
                                             <label className="text-sm font-medium">
                                                 {usageScope === 'PURCHASES' ? 'Conta de Origem' :
@@ -385,7 +404,7 @@ const PaymentMethodSettings: React.FC<PaymentMethodSettingsProps> = ({ scope, ti
                                             </p>
                                         </div>
                                     )}
-                                    {usageScope === 'PURCHASES' && type === 'CARD' && (
+                                    {usageScope === 'PURCHASES' && isCreditCard && (
                                         <div className="md:col-span-3 space-y-3">
                                             <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                                                 <p className="text-[11px] text-amber-800 leading-tight">
@@ -461,7 +480,7 @@ const PaymentMethodSettings: React.FC<PaymentMethodSettingsProps> = ({ scope, ti
                                 {/* Para COMPRAS: o fornecedor informa o valor final.
                                     Bandeiras/taxas/parcelamento são informações da minha relação com a maquininha,
                                     irrelevantes ao pagar fornecedor. Por isso ocultamos quando scope === PURCHASES. */}
-                                {type === 'CARD' && usageScope !== 'PURCHASES' && (
+                                {isCreditCard && usageScope !== 'PURCHASES' && (
                                     <div className="space-y-6">
                                         <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-lg border">
                                             <div>

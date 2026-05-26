@@ -633,7 +633,7 @@ export const SpedMappingManager: React.FC = () => {
 
       {/* Modal - Novo/Editar Tipo */}
       {isTypeModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
+        <div className="modal-overlay">
           <Card className="w-full max-w-md shadow-2xl border-none rounded-xl animate-in zoom-in-95 duration-200 overflow-hidden">
             <CardHeader className="p-8 pb-4">
                <CardTitle className="text-2xl font-bold text-slate-800">{editingType ? 'Editar Classificação' : 'Nova Classificação'}</CardTitle>
@@ -668,7 +668,7 @@ export const SpedMappingManager: React.FC = () => {
       {/* Modal - Árvore do Plano de Contas */}
       {isAccountModalOpen && (
         <div 
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 outline-none" 
+          className="modal-overlay outline-none"
           tabIndex={-1} 
           onKeyDown={(e) => {
             if (e.key === 'Escape') {

@@ -17,6 +17,7 @@ interface PaymentMethod {
     id: string;
     name: string;
     type: 'PIX' | 'CARD' | 'CASH' | 'TRANSFER' | 'BOLETO' | 'OTHER';
+    cardSubtype?: 'CREDIT' | 'DEBIT' | null;
     feePercentage: number | string;
     feeCategoryId?: string | null;
     accountId?: string | null;
@@ -127,7 +128,7 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
         if (!method) return 0;
         
         // Se for cartão e tiver bandeiras configuradas
-        if (method.type === 'CARD' && method.installmentRules?.brands && selectedBrand) {
+        if (method.type === 'CARD' && method.cardSubtype !== 'DEBIT' && method.installmentRules?.brands && selectedBrand) {
             const brand = method.installmentRules.brands.find(b => b.name === selectedBrand);
             if (brand?.installmentFees) {
                 const specificFee = brand.installmentFees.find(f => f.installment === installments);
@@ -136,7 +137,7 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
         }
         
         // Fallback para taxas gerais por parcela
-        if (method.type === 'CARD' && method.installmentRules?.installmentFees) {
+        if (method.type === 'CARD' && method.cardSubtype !== 'DEBIT' && method.installmentRules?.installmentFees) {
             const specificFee = method.installmentRules.installmentFees.find(f => f.installment === installments);
             if (specificFee) return specificFee.fee;
         }
@@ -313,7 +314,7 @@ export const PaymentSelection: React.FC<PaymentSelectionProps> = ({
                                 type="number"
                                 min={1}
                                 max={12}
-                                disabled={method?.type !== 'CARD'}
+                                disabled={!(method?.type === 'CARD' && method?.cardSubtype !== 'DEBIT')}
                                 value={installments}
                                 onChange={(e) => setInstallments(parseInt(e.target.value) || 1)}
                             />
