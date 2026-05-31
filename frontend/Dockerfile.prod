@@ -23,8 +23,18 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY backend/package.json  ./backend/
 COPY frontend/package.json ./frontend/
 
+# O postinstall do backend (acionado mesmo no install do workspace
+# inteiro) chama `prisma generate`, que precisa do schema. Copiamos
+# a pasta prisma do backend antes do install para o hook funcionar.
+COPY backend/prisma ./backend/prisma
+
 # Instala deps do workspace (com lockfile travado)
+# O postinstall do backend (que tambem instala neste workspace) chama
+# prisma generate, que exige DATABASE_URL por causa do prisma.config.js.
+# Passamos um placeholder so para o install passar.
+ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 RUN pnpm install --frozen-lockfile
+ENV DATABASE_URL=
 
 # Copia codigo do frontend e builda
 COPY frontend ./frontend

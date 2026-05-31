@@ -10,6 +10,18 @@ import { BackupCryptoService } from '../backup/infrastructure/crypto/BackupCrypt
 
 const updateOrganizationSchema = z.object({
   name: z.string().min(1).optional(),
+  slug: z.string()
+    .min(2, 'Slug muito curto')
+    .max(63, 'Slug muito longo')
+    .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, 'Use apenas letras minúsculas, números e hífen (sem hífen no início/fim)')
+    .optional(),
+  subdomain: z.string()
+    .min(2, 'Subdomínio muito curto')
+    .max(63, 'Subdomínio muito longo')
+    .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, 'Use apenas letras minúsculas, números e hífen (sem hífen no início/fim)')
+    .nullable()
+    .optional()
+    .transform(v => v === '' ? null : v),
   razaoSocial: z.string().nullable().optional().transform(v => v === '' ? null : v),
   cnpj: z.string().nullable().optional().transform(v => v === '' ? null : v),
   plan: z.enum(['basic', 'pro', 'enterprise', 'premium', 'PREMIUM']).optional(),
@@ -93,6 +105,8 @@ export async function organizationRoutes(fastify: FastifyInstance) {
 
   // Atualizar organização
   fastify.put('/', {
+    // 10 MB — payload inclui logoFull + logoIcon em base64 (até ~683KB cada após base64).
+    bodyLimit: 10 * 1024 * 1024,
     preHandler: [fastify.authenticate, requirePermission(['admin.organization'])]
   }, async (request, reply) => {
     try {
@@ -106,6 +120,27 @@ export async function organizationRoutes(fastify: FastifyInstance) {
         data: organization
       });
     } catch (error: any) {
+      if (error.code === 'P2002' && Array.isArray(error.meta?.target)) {
+        if (error.meta.target.includes('slug')) {
+          return reply.code(400).send({
+            success: false,
+            message: 'Este slug já está em uso por outra organização.'
+          });
+        }
+        if (error.meta.target.includes('subdomain')) {
+          return reply.code(400).send({
+            success: false,
+            message: 'Este subdomínio já está em uso por outra organização.'
+          });
+        }
+      }
+      if (error.name === 'ZodError') {
+        return reply.code(400).send({
+          success: false,
+          message: error.errors?.[0]?.message || 'Dados inválidos',
+          details: error.errors
+        });
+      }
       console.error('ERRO INTERNO PUT /api/organization:', error);
       return reply.code(500).send({
         success: false,

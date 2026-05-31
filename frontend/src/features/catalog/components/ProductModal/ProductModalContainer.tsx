@@ -192,6 +192,8 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
               maxQuantity: o.maxQuantity != null ? Number(o.maxQuantity) : null,
               allowCustomQty: o.allowCustomQty ?? false,
               allowedChildIds: Array.isArray(o.allowedChildIds) ? o.allowedChildIds : null,
+              formulaOp: o.formulaOp ?? null,
+              formulaVariableTarget: o.formulaVariableTarget ?? null,
             })),
           })
         );
@@ -411,6 +413,8 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
             maxQuantity: opt.maxQuantity ?? null,
             allowCustomQty: opt.allowCustomQty ?? false,
             allowedChildIds: null,
+            formulaOp: opt.formulaOp ?? null,
+            formulaVariableTarget: opt.formulaVariableTarget ?? null,
           };
 
           let realOptId = opt.id;
@@ -581,6 +585,8 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
                   }}
                   onSelectOption={handleSelectOption}
                   forcedKind="VARIATION"
+                  pricingMode={draft.pricingMode}
+                  formulaVariables={(pricingRules.find(r => r.id === draft.pricingRuleId)?.formula as any)?.variables || []}
                 />
               )}
               {activeTab === 'finishing' && (
@@ -593,6 +599,8 @@ export const ProductModalContainer: React.FC<ProductModalContainerProps> = ({
                   }}
                   onSelectOption={handleSelectOption}
                   forcedKind="FINISHING"
+                  pricingMode={draft.pricingMode}
+                  formulaVariables={(pricingRules.find(r => r.id === draft.pricingRuleId)?.formula as any)?.variables || []}
                 />
               )}
               {activeTab === 'pricing' && (

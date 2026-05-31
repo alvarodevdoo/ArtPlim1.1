@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ModalPortal } from '@/components/ui/ModalPortal';
-import { Plus, Pencil, Trash2, Zap, Loader2, X, AlertTriangle, Power, PowerOff, Braces, Copy, Check } from 'lucide-react';
+import { Plus, Pencil, Trash2, Zap, Loader2, X, AlertTriangle, Power, PowerOff, Braces, Copy, Check, Download, Upload } from 'lucide-react';
 import { formatDateTime } from '@/lib/utils';
 
 type TriggerType = 'status_change' | 'time_based' | 'overdue' | 'manual';
@@ -46,6 +46,87 @@ export const AutomationRulesManager: React.FC<Props> = ({ automationEnabled }) =
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<AutomationRule | null>(null);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleImportFile = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      setImporting(true);
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const items: any[] = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.rules) ? parsed.rules : null;
+      if (!items) {
+        toast.error('Arquivo inválido: esperado um array de regras ou objeto com campo "rules".');
+        return;
+      }
+      let okCount = 0;
+      let failCount = 0;
+      const created: AutomationRule[] = [];
+      for (const item of items) {
+        const payload = {
+          name: item.name,
+          description: item.description ?? null,
+          trigger: item.trigger,
+          action: item.action,
+          conditions: item.conditions ?? {},
+          enabled: item.enabled ?? true,
+        };
+        if (!payload.name || !payload.trigger || !payload.action) {
+          failCount++;
+          continue;
+        }
+        try {
+          const resp = await api.post('/api/sales/automation/rules', payload);
+          if (resp.data.success) {
+            created.push(resp.data.data);
+            okCount++;
+          } else {
+            failCount++;
+          }
+        } catch {
+          failCount++;
+        }
+      }
+      if (created.length) setRules(prev => [...created, ...prev]);
+      if (okCount) toast.success(`${okCount} regra(s) importada(s)${failCount ? `, ${failCount} falha(s)` : ''}.`);
+      else toast.error('Nenhuma regra importada.');
+    } catch (e) {
+      toast.error('Arquivo inválido ou JSON malformado.');
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleExport = (selectedIds: string[]) => {
+    const selected = rules.filter(r => selectedIds.includes(r.id))
+      .map(r => ({
+        name: r.name,
+        description: r.description,
+        trigger: r.trigger,
+        action: r.action,
+        conditions: r.conditions,
+        enabled: r.enabled,
+      }));
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      rules: selected,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `regras-automacao-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setShowExportModal(false);
+    toast.success(`${selected.length} regra(s) exportada(s).`);
+  };
 
   useEffect(() => {
     loadRules();
@@ -136,9 +217,38 @@ export const AutomationRulesManager: React.FC<Props> = ({ automationEnabled }) =
               Crie regras para automatizar lembretes, follow-ups e notificações de pedidos.
             </CardDescription>
           </div>
-          <Button onClick={openCreate} disabled={!automationEnabled}>
-            <Plus className="w-4 h-4 mr-2" /> Nova Regra
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="icon"
+              type="button"
+              onClick={() => setShowExportModal(true)}
+              disabled={rules.length === 0}
+              title="Exportar regras"
+            >
+              <Download className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              title="Importar regras"
+            >
+              {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={e => handleImportFile(e.target.files?.[0])}
+            />
+            <Button onClick={openCreate} disabled={!automationEnabled}>
+              <Plus className="w-4 h-4 mr-2" /> Nova Regra
+            </Button>
+          </div>
         </div>
         {!automationEnabled && (
           <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-2">
@@ -215,7 +325,108 @@ export const AutomationRulesManager: React.FC<Props> = ({ automationEnabled }) =
           onSubmit={handleSubmit}
         />
       )}
+
+      {showExportModal && (
+        <ExportRulesModal
+          rules={rules}
+          onClose={() => setShowExportModal(false)}
+          onConfirm={handleExport}
+        />
+      )}
     </Card>
+  );
+};
+
+interface ExportRulesModalProps {
+  rules: AutomationRule[];
+  onClose: () => void;
+  onConfirm: (selectedIds: string[]) => void;
+}
+
+const ExportRulesModal: React.FC<ExportRulesModalProps> = ({ rules, onClose, onConfirm }) => {
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(rules.map(r => r.id)));
+
+  const allSelected = selected.size === rules.length && rules.length > 0;
+  const someSelected = selected.size > 0 && !allSelected;
+
+  const toggleAll = () => {
+    if (allSelected) setSelected(new Set());
+    else setSelected(new Set(rules.map(r => r.id)));
+  };
+
+  const toggle = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  return (
+    <ModalPortal>
+      <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col">
+          <div className="flex items-center justify-between p-4 border-b">
+            <h3 className="text-lg font-bold flex items-center gap-2">
+              <Download className="w-5 h-5" /> Exportar Regras
+            </h3>
+            <button onClick={onClose} className="p-1 rounded hover:bg-muted">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="p-4 border-b bg-slate-50">
+            <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                ref={el => { if (el) el.indeterminate = someSelected; }}
+                onChange={toggleAll}
+                className="w-4 h-4"
+              />
+              Selecionar todos ({rules.length})
+            </label>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-1">
+            {rules.map(rule => (
+              <label
+                key={rule.id}
+                className="flex items-center gap-2 p-2 rounded hover:bg-slate-50 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(rule.id)}
+                  onChange={() => toggle(rule.id)}
+                  className="w-4 h-4 shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{rule.name}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">
+                    {TRIGGER_LABELS[rule.trigger]} → {ACTION_LABELS[rule.action]}
+                  </p>
+                </div>
+              </label>
+            ))}
+          </div>
+
+          <div className="flex justify-end gap-2 p-4 border-t">
+            <Button variant="outline" type="button" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => onConfirm(Array.from(selected))}
+              disabled={selected.size === 0}
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Exportar ({selected.size})
+            </Button>
+          </div>
+        </div>
+      </div>
+    </ModalPortal>
   );
 };
 

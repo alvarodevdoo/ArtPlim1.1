@@ -145,10 +145,17 @@ const buildVirtualSKUs = (
     const skus: VirtualSKU[] = [];
     for (const product of produtos) {
         const allConfigs = configsByProductId[product.id] || [];
-        const exclusiveGroups = allConfigs.filter(c => !isAdditiveConfig(c));
+        // Configs sem opções (ex.: BOOLEAN/Sim-Não, TEXT, NUMBER) não participam da
+        // expansão cartesiana de SKUs — elas são resolvidas no configurador.
+        const exclusiveGroups = allConfigs.filter(
+            c => !isAdditiveConfig(c) && Array.isArray(c.options) && c.options.length > 0
+        );
         const additiveGroups = allConfigs.filter(c => isAdditiveConfig(c));
+        const hasOptionlessConfig = allConfigs.some(
+            c => !Array.isArray(c.options) || c.options.length === 0
+        );
         const isDimensional = (product as any).pricingMode === 'SIMPLE_AREA';
-        const hasMoreConfig = additiveGroups.length > 0 || isDimensional;
+        const hasMoreConfig = additiveGroups.length > 0 || isDimensional || hasOptionlessConfig;
         const baseDisplay = getProductDisplayInfo(product);
 
         // Sem grupos exclusivos → 1 SKU "Produto" (acabamentos / dimensões resolvidos no modal)

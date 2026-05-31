@@ -17,6 +17,7 @@ Compose. Esta documentação reflete o setup atual do repositório.
 - [Setup inicial (primeira vez)](#setup-inicial-primeira-vez)
 - [Comandos do dia a dia](#comandos-do-dia-a-dia)
 - [Como os dados são preservados](#como-os-dados-são-preservados)
+- [Sincronização de schema (`DB_PUSH_MODE`)](#sincronização-de-schema-db_push_mode)
 - [Cloudflare Tunnel](#cloudflare-tunnel)
 - [Coexistência dev × prod](#coexistência-dev--prod)
 - [Troubleshooting](#troubleshooting)
@@ -277,6 +278,131 @@ adicionada se necessário.)
 
 ---
 
+## Sincronização de schema (`DB_PUSH_MODE`)
+
+Toda vez que o container `backend` sobe, o script `start.prod.sh`
+roda `prisma db push` para sincronizar o schema do banco com o
+`prisma/schema.prisma`. Esse comando pode ser **destrutivo** em
+casos específicos (renomear/remover colunas, mudar tipos), e por
+isso o script tem 3 modos de operação, controlados pela variável
+`DB_PUSH_MODE` no `.env.prod`.
+
+### Os 3 modos
+
+| Modo     | Comportamento                                                                 | Quando usar                                          |
+|----------|-------------------------------------------------------------------------------|------------------------------------------------------|
+| `prompt` | **Padrão.** Tenta push seguro. Se exigir perda de dados, pergunta (se TTY) ou **pula** (deploy headless). | Dia a dia. Maior segurança contra acidente.          |
+| `accept` | Aplica push sempre, com `--accept-data-loss`. Pode apagar colunas/tabelas.    | Deploy controlado de mudança destrutiva conhecida.   |
+| `skip`   | Não toca no schema do banco.                                                  | Você quer subir o backend mas o banco ainda não está pronto, ou vai aplicar migration manual. |
+
+### Fluxo no modo `prompt` (padrão)
+
+```
+backend start
+    │
+    ▼
+prisma db push (sem --accept-data-loss)
+    │
+    ├── OK (sem perda) ─────► continua, sobe o servidor ✅
+    │
+    └── erro de perda ──┬─── TTY interativo?
+                        │
+                        ├── Sim ──► pergunta [s/N/p]:
+                        │            s = aceitar e aplicar (destrutivo)
+                        │            N = recusar (não toca no schema, mas sobe)
+                        │            p = pular (não toca no schema, sobe)
+                        │
+                        └── Não ──► PULA automaticamente.
+                                    Backend sobe com schema antigo.
+                                    Você verá no log um aviso explicito.
+```
+
+### Comportamento no `docker compose up -d` (sem TTY)
+
+Como o `up -d` roda em background, **não tem TTY** e o backend
+cai no caminho "PULA automaticamente". Você vai ver no log:
+
+```
+AVISO: a sincronizacao requer alteracoes DESTRUTIVAS no banco.
+Sem TTY interativo disponivel. Para evitar perda acidental, o push foi PULADO.
+```
+
+O backend **sobe normalmente**, mas com o schema antigo. Se isso
+te prejudica (alguma feature nova depende do schema novo),
+você tem duas opções:
+
+#### Opção 1 — Aplicar destrutivo num deploy específico
+
+Edite o `.env.prod` temporariamente:
+```
+DB_PUSH_MODE=accept
+```
+
+Suba:
+```powershell
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --force-recreate backend
+```
+
+Verifique o log — deve mostrar `Aplicando prisma db push --accept-data-loss...`
+e o schema agora está atualizado.
+
+**Volte o `.env.prod` para `DB_PUSH_MODE=prompt`** depois (para o próximo
+deploy continuar seguro).
+
+#### Opção 2 — Rodar interativamente para responder o prompt
+
+Pare o backend, rode em modo interativo, responde a pergunta, depois sobe normal:
+
+```powershell
+# Para o backend atual
+docker compose -f docker-compose.prod.yml --env-file .env.prod stop backend
+
+# Roda o start interativamente (com TTY)
+docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm -it backend ./start.prod.sh
+```
+
+O script vai perguntar `[s/N/p]:` — responde `s` para aceitar.
+Quando o servidor estiver iniciado, dá Ctrl+C, e sobe normal:
+
+```powershell
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d backend
+```
+
+### Checklist antes de uma mudança destrutiva conhecida
+
+Antes de aplicar `DB_PUSH_MODE=accept` em prod, faça **sempre**:
+
+1. **Backup manual do banco:**
+   ```powershell
+   docker compose -f docker-compose.prod.yml --env-file .env.prod exec postgres pg_dump -U postgres artplim_erp > backup-pre-migration.sql
+   ```
+
+2. **Verifique no `db_backup` que o dump diário automático está
+   atualizado** (caso precise rollback):
+   ```powershell
+   docker compose -f docker-compose.prod.yml --env-file .env.prod exec db_backup ls -la /backups
+   ```
+
+3. **Teste a mudança em dev primeiro** com `pnpm db:push` ou
+   `pnpm db:migrate`.
+
+4. Depois aplique em prod, e **imediatamente volte `DB_PUSH_MODE`
+   para `prompt`**.
+
+### Por que não usar `prisma migrate deploy` em vez de `prisma db push`?
+
+`migrate deploy` exige um histórico versionado de migrations em
+`backend/prisma/migrations/`. Hoje o projeto usa apenas `db push`
+(que sincroniza direto do `schema.prisma` sem migrations
+versionadas). Isso é mais simples mas menos auditável.
+
+Migrar para `migrate deploy` é um trabalho adicional (gerar a primeira
+migration a partir do schema atual, versionar tudo). Pode ser feito
+no futuro se necessário, mas o `DB_PUSH_MODE=prompt` atual já dá uma
+camada de segurança razoável.
+
+---
+
 ## Cloudflare Tunnel
 
 O acesso pelo domínio `erp.artplim.com.br` (e qualquer outro
@@ -431,6 +557,24 @@ ls frontend/src/components/ui/
 ```
 
 Corrija o import com a capitalização que bate com o nome real do arquivo.
+
+### Deploy aplicado mas funcionalidade nova não funciona (schema antigo)
+
+No log do backend, procure por:
+```
+AVISO: a sincronizacao requer alteracoes DESTRUTIVAS no banco.
+Sem TTY interativo disponivel. Para evitar perda acidental, o push foi PULADO.
+```
+
+Significa que o `start.prod.sh` detectou mudança destrutiva no schema
+e pulou o push (modo `prompt` sem TTY). O backend está rodando com o
+**schema antigo**, então features novas que dependem do schema novo
+falham com erros tipo `Unknown column` ou `Property X does not exist`.
+
+**Fix**: ver seção
+[Sincronização de schema](#sincronização-de-schema-db_push_mode)
+para aplicar a mudança destrutiva de forma controlada
+(`DB_PUSH_MODE=accept` ou rodar interativamente).
 
 ### Backend prod inicia mas mostra "Redis unavailable. Falling back to Memory mode"
 

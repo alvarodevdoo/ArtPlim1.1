@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { InventoryService } from './services/InventoryService';
 import { StockMovementService } from './services/StockMovementService';
+import { ManufactureProductService } from './services/ManufactureProductService';
 import { getTenantClient } from '../../shared/infrastructure/database/tenant';
 
 const listQuerySchema = z.object({
@@ -172,6 +173,92 @@ export async function wmsRoutes(fastify: FastifyInstance) {
         });
       }
       throw error;
+    }
+  });
+
+  // ========== PRODUÇÃO INTERNA (MANUFATURADOS) ==========
+  // Fabrica um produto a partir da ficha técnica. Debita insumos
+  // (PRODUCTION_CONSUMPTION, sem lançar no DRE) e credita estoque
+  // de produto acabado (PRODUCTION_OUTPUT). Não gera receita nem
+  // despesa — é transferência interna de valor entre estoques.
+
+  const manufactureSchema = z.object({
+    productId: z.string().uuid(),
+    quantity: z.coerce.number().positive(),
+    variables: z.record(z.object({
+      value: z.any(),
+      unit: z.string().nullable()
+    })).optional(),
+    selectedOptionIds: z.array(z.string().uuid()).optional(),
+    width: z.coerce.number().optional(),
+    height: z.coerce.number().optional(),
+    machineMinutes: z.array(z.object({
+      machineId: z.string().uuid(),
+      minutes: z.coerce.number().nonnegative()
+    })).optional(),
+    notes: z.string().optional()
+  });
+
+  fastify.post('/manufacture', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    try {
+      const data = manufactureSchema.parse(request.body);
+      const prisma = getTenantClient(request.user!.organizationId);
+      const service = new ManufactureProductService(prisma);
+      const result = await service.execute(request.user!.organizationId, request.user!.id, data);
+      return reply.code(201).send({ success: true, data: result });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return reply.code(400).send({
+          success: false,
+          message: `Erro de validação: ${error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`
+        });
+      }
+      return reply.code(error.statusCode || 500).send({
+        success: false,
+        message: error.message || 'Erro ao registrar produção interna'
+      });
+    }
+  });
+
+  // Lista produções internas recentes (para o feature "Repetir produção")
+  fastify.get('/manufacture/recent', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { limit } = request.query as any;
+    const prisma = getTenantClient(request.user!.organizationId);
+    const service = new ManufactureProductService(prisma);
+    const finalLimit = Math.min(parseInt(limit) || 20, 100);
+    const data = await service.listRecent(request.user!.organizationId, finalLimit);
+    return reply.send({ success: true, data });
+  });
+
+  // Repete uma produção anterior com nova quantidade
+  const repeatSchema = z.object({
+    quantity: z.coerce.number().positive()
+  });
+
+  fastify.post('/manufacture/repeat/:presetId', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    try {
+      const { presetId } = request.params as { presetId: string };
+      const { quantity } = repeatSchema.parse(request.body);
+      const prisma = getTenantClient(request.user!.organizationId);
+      const service = new ManufactureProductService(prisma);
+      const result = await service.repeatFromPreset(
+        request.user!.organizationId,
+        request.user!.id,
+        presetId,
+        quantity
+      );
+      return reply.code(201).send({ success: true, data: result });
+    } catch (error: any) {
+      return reply.code(error.statusCode || 500).send({
+        success: false,
+        message: error.message || 'Erro ao repetir produção'
+      });
     }
   });
 

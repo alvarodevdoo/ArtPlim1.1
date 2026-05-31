@@ -185,8 +185,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
   // Solicitar permissão para notificações do browser
   const requestNotificationPermission = useCallback(async () => {
     if ('Notification' in window && Notification.permission === 'default') {
-      const permission = await Notification.requestPermission();
-      console.log('Permissão de notificação:', permission);
+      await Notification.requestPermission();
     }
   }, []);
 
@@ -194,12 +193,8 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
   useEffect(() => {
     if (!connected || !subscribe) return;
 
-    console.log('🔔 Configurando listeners de notificação...');
-
     // Listener para novas solicitações de alteração
     const unsubscribeChangeRequest = subscribe('change-request', (data: any) => {
-      console.log('📢 Nova solicitação de alteração recebida:', data);
-
       const notification = data.notification;
 
       // Adicionar à lista
@@ -222,8 +217,6 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
 
     // Listener para decisões de alteração
     const unsubscribeChangeDecision = subscribe('change-decision', (data: any) => {
-      console.log('📢 Decisão de alteração recebida:', data);
-
       const notification = data.notification;
 
       // Adicionar à lista
@@ -246,8 +239,6 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
 
     // Listener para broadcast de decisões (para operadores)
     const unsubscribeChangeDecisionBroadcast = subscribe('change-decision-broadcast', (data: any) => {
-      console.log('📢 Broadcast de decisão recebido:', data);
-
       // Toast mais discreto para broadcast
       toast({
         title: `Alteração ${data.approved ? 'aprovada' : 'rejeitada'}`,
@@ -258,8 +249,6 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
 
     // Listener para notificações gerais
     const unsubscribeNotification = subscribe('notification', (notification: Notification) => {
-      console.log('📢 Notificação geral recebida:', notification);
-
       setNotifications(prev => [notification, ...prev]);
       if (!notification.read) {
         setUnreadCount(prev => prev + 1);
@@ -277,8 +266,6 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
 
     // Listener para notificação lida
     const unsubscribeNotificationRead = subscribe('notification-read', (data: any) => {
-      console.log('📖 Notificação marcada como lida:', data);
-
       setNotifications(prev =>
         prev.map(n => n.id === data.notificationId ? { ...n, read: true } : n)
       );
@@ -286,9 +273,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     });
 
     // Listener para todas marcadas como lidas
-    const unsubscribeAllNotificationsRead = subscribe('all-notifications-read', (data: any) => {
-      console.log('📖 Todas as notificações marcadas como lidas:', data);
-
+    const unsubscribeAllNotificationsRead = subscribe('all-notifications-read', () => {
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
       setUnreadCount(0);
     });

@@ -28,9 +28,16 @@ export const SimpleAreaSection: React.FC<SimpleAreaSectionProps> = ({
 }) => {
     // Busca o preço base para exibição no campo "Valor do M²"
     const getBasePriceDisplay = () => {
-        // 1. Se houver composição (ex: Vinil selecionado), o preço sugerido é o valor do m2
+        // 1. Se houver composição (ex: Vinil selecionado), o preço sugerido é o valor do m².
+        //    Subtraímos APENAS os flatModifiers (adições fixas tipo Ilhós/Montagem).
+        //    perAreaModifiers (ex: Corte e contorno +R$5/m²) FAZEM PARTE do rate por m²,
+        //    então devem permanecer visíveis aqui (R$25 → R$30 quando aplicado).
         if (composition?.unitSuggestedPrice && composition.unitSuggestedPrice > 0) {
-            return composition.unitSuggestedPrice;
+            const flat = Number(composition?.flatModifiers ?? 0);
+            const perArea = Number(composition?.perAreaModifiers ?? 0);
+            // Fallback p/ backend antigo: subtrai total se split não disponível
+            const subtract = (flat + perArea) > 0 ? flat : Number(composition?.totalModifiers ?? 0);
+            return Math.max(0, composition.unitSuggestedPrice - subtract);
         }
 
         // 2. Prioridade para variáveis da regra

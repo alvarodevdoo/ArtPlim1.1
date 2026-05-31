@@ -34,6 +34,9 @@ export interface CompositionResult {
   totalCost: number;             // baseMaterialCost + variableMaterialCost
   suggestedPrice: number;        // totalCost × targetMarkup
   unitSuggestedPrice: number;    // suggestedPrice / quantity
+  totalModifiers: number;        // flatModifiers + perAreaModifiers (compat)
+  flatModifiers: number;         // priceModifierType=FIXED → soma fixa no total (ex: Ilhós R$5)
+  perAreaModifiers: number;      // priceModifierType=PER_AREA → soma ao R$/m² (ex: Corte e contorno +R$5/m²)
   suggestedMarkup: number;       // targetMarkup configurado (ou 2.0 padrão)
   currentMargin: number;         // (suggestedPrice - totalCost) / suggestedPrice
   breakdown: CompositionLineItem[];
@@ -133,7 +136,8 @@ export class PricingCompositionService {
     const insufficientStock: InsufficientStockItem[] = [];
     
     let maxOverride = 0;
-    let totalModifiers = 0;
+    let flatModifiers = 0;     // priceModifierType=FIXED (default) — soma fixa no total
+    let perAreaModifiers = 0;  // priceModifierType=PER_AREA — soma ao R$/m²
 
     // 2. Calcular custo da ficha técnica FIXA do produto (sem opções)
     let baseMaterialCost = 0;
@@ -206,17 +210,46 @@ export class PricingCompositionService {
 
       for (const opt of options) {
         // Acumular modificadores e acompanhar o maior preço fixo (override ou fixedValue)
-        const modifier = Number(opt.priceModifier || 0) * quantity;
-        totalModifiers += modifier;
+        //
+        // Para opções com material vinculado, o custo da qty é resolvido na seção 3a abaixo
+        // (via materialCost × qty). Aqui apenas o priceModifier é multiplicado pela qty efetiva
+        // quando a opção permite quantidade customizada SEM material (ex: Montagem por hora,
+        // Furo por unidade) — espelha o cálculo de preview do chip em VariationsSection.
+        const customQty = optionQtyMap.get(opt.id);
+        const isQtyDriven = opt.allowCustomQty && !opt.materialId;
+        const optEffectiveQty = isQtyDriven
+          ? (customQty != null && !Number.isNaN(customQty)
+              ? customQty
+              : Number(opt.defaultQuantity ?? 1))
+          : 1;
+        const modifier = Number(opt.priceModifier || 0) * optEffectiveQty * quantity;
+
+        // Bucket: PER_AREA soma ao R$/m² (multiplicado pela área depois);
+        // FIXED (e demais) somam fixo no total.
+        if ((opt as any).priceModifierType === 'PER_AREA') {
+          perAreaModifiers += modifier;
+        } else {
+          flatModifiers += modifier;
+        }
         
-        // fixedValue é o novo campo para Preço Fixo de Venda da opção
-        // priceOverride é o campo legado que tinha o mesmo propósito
+        // fixedValue (Preço Base) e priceOverride (legado) representam um preço explícito
+        // da opção. Comportamento depende de priceModifierType:
+        //  - PER_AREA (legado/padrão histórico para fixedValue): substitui o R$/m² do produto
+        //  - FIXED: soma como adição fixa no total (não substitui a rate)
         const optFixedValue = Number(opt.fixedValue || 0) * quantity;
         const optOverride = Number(opt.priceOverride || 0) * quantity;
         const currentMax = Math.max(optFixedValue, optOverride);
-        
-        if (currentMax > maxOverride) {
-            maxOverride = currentMax;
+
+        if (currentMax > 0) {
+          if ((opt as any).priceModifierType === 'FIXED') {
+            // Preço Base como adição fixa no total
+            flatModifiers += currentMax;
+          } else {
+            // PER_AREA (padrão histórico de fixedValue): rate override
+            if (currentMax > maxOverride) {
+              maxOverride = currentMax;
+            }
+          }
         }
 
         // 3a. Slot direto (materialId na própria option)
@@ -300,10 +333,15 @@ export class PricingCompositionService {
     // Se não houver preço fixo definido nas opções, o sistema sugere o PREÇO BASE do produto (product.salePrice).
     // Se nem o produto tiver preço base, usamos o custo total.
     let suggestedPrice = 0;
-    
+    const totalModifiers = flatModifiers + perAreaModifiers;
+
     if (maxOverride > 0) {
         suggestedPrice = maxOverride + totalModifiers;
     } else {
+        // Para produtos AREA, perAreaModifiers seriam multiplicados pela área no frontend.
+        // Como este service não calcula área, devolvemos uma estimativa "agregada" para
+        // o caso AREA-less (SIMPLE_UNIT). O frontend AREA usa flatModifiers/perAreaModifiers
+        // separadamente e ignora esse suggestedPrice agregado.
         suggestedPrice = (Number(product.salePrice || 0) * quantity) + totalModifiers;
     }
 
@@ -320,6 +358,9 @@ export class PricingCompositionService {
       totalCost,
       suggestedPrice,
       unitSuggestedPrice,
+      totalModifiers,
+      flatModifiers,
+      perAreaModifiers,
       suggestedMarkup: 1.0,
       currentMargin: 0,
       breakdown,

@@ -59,7 +59,8 @@ export class BackupController {
       if (unencrypted !== 'true') {
         const { DEK, streamIV, headerString } = BackupCryptoService.createEncryptionEnvelope(
           masterPasswordPlain,
-          password
+          password,
+          settings?.recoveryToken
         );
         cipherStream = BackupCryptoService.getCipherStream(DEK, streamIV);
         
@@ -121,6 +122,11 @@ export class BackupController {
       
       let fileBuffer: Buffer | null = null;
       let password = '';
+      // Mirror (default): limpa os dados dos módulos do backup na org de destino
+      // antes de inserir, evitando duplicação. Desligado só se vier "false".
+      let mirror = true;
+      // Restauração parcial: se informado, importa/limpa apenas estes módulos.
+      let modulesFilter: string[] | null = null;
 
       // Verifica se a rota recebeu multipart form
       if (!request.isMultipart()) {
@@ -132,6 +138,11 @@ export class BackupController {
           fileBuffer = await part.toBuffer();
         } else if (part.type === 'field' && part.fieldname === 'password') {
           password = part.value as string;
+        } else if (part.type === 'field' && part.fieldname === 'mirror') {
+          mirror = part.value !== 'false';
+        } else if (part.type === 'field' && part.fieldname === 'modules') {
+          const raw = (part.value as string).trim();
+          modulesFilter = raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : null;
         }
       }
 
@@ -139,30 +150,36 @@ export class BackupController {
         throw new Error('Nenhum arquivo de backup foi enviado.');
       }
 
-      // Encontrar a primeira quebra de linha (que delimita o header do arquivo BDB)
-      const lineEnd = fileBuffer.indexOf('\n');
-      if (lineEnd === -1) {
-        throw new Error('Formato de backup corrompido ou arquivo não é um ".bdb" válido.');
+      // Verifica se o arquivo é um ZIP cru (backup sem criptografia)
+      const ZIP_MAGIC = Buffer.from([0x50, 0x4B, 0x03, 0x04]);
+      let decryptedArchive: Buffer;
+
+      if (fileBuffer.subarray(0, 4).equals(ZIP_MAGIC)) {
+        // Arquivo NÃO está criptografado
+        decryptedArchive = fileBuffer;
+      } else {
+        // Arquivo está criptografado com o envelope BDB
+        const lineEnd = fileBuffer.indexOf('\n');
+        if (lineEnd === -1) {
+          throw new Error('Formato de backup corrompido ou arquivo não é um ".bdb" válido.');
+        }
+
+        const headerString = fileBuffer.toString('utf8', 0, lineEnd);
+        const archiveBuffer = fileBuffer.subarray(lineEnd + 1);
+
+        let headerObject;
+        try {
+          headerObject = JSON.parse(headerString);
+        } catch {
+          throw new Error('Cabeçalho de segurança corrompido.');
+        }
+
+        const { DEK, streamIV } = BackupCryptoService.unlockEnvelope(headerObject, password);
+
+        const decipher = BackupCryptoService.getDecipherStream(DEK, streamIV);
+        decryptedArchive = decipher.update(archiveBuffer);
+        decryptedArchive = Buffer.concat([decryptedArchive, decipher.final()]);
       }
-
-      // Parsing do Envelope Criptográfico
-      const headerString = fileBuffer.toString('utf8', 0, lineEnd);
-      const archiveBuffer = fileBuffer.subarray(lineEnd + 1);
-
-      let headerObject;
-      try {
-        headerObject = JSON.parse(headerString);
-      } catch {
-        throw new Error('Cabeçalho de segurança corrompido.');
-      }
-
-      // Descriptografia (Testa a senha contra o Envelope)
-      const { DEK, streamIV } = BackupCryptoService.unlockEnvelope(headerObject, password);
-
-      // Decifrar o conteúdo ZIP binário
-      const decipher = BackupCryptoService.getDecipherStream(DEK, streamIV);
-      let decryptedArchive = decipher.update(archiveBuffer);
-      decryptedArchive = Buffer.concat([decryptedArchive, decipher.final()]);
 
       // Extração e Mapeamento dos Arquivos do ZIP Retornado
       const zip = new AdmZip(decryptedArchive);
@@ -192,8 +209,17 @@ export class BackupController {
         }
       }
 
+      // Restauração parcial: mantém apenas os módulos selecionados pelo usuário.
+      // A engine (import e mirror) deriva o escopo de Object.keys(payload.payload).
+      if (modulesFilter && modulesFilter.length > 0) {
+        const allowed = new Set(modulesFilter);
+        for (const key of Object.keys(payload.payload)) {
+          if (!allowed.has(key)) delete payload.payload[key];
+        }
+      }
+
       // Injeta payload reconstituído na engine de restore original
-      const results = await useCase.execute(organizationId, userId, payload);
+      const results = await useCase.execute(organizationId, userId, payload, { mirror });
 
       return reply.send({ success: true, data: results });
     } catch (error: any) {

@@ -53,4 +53,20 @@ export interface NFeData {
     endereco: any;
   };
   items: NFeItem[];
+  /** XML bruto da NF-e, retornado por /parse e /fetch e reenviado no import para persistência */
+  rawXml?: string;
+  /** Totais fiscais da NF-e (frete, impostos, descontos), capturados no parse e persistidos no import */
+  totaisFiscais?: {
+    produtos?: number;
+    frete?: number;
+    seguro?: number;
+    desconto?: number;
+    outros?: number;
+    ipi?: number;
+    icms?: number;
+    icmsST?: number;
+    pis?: number;
+    cofins?: number;
+    ii?: number;
+  } | null;
 }

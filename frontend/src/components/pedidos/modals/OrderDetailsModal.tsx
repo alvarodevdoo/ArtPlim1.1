@@ -332,8 +332,20 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                             </div>
                             <div className="text-right ml-4">
                               <p className="font-medium">{formatCurrency(item.unitPrice || 0)}{item.product?.pricingMode === 'SIMPLE_AREA' ? '/m\u00b2' : '/un'}</p>
+                              {(() => {
+                                const disc = Number(item.unitPrice || 0) * Number(item.quantity || 0) - Number(item.totalPrice || 0);
+                                if (disc > 0.009) {
+                                  return (
+                                    <>
+                                      <p className="text-xs text-gray-400 line-through">{formatCurrency(Number(item.unitPrice || 0) * Number(item.quantity || 0))}</p>
+                                      <p className="text-[11px] text-red-500">Desconto: -{formatCurrency(disc)}</p>
+                                    </>
+                                  );
+                                }
+                                return null;
+                              })()}
                               <p className="text-lg font-bold">{formatCurrency(item.totalPrice || 0)}</p>
-                              
+
                               {/* ── Info do Motor de Composição (Snapshot) ── */}
                               {canViewMargins() && item.unitCostAtSale !== undefined && item.unitCostAtSale !== null && (
                                 <div className={`mt-2 p-2 border rounded text-[10px] text-right font-mono transition-colors ${isCriticalMargin ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>

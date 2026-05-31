@@ -9,65 +9,75 @@
 # ---- Stage 1: build ----------------------------------------
 FROM node:22 AS build
 
-# Instala a mesma versao de pnpm declarada no package.json
 RUN npm install -g pnpm@10.27.0
 
 WORKDIR /app
 
-# Copia metadados do workspace (raiz)
+# Metadados do workspace
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-
-# Copia package.json de cada pacote (necessario para o pnpm
-# resolver dependencias antes de copiar o codigo)
-COPY backend/package.json ./backend/
+COPY backend/package.json  ./backend/
 COPY frontend/package.json ./frontend/
 
-# Instala todas as deps do workspace (com lockfile travado)
-RUN pnpm install --frozen-lockfile
+# Schema do Prisma e necessario antes do install (postinstall chama
+# `prisma generate`).
+COPY backend/prisma ./backend/prisma
 
-# Copia o codigo do backend
+# Install completo (dev + prod). Precisamos do esbuild aqui para
+# bundlear o backend. DATABASE_URL placeholder so para o `prisma generate`
+# do postinstall nao falhar.
+ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
+RUN pnpm install --frozen-lockfile
+ENV DATABASE_URL=
+
+# Codigo do backend
 COPY backend ./backend
 
-# Gera Prisma Client e builda o TS -> dist/
-# DATABASE_URL placeholder: o prisma.config.js exige a variavel
-# durante o `prisma generate` (mesmo sem conectar). A URL real
-# eh injetada em runtime pelo docker-compose.
-#
-# tsc emite os arquivos mesmo com erros de tipo (default
-# noEmitOnError=false), mas retorna exit code 2. Como o dev
-# usa tsx (que ignora tipos), trazemos o mesmo comportamento
-# aqui: rodamos tsc tolerando o exit code, e validamos que
-# dist/server.js foi realmente gerado.
+# BUNDLE + MINIFY do backend com esbuild. Resultado: um unico arquivo
+# dist/server.js minificado (variaveis renomeadas, dead code eliminado,
+# sem comentarios, sem sourcemap). `--packages=external` mantem
+# dependencias de node_modules fora do bundle (evita problemas com
+# binarios nativos do Prisma, pg, etc).
 RUN cd backend \
  && DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder" \
     pnpm exec prisma generate \
- && (pnpm exec tsc || true) \
+ && pnpm run build:prod \
  && test -f dist/server.js \
- && echo "Build do backend OK (dist/server.js gerado)."
+ && echo "Build do backend OK." \
+ && ls -lh dist/server.js
+
+# Remove arquivos do backend que NAO sao necessarios em runtime.
+# Mantem: dist/, prisma/, package.json, prisma.config.js, node_modules/
+RUN cd backend && find . -maxdepth 1 -mindepth 1 \
+    ! -name 'dist' \
+    ! -name 'prisma' \
+    ! -name 'prisma.config.js' \
+    ! -name 'package.json' \
+    ! -name 'node_modules' \
+    -exec rm -rf {} +
 
 # ---- Stage 2: runtime --------------------------------------
 FROM node:22
 
-RUN npm install -g pnpm@10.27.0 \
- && apt-get update \
+RUN apt-get update \
  && apt-get install -y --no-install-recommends postgresql-client \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && npm install -g pnpm@10.27.0
 
 WORKDIR /app
 
-# Estrutura do workspace pnpm: node_modules da raiz + symlinks
-# em backend/node_modules apontando para ../node_modules/.pnpm/...
-# Por isso copiamos a raiz inteira (sem o frontend) preservando
-# os symlinks.
+# Workspace pnpm: copia os metadados da raiz e o node_modules ja
+# instalado (com Prisma Client gerado).
 COPY --from=build /app/pnpm-lock.yaml      ./pnpm-lock.yaml
 COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=build /app/package.json        ./package.json
 COPY --from=build /app/node_modules        ./node_modules
-COPY --from=build /app/backend             ./backend
+
+# Backend ja foi enxugado no stage anterior (so dist/, prisma/, etc).
+COPY --from=build /app/backend ./backend
 
 WORKDIR /app/backend
 
-# Script de inicializacao
+# Script de inicializacao (migrations + start)
 COPY backend/start.prod.sh ./start.prod.sh
 RUN chmod +x ./start.prod.sh \
  && mkdir -p /app/backend/uploads

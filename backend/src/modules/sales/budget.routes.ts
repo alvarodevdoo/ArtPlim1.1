@@ -16,8 +16,8 @@ const createBudgetSchema = z.object({
         costPrice: z.number().min(0).optional(),
         calculatedPrice: z.number().min(0).optional(),
         attributes: z.any().optional(),
-        pricingRuleId: z.string().optional(),
-        notes: z.string().optional()
+        pricingRuleId: z.string().optional().nullable(),
+        notes: z.string().optional().nullable()
     })),
     notes: z.string().optional(),
     validUntil: z.string().optional().nullable()

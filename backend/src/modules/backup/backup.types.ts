@@ -7,6 +7,7 @@ export interface ImportResult {
   successCount: number;
   errorCount: number;
   details?: string;
+  errors?: string[];
 }
 
 export interface BackupPayload {

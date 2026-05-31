@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import crypto from 'crypto';
-import { getTenantClient } from '../../shared/infrastructure/database/tenant';
+import { getTenantClient, prisma } from '../../shared/infrastructure/database/tenant';
 
 const SHARE_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key';
 
@@ -61,6 +61,25 @@ export async function publicAccessRoutes(fastify: FastifyInstance) {
   // Endpoint público (sem auth) — token via query string para evitar problemas com JWT em path
   fastify.get('/order', async (request, reply) => {
     return handlePublicOrder(request, reply);
+  });
+
+  // Resolve subdomínio → slug da organização (usado pelo LoginPage quando acessado via erp.artplim.com.br)
+  fastify.get('/resolve-subdomain/:subdomain', async (request, reply) => {
+    const { subdomain } = request.params as { subdomain: string };
+    if (!subdomain || !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(subdomain)) {
+      return reply.code(400).send({ success: false, message: 'Subdomínio inválido.' });
+    }
+    const org = await prisma.organization.findUnique({
+      where: { subdomain },
+      select: { slug: true, name: true, logoFull: true, logoIcon: true, active: true },
+    });
+    if (!org || !org.active) {
+      return reply.code(404).send({ success: false, message: 'Organização não encontrada.' });
+    }
+    return reply.send({
+      success: true,
+      data: { slug: org.slug, name: org.name, logoFull: org.logoFull, logoIcon: org.logoIcon },
+    });
   });
 }
 

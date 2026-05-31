@@ -42,14 +42,12 @@ export const useWebSocket = (): WebSocketHook => {
     });
 
     newSocket.on('connect', () => {
-      console.log('✅ WebSocket: Conectado com sucesso');
       setConnected(true);
       setLastConnected(new Date());
       newSocket.emit('join-organization', user.organizationId);
     });
 
-    newSocket.on('disconnect', (reason) => {
-      console.log('❌ WebSocket: Desconectado -', reason);
+    newSocket.on('disconnect', () => {
       setConnected(false);
       setLastDisconnected(new Date());
     });

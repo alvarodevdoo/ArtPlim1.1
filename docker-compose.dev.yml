@@ -1,0 +1,68 @@
+# ============================================================
+# docker-compose de DESENVOLVIMENTO (Apenas infraestrutura)
+# ============================================================
+
+name: artplim-dev
+
+services:
+
+  # ---- Banco de dados ---------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: artplim_postgres_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-artplim_erp}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    networks:
+      - artplim_dev
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-artplim_erp}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- Cache / filas / pubsub --------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: artplim_redis_dev
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    volumes:
+      - redis_data_dev:/data
+    networks:
+      - artplim_dev
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- Cloudflare Tunnel -------------------------------------
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: artplim_cloudflared_dev
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN_DEV}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - C:/Users/Alvaro/.cloudflared/config.yml:/etc/cloudflared/config.yml
+    networks:
+      - artplim_dev
+
+volumes:
+  postgres_data_dev:
+  redis_data_dev:
+
+networks:
+  artplim_dev:
+    driver: bridge

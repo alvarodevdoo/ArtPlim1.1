@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import {
-  Plus, Pencil, Trash, RefreshCw, Info, Target, AlertCircle, Activity, TrendingUp, TrendingDown
+  Plus, Pencil, Trash, RefreshCw, Info, Target, AlertCircle, Activity, TrendingUp, TrendingDown,
+  CheckSquare, X
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
@@ -50,6 +51,10 @@ export const ChartOfAccountsManager: React.FC<ChartOfAccountsManagerProps> = ({ 
   const [accountToDeleteWithDependencies, setAccountToDeleteWithDependencies] = useState<any>(null);
   const [deletionDependencies, setDeletionDependencies] = useState<any[]>([]);
   const [replacementAccountId, setReplacementAccountId] = useState<string>('');
+  const [editMode, setEditMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [bulkResult, setBulkResult] = useState<any>(null);
 
   const loadAccounts = async () => {
     try {
@@ -100,6 +105,70 @@ export const ChartOfAccountsManager: React.FC<ChartOfAccountsManagerProps> = ({ 
     setShowAddChartAccount(true);
   };
 
+  const getDescendantIds = (rootId: string): string[] => {
+    const result: string[] = [];
+    const stack = [rootId];
+    while (stack.length) {
+      const current = stack.pop()!;
+      const children = chartOfAccounts.filter(a => a.parentId === current);
+      for (const child of children) {
+        result.push(child.id);
+        stack.push(child.id);
+      }
+    }
+    return result;
+  };
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      const cascade = [id, ...getDescendantIds(id)];
+      const willSelect = !next.has(id);
+      for (const cid of cascade) {
+        if (willSelect) next.add(cid);
+        else next.delete(cid);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === chartOfAccounts.length && chartOfAccounts.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(chartOfAccounts.map(a => a.id)));
+    }
+  };
+
+  const exitEditMode = () => {
+    setEditMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkDelete = async () => {
+    try {
+      const ids = Array.from(selectedIds);
+      const response = await api.post('/api/finance/v2/chart-of-accounts/bulk-delete', { ids });
+      const data = response.data.data;
+      setBulkConfirmOpen(false);
+
+      const parts: string[] = [];
+      if (data.deleted) parts.push(`${data.deleted} excluída(s)`);
+      if (data.softDeleted) parts.push(`${data.softDeleted} desativada(s) (com vínculos)`);
+      toast.success(parts.length ? parts.join(', ') : 'Operação concluída.');
+
+      if (data.blocked && data.blocked.length > 0) {
+        setBulkResult(data);
+      } else {
+        setBulkResult(null);
+        exitEditMode();
+      }
+      loadAccounts();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Erro ao excluir em lote.');
+    }
+  };
+
   const handleRestoreChartAccount = async (id: string) => {
     try {
       await api.patch(`/api/finance/v2/chart-of-accounts/${id}/restore`);
@@ -138,6 +207,18 @@ export const ChartOfAccountsManager: React.FC<ChartOfAccountsManagerProps> = ({ 
             Plano de Contas Padrão
           </Button>
 
+          {editMode ? (
+            <Button variant="outline" onClick={exitEditMode}>
+              <X className="w-4 h-4 mr-2" />
+              Sair do Modo de Edição
+            </Button>
+          ) : (
+            <Button variant="outline" onClick={() => setEditMode(true)}>
+              <CheckSquare className="w-4 h-4 mr-2" />
+              Modo de Edição
+            </Button>
+          )}
+
           <Button onClick={() => {
             setAccountToEdit(null);
             setParentAccountForNew(null);
@@ -149,12 +230,45 @@ export const ChartOfAccountsManager: React.FC<ChartOfAccountsManagerProps> = ({ 
         </div>
       </div>
 
+      {editMode && (
+        <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">
+          <div className="text-sm text-amber-800">
+            <strong>{selectedIds.size}</strong> conta(s) selecionada(s).
+            Ao marcar uma conta-pai, todas as subcontas são incluídas automaticamente.
+          </div>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={toggleSelectAll}>
+              {selectedIds.size === chartOfAccounts.length && chartOfAccounts.length > 0 ? 'Desmarcar todas' : 'Selecionar todas'}
+            </Button>
+            <Button
+              size="sm"
+              disabled={selectedIds.size === 0}
+              onClick={() => setBulkConfirmOpen(true)}
+              className="bg-red-600 hover:bg-red-700 text-white disabled:opacity-50"
+            >
+              <Trash className="w-4 h-4 mr-2" />
+              Excluir selecionadas ({selectedIds.size})
+            </Button>
+          </div>
+        </div>
+      )}
+
       <Card>
         <CardContent className="p-0">
           <div className="border-x border-b rounded-b-lg overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 border-y border-slate-200">
+                  {editMode && (
+                    <th className="p-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.size === chartOfAccounts.length && chartOfAccounts.length > 0}
+                        onChange={toggleSelectAll}
+                        className="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                      />
+                    </th>
+                  )}
                   <th className="text-left p-3 font-bold text-slate-600 w-32">Código</th>
                   <th className="text-left p-3 font-bold text-slate-600">Nome da Conta</th>
                   <th className="text-left p-3 font-bold text-slate-600 w-40">Natureza / Tipo</th>
@@ -165,7 +279,7 @@ export const ChartOfAccountsManager: React.FC<ChartOfAccountsManagerProps> = ({ 
               <tbody className="divide-y">
                 {chartOfAccounts.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-12 text-center text-muted-foreground italic">
+                    <td colSpan={editMode ? 6 : 5} className="p-12 text-center text-muted-foreground italic">
                       <Target className="w-12 h-12 text-slate-200 mx-auto mb-3" />
                       Nenhuma conta cadastrada no plano de contas.
                     </td>
@@ -178,7 +292,17 @@ export const ChartOfAccountsManager: React.FC<ChartOfAccountsManagerProps> = ({ 
                     return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
                   })
                   .map(account => (
-                    <tr key={account.id} className={`hover:bg-slate-50 transition-colors ${account.active === false ? 'bg-slate-50/50' : ''}`}>
+                    <tr key={account.id} className={`hover:bg-slate-50 transition-colors ${account.active === false ? 'bg-slate-50/50' : ''} ${editMode && selectedIds.has(account.id) ? 'bg-red-50/60' : ''}`}>
+                      {editMode && (
+                        <td className="p-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(account.id)}
+                            onChange={() => toggleSelected(account.id)}
+                            className="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                          />
+                        </td>
+                      )}
                       <td className={`p-3 font-mono text-xs font-bold ${account.active === false ? 'text-slate-400' : 'text-primary'}`}>
                         {account.code || '—'}
                       </td>
@@ -443,6 +567,76 @@ export const ChartOfAccountsManager: React.FC<ChartOfAccountsManagerProps> = ({ 
             </div>
           </div>
         </div>
+      )}
+
+      {/* Bulk Delete Confirmation */}
+      {bulkConfirmOpen && (
+        <ModalPortal className="z-[9999]">
+          <Card className="modal-content-card max-w-md w-full">
+            <div className="bg-red-50 border-b border-red-100 rounded-t-xl pb-4 p-6">
+              <h3 className="text-red-800 flex items-center gap-2 font-semibold">
+                <AlertCircle className="w-5 h-5" />
+                Excluir {selectedIds.size} conta(s)?
+              </h3>
+              <p className="text-red-700 mt-1 text-sm">
+                As subcontas das contas-pai selecionadas também serão removidas. Contas com vínculos (materiais, categorias, produtos) serão desativadas (soft delete) ao invés de excluídas.
+              </p>
+            </div>
+            <CardContent className="pt-6">
+              <div className="bg-slate-50 p-3 rounded text-xs max-h-48 overflow-y-auto font-mono text-slate-700">
+                <ul className="space-y-1">
+                  {chartOfAccounts
+                    .filter(a => selectedIds.has(a.id))
+                    .sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, { numeric: true }))
+                    .map(a => (
+                      <li key={a.id}>{a.code || '—'} — {a.name}</li>
+                    ))}
+                </ul>
+              </div>
+              <div className="flex justify-end gap-3 pt-4 mt-4 border-t">
+                <Button variant="ghost" onClick={() => setBulkConfirmOpen(false)}>Cancelar</Button>
+                <Button onClick={handleBulkDelete} className="bg-red-600 hover:bg-red-700 text-white">
+                  <Trash className="w-4 h-4 mr-2" />
+                  Confirmar Exclusão
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </ModalPortal>
+      )}
+
+      {/* Bulk Delete Result (blocked accounts) */}
+      {bulkResult && bulkResult.blocked && bulkResult.blocked.length > 0 && (
+        <ModalPortal className="z-[9999]">
+          <Card className="modal-content-card max-w-lg w-full">
+            <div className="bg-amber-50 border-b border-amber-100 rounded-t-xl pb-4 p-6">
+              <h3 className="text-amber-800 flex items-center gap-2 font-semibold">
+                <AlertCircle className="w-5 h-5" />
+                Contas desativadas com pendências
+              </h3>
+              <p className="text-amber-700 mt-1 text-sm">
+                As contas abaixo possuem materiais vinculados e foram apenas <strong>desativadas</strong> (soft delete). Para removê-las definitivamente, abra cada uma individualmente e migre os materiais para outra conta.
+              </p>
+            </div>
+            <CardContent className="pt-6">
+              <div className="space-y-3 max-h-64 overflow-y-auto">
+                {bulkResult.blocked.map((b: any) => (
+                  <div key={b.id} className="border border-amber-200 rounded p-3 bg-amber-50/40">
+                    <p className="font-mono text-sm font-bold text-slate-800">{b.code || '—'} — {b.name}</p>
+                    {b.materials && b.materials.length > 0 && (
+                      <p className="text-xs text-slate-600 mt-1">
+                        Materiais: {b.materials.map((m: any) => m.name).join(', ')}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end pt-4 mt-4 border-t">
+                <Button onClick={() => { setBulkResult(null); exitEditMode(); }}>Entendi</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </ModalPortal>
       )}
 
       {/* Default Chart of Accounts Modal */}

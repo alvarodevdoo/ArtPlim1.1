@@ -3,6 +3,7 @@ import { CreateChartOfAccountUseCase } from '../../../useCases/CreateChartOfAcco
 import { ListChartOfAccountsUseCase } from '../../../useCases/ListChartOfAccountsUseCase';
 import { UpdateChartOfAccountUseCase } from '../../../useCases/UpdateChartOfAccountUseCase';
 import { DeleteChartOfAccountUseCase } from '../../../useCases/DeleteChartOfAccountUseCase';
+import { BulkDeleteChartOfAccountsUseCase } from '../../../useCases/BulkDeleteChartOfAccountsUseCase';
 import { SeedChartOfAccountsUseCase } from '../../../useCases/SeedChartOfAccountsUseCase';
 import { getTenantClient } from '../../../../../shared/infrastructure/database/tenant';
 import { z } from 'zod';
@@ -133,6 +134,25 @@ export class ChartOfAccountsController {
           dependencies: error.dependencies 
         });
       }
+      return reply.status(400).send({ success: false, message: error.message });
+    }
+  }
+
+  async bulkDelete(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const organizationId = request.user!.organizationId;
+      const { ids } = request.body as { ids: string[] };
+
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return reply.status(400).send({ success: false, message: 'Nenhuma conta selecionada.' });
+      }
+
+      const prisma = getTenantClient(organizationId);
+      const useCase = new BulkDeleteChartOfAccountsUseCase(prisma as any);
+      const result = await useCase.execute(ids, organizationId);
+
+      return reply.send({ success: true, data: result });
+    } catch (error: any) {
       return reply.status(400).send({ success: false, message: error.message });
     }
   }

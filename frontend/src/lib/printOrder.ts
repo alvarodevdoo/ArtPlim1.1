@@ -1,8 +1,9 @@
 import api from '@/lib/api';
-import { formatCurrency, formatDateTime, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDateTime, formatDate, getItemLengthUnit, formatLengthFromMm } from '@/lib/utils';
 import { Pedido, shouldShowDimensions } from '@/types/pedidos';
 
 export type PrintFormat = 'A4' | 'THERMAL_80';
+export type PrintMode = 'order' | 'budget';
 
 interface OrganizationInfo {
   name?: string;
@@ -160,17 +161,36 @@ function computeTotalsPagamento(pedido: Pedido) {
   return { total, totalPaid, pending, methodNames, lastPaidDate };
 }
 
-function itemLabelLine(item: any): string {
-  const showDim = shouldShowDimensions(item);
-  if (showDim) {
-    return `${item.width} × ${item.height}mm • ${item.quantity}un`;
-  }
-  return `${item.quantity}un`;
+// Desconto por item derivado: (unitário × qtd) − total líquido.
+// Funciona para qualquer item sem depender de coluna/campo salvo.
+function itemDiscount(item: any): number {
+  const gross = Number(item.unitPrice || 0) * Number(item.quantity || 0);
+  const net = Number(item.totalPrice || 0);
+  const d = gross - net;
+  return d > 0.009 ? d : 0;
 }
 
-function buildA4Html(pedido: Pedido, org: OrganizationInfo | null, settings: PrintSettings | null): string {
+function itemsDiscountTotal(items: any[]): number {
+  return (items || []).reduce((sum: number, i: any) => sum + itemDiscount(i), 0);
+}
+
+// Linha auxiliar com as dimensões na unidade definida no item (cm/mm/m).
+// A quantidade NÃO entra aqui pois já existe a coluna "Qtd"/linha de preço.
+function itemLabelLine(item: any): string {
+  if (!shouldShowDimensions(item)) return '';
+  const unit = getItemLengthUnit(item);
+  return `${formatLengthFromMm(Number(item.width || 0), unit)} × ${formatLengthFromMm(Number(item.height || 0), unit)} ${unit}`;
+}
+
+function buildA4Html(pedido: Pedido, org: OrganizationInfo | null, settings: PrintSettings | null, mode: PrintMode = 'order'): string {
+  const isBudget = mode === 'budget';
+  const docLabel = isBudget ? 'Orçamento' : 'Pedido';
+  const docNumber = escapeHtml((pedido as any).orderNumber || (pedido as any).budgetNumber || '');
   const { total, totalPaid, pending, methodNames, lastPaidDate } = computeTotalsPagamento(pedido);
   const items = pedido.items || [];
+  const totalDiscount = itemsDiscountTotal(items);
+  const grossSubtotal = total + totalDiscount;
+  const hasAnyDiscount = totalDiscount > 0.009;
   const orgName = escapeHtml(org?.name || org?.razaoSocial || '');
   const orgDoc = org?.cnpj ? `CNPJ: ${escapeHtml(org.cnpj)}` : '';
   const { street, zip } = formatAddressLines(org);
@@ -197,17 +217,23 @@ function buildA4Html(pedido: Pedido, org: OrganizationInfo | null, settings: Pri
     if (item.printColors) detailLines.push(`Cores: ${escapeHtml(item.printColors)}`);
     if (item.notes) detailLines.push(`Obs: ${escapeHtml(item.notes)}`);
     const details = detailLines.length ? `<div class="item-details">${detailLines.join(' • ')}</div>` : '';
+    const disc = itemDiscount(item);
+    const gross = Number(item.unitPrice || 0) * Number(item.quantity || 0);
+    const discCell = hasAnyDiscount
+      ? `<td class="money discount">${disc > 0 ? `- ${formatCurrency(disc)}` : '—'}</td>`
+      : '';
     return `
       <tr>
         <td class="num">${idx + 1}</td>
         <td>
           <div class="item-name">${escapeHtml(item.product?.name || item.description || 'Item')}</div>
-          <div class="item-sub">${escapeHtml(itemLabelLine(item))}</div>
+          ${(() => { const lbl = itemLabelLine(item); return lbl ? `<div class="item-sub">${escapeHtml(lbl)}</div>` : ''; })()}
           ${details}
         </td>
         <td class="qty">${escapeHtml(item.quantity)}</td>
         <td class="money">${formatCurrency(Number(item.unitPrice || 0))}</td>
-        <td class="money strong">${formatCurrency(Number(item.totalPrice || 0))}</td>
+        ${discCell}
+        <td class="money strong">${formatCurrency(hasAnyDiscount ? Number(item.totalPrice || 0) : gross)}</td>
       </tr>
     `;
   }).join('');
@@ -216,7 +242,7 @@ function buildA4Html(pedido: Pedido, org: OrganizationInfo | null, settings: Pri
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8" />
-<title>Pedido ${escapeHtml(pedido.orderNumber)}</title>
+<title>${docLabel} ${docNumber}</title>
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -246,6 +272,7 @@ function buildA4Html(pedido: Pedido, org: OrganizationInfo | null, settings: Pri
   td.money.strong, .totals .row.grand .v { font-weight: 700; }
   .item-name { font-weight: 600; }
   .item-sub, .item-details { font-size: 10.5px; color: #666; margin-top: 2px; }
+  td.money.discount { color: #b91c1c; font-weight: 600; width: 100px; }
   .totals { margin-top: 10px; display: flex; justify-content: flex-end; }
   .totals .box { width: 280px; }
   .totals .row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; }
@@ -294,7 +321,8 @@ function buildA4Html(pedido: Pedido, org: OrganizationInfo | null, settings: Pri
       </div>
     </div>
     <div class="order">
-      <div class="number">${escapeHtml(pedido.orderNumber)}</div>
+      <div class="label">${docLabel}</div>
+      <div class="number">${docNumber}</div>
       <div class="date">Emitido em ${formatDateTime(pedido.createdAt)}</div>
     </div>
   </div>
@@ -309,8 +337,10 @@ function buildA4Html(pedido: Pedido, org: OrganizationInfo | null, settings: Pri
   </div>
 
   ${(() => {
-    const tpl = (settings?.printFooterNotes && settings.printFooterNotes.trim()) || DEFAULT_FOOTER;
-    return `<div class="section"><h2>Avisos</h2><div class="info-block">${notesToHtml(tpl)}</div></div>`;
+    const tpl = isBudget
+      ? applyBudgetPlaceholders((settings?.printBudgetNotes && settings.printBudgetNotes.trim()) || DEFAULT_BUDGET, pedido, settings)
+      : ((settings?.printFooterNotes && settings.printFooterNotes.trim()) || DEFAULT_FOOTER);
+    return `<div class="section"><h2>Avisos</h2><div class="info-block${isBudget ? ' budget' : ''}">${notesToHtml(tpl)}</div></div>`;
   })()}
 
   <div class="section">
@@ -322,17 +352,28 @@ function buildA4Html(pedido: Pedido, org: OrganizationInfo | null, settings: Pri
           <th>Descrição</th>
           <th style="text-align:center">Qtd</th>
           <th style="text-align:right">Valor unit.</th>
+          ${hasAnyDiscount ? '<th style="text-align:right">Desconto</th>' : ''}
           <th style="text-align:right">Total</th>
         </tr>
       </thead>
       <tbody>
-        ${itemsRows || '<tr><td colspan="5" style="text-align:center;color:#888;padding:18px">Sem itens</td></tr>'}
+        ${itemsRows || `<tr><td colspan="${hasAnyDiscount ? 6 : 5}" style="text-align:center;color:#888;padding:18px">Sem itens</td></tr>`}
       </tbody>
     </table>
 
     <div class="totals">
       <div class="box">
+        ${totalDiscount > 0 ? `
+          <div class="row"><span>Subtotal</span><span class="v">${formatCurrency(grossSubtotal)}</span></div>
+          <div class="row pending"><span>Desconto</span><span class="v">- ${formatCurrency(totalDiscount)}</span></div>
+        ` : ''}
         <div class="row grand"><span>Total</span><span class="v">${formatCurrency(total)}</span></div>
+        ${isBudget ? `
+        <div class="delivery-line">
+          <span class="dl-label">Validade do Orçamento</span>
+          <span class="dl-value">${pedido.validUntil ? formatDate(pedido.validUntil) : 'A combinar'}</span>
+        </div>
+        ` : `
         ${totalPaid > 0 ? `
           <div class="row paid">
             <span class="pay-info">
@@ -350,6 +391,7 @@ function buildA4Html(pedido: Pedido, org: OrganizationInfo | null, settings: Pri
           <span class="dl-label">Prazo de Entrega</span>
           <span class="dl-value">${pedido.deliveryDate ? formatDate(pedido.deliveryDate) : 'A combinar'}</span>
         </div>
+        `}
       </div>
     </div>
   </div>
@@ -361,9 +403,14 @@ function buildA4Html(pedido: Pedido, org: OrganizationInfo | null, settings: Pri
 </html>`;
 }
 
-function buildThermalHtml(pedido: Pedido, org: OrganizationInfo | null, settings: PrintSettings | null): string {
+function buildThermalHtml(pedido: Pedido, org: OrganizationInfo | null, settings: PrintSettings | null, mode: PrintMode = 'order'): string {
+  const isBudget = mode === 'budget';
+  const docLabel = isBudget ? 'ORÇAMENTO' : 'PEDIDO';
+  const docNumber = escapeHtml((pedido as any).orderNumber || (pedido as any).budgetNumber || '');
   const { total, totalPaid, pending, methodNames } = computeTotalsPagamento(pedido);
   const items = pedido.items || [];
+  const totalDiscount = itemsDiscountTotal(items);
+  const grossSubtotal = total + totalDiscount;
   const orgName = escapeHtml(org?.name || org?.razaoSocial || '');
   const orgDoc = org?.cnpj ? `CNPJ ${escapeHtml(org.cnpj)}` : '';
   const orgPhone = org?.phone ? `Tel: ${escapeHtml(org.phone)}` : '';
@@ -377,11 +424,10 @@ function buildThermalHtml(pedido: Pedido, org: OrganizationInfo | null, settings
     : isPartial ? 'PARCIAL'
     : 'PENDENTE';
 
-  const itemBlocks = items.map((item: any, idx: number) => {
+  const itemBlocks = items.map((item: any) => {
     const name = escapeHtml(item.product?.name || item.description || 'Item');
     const qty = Number(item.quantity || 0);
     const unit = Number(item.unitPrice || 0);
-    const totalLine = Number(item.totalPrice || 0);
     // Só mostra a linha auxiliar quando ela carrega informação extra (dimensões),
     // evitando duplicar a quantidade que já aparece em "1 x R$ ...".
     const showSub = shouldShowDimensions(item);
@@ -390,7 +436,7 @@ function buildThermalHtml(pedido: Pedido, org: OrganizationInfo | null, settings
       <div class="item">
         <div class="item-name">${name}</div>
         ${sub ? `<div class="item-sub">${sub}</div>` : ''}
-        <div class="item-row"><span>${qty} x ${formatCurrency(unit)}</span><span>${formatCurrency(totalLine)}</span></div>
+        <div class="item-row"><span>${qty} x ${formatCurrency(unit)}</span><span>${formatCurrency(unit * qty)}</span></div>
       </div>
     `;
   }).join('');
@@ -399,7 +445,7 @@ function buildThermalHtml(pedido: Pedido, org: OrganizationInfo | null, settings
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8" />
-<title>Pedido ${escapeHtml(pedido.orderNumber)}</title>
+<title>${docLabel} ${docNumber}</title>
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -447,7 +493,7 @@ function buildThermalHtml(pedido: Pedido, org: OrganizationInfo | null, settings
   ${orgPhone ? `<div class="center sm">${orgPhone}</div>` : ''}
 
   <div class="hr"></div>
-  <div class="order-title">PEDIDO ${escapeHtml(pedido.orderNumber)}</div>
+  <div class="order-title">${docLabel} ${docNumber}</div>
   <div class="order-date">${formatDateTime(pedido.createdAt)}</div>
 
   <div class="hr"></div>
@@ -456,7 +502,9 @@ function buildThermalHtml(pedido: Pedido, org: OrganizationInfo | null, settings
   <div class="sm">Tel: ${escapeHtml(pedido.customer?.phone || '-')}</div>
 
   ${(() => {
-    const tpl = (settings?.printFooterNotes && settings.printFooterNotes.trim()) || DEFAULT_FOOTER;
+    const tpl = isBudget
+      ? applyBudgetPlaceholders((settings?.printBudgetNotes && settings.printBudgetNotes.trim()) || DEFAULT_BUDGET, pedido, settings)
+      : ((settings?.printFooterNotes && settings.printFooterNotes.trim()) || DEFAULT_FOOTER);
     const lines = tpl.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     return `<div class="hr"></div><div class="bold">Avisos</div>${lines.map(l => `<div class="sm">${escapeHtml(l)}</div>`).join('')}`;
   })()}
@@ -467,16 +515,22 @@ function buildThermalHtml(pedido: Pedido, org: OrganizationInfo | null, settings
 
   <div class="hr"></div>
   <div class="totals">
+    ${totalDiscount > 0 ? `
+      <div class="row"><span>Subtotal</span><span>${formatCurrency(grossSubtotal)}</span></div>
+      <div class="row"><span>Desconto</span><span>- ${formatCurrency(totalDiscount)}</span></div>
+    ` : ''}
     <div class="row grand"><span>TOTAL</span><span>${formatCurrency(total)}</span></div>
-    ${totalPaid > 0 ? `
+    ${!isBudget && totalPaid > 0 ? `
       <div class="row"><span>${methodNames.length ? escapeHtml(methodNames.join(', ')) : 'Pago'}</span><span>- ${formatCurrency(totalPaid)}</span></div>
     ` : ''}
-    ${pending > 0 && totalPaid > 0 ? `<div class="row"><span>Saldo pendente</span><span>${formatCurrency(pending)}</span></div>` : ''}
+    ${!isBudget && pending > 0 && totalPaid > 0 ? `<div class="row"><span>Saldo pendente</span><span>${formatCurrency(pending)}</span></div>` : ''}
   </div>
-  ${isPartial ? '' : `<div class="hr"></div><div class="center bold">SITUACAO: ${finStatusLabel}</div>`}
+  ${isBudget || isPartial ? '' : `<div class="hr"></div><div class="center bold">SITUACAO: ${finStatusLabel}</div>`}
 
   <div class="hr"></div>
-  <div class="row"><span class="bold">Previsao de Entrega</span><span class="bold">${pedido.deliveryDate ? formatDate(pedido.deliveryDate) : 'A combinar'}</span></div>
+  ${isBudget
+    ? `<div class="row"><span class="bold">Validade</span><span class="bold">${pedido.validUntil ? formatDate(pedido.validUntil) : 'A combinar'}</span></div>`
+    : `<div class="row"><span class="bold">Previsao de Entrega</span><span class="bold">${pedido.deliveryDate ? formatDate(pedido.deliveryDate) : 'A combinar'}</span></div>`}
   ${pedido.notes ? `<div class="hr"></div><div class="sm"><span class="bold">Obs:</span> ${escapeHtml(pedido.notes)}</div>` : ''}
 
   <div class="hr"></div>
@@ -498,8 +552,12 @@ const WINDOW_DIMENSIONS: Record<PrintFormat, { w: number; h: number }> = {
 export function buildOrderPlainText(
   pedido: Pedido,
   org: OrganizationInfo | null,
-  settings: PrintSettings | null
+  settings: PrintSettings | null,
+  mode: PrintMode = 'order'
 ): string {
+  const isBudget = mode === 'budget';
+  const docLabel = isBudget ? 'Orçamento' : 'Pedido';
+  const docNumber = (pedido as any).orderNumber || (pedido as any).budgetNumber || '';
   const { total, totalPaid, pending, methodNames, lastPaidDate } = computeTotalsPagamento(pedido);
   const items = pedido.items || [];
   const lines: string[] = [];
@@ -518,7 +576,7 @@ export function buildOrderPlainText(
 
   // Separador visual (igual à linha do A4)
   lines.push('');
-  lines.push(`*Pedido ${pedido.orderNumber}*`);
+  lines.push(`*${docLabel} ${docNumber}*`);
   lines.push(`Emitido em ${formatDateTime(pedido.createdAt)}`);
   lines.push('');
 
@@ -531,7 +589,9 @@ export function buildOrderPlainText(
   }
 
   // === Avisos (mesma posição do A4) ===
-  const noteTpl = (settings?.printFooterNotes && settings.printFooterNotes.trim()) || null;
+  const noteTpl = isBudget
+    ? applyBudgetPlaceholders((settings?.printBudgetNotes && settings.printBudgetNotes.trim()) || DEFAULT_BUDGET, pedido, settings)
+    : ((settings?.printFooterNotes && settings.printFooterNotes.trim()) || null);
   if (noteTpl) {
     lines.push('*AVISOS*');
     noteTpl.split(/\r?\n/).map(l => l.trim()).filter(Boolean).forEach(l => lines.push(l));
@@ -545,35 +605,48 @@ export function buildOrderPlainText(
       const name = item.product?.name || item.description || 'Item';
       const qty = Number(item.quantity || 0);
       const unit = Number(item.unitPrice || 0);
-      const totalLine = Number(item.totalPrice || 0);
+      const dimUnit = getItemLengthUnit(item);
       const dimensions = shouldShowDimensions(item)
-        ? ` (${item.width}×${item.height}mm)`
+        ? ` (${formatLengthFromMm(Number(item.width || 0), dimUnit)}×${formatLengthFromMm(Number(item.height || 0), dimUnit)} ${dimUnit})`
         : '';
+      const disc = itemDiscount(item);
       lines.push(`${idx + 1}. ${name}${dimensions}`);
-      lines.push(`   ${qty} × ${formatCurrency(unit)} = ${formatCurrency(totalLine)}`);
+      lines.push(`   ${qty} × ${formatCurrency(unit)} = ${formatCurrency(unit * qty)}`);
+      if (disc > 0) lines.push(`   Desconto neste item: -${formatCurrency(disc)} (líquido ${formatCurrency(Number(item.totalPrice || 0))})`);
       if (item.notes) lines.push(`   Obs: ${item.notes}`);
     });
     lines.push('');
   }
 
-  // === Totais (mesma sequência do A4: Total → Pago → Saldo → Situação) ===
-  lines.push(`*Total: ${formatCurrency(total)}*`);
-  if (totalPaid > 0) {
-    const method = methodNames.length ? methodNames.join(', ') : 'Pago';
-    const date = lastPaidDate ? ` em ${formatDate(lastPaidDate)}` : '';
-    lines.push(`${method}${date}: -${formatCurrency(totalPaid)}`);
+  // === Totais (mesma sequência do A4: Subtotal → Desconto → Total → ...) ===
+  const totalDiscount = itemsDiscountTotal(items);
+  if (totalDiscount > 0) {
+    lines.push(`Subtotal: ${formatCurrency(total + totalDiscount)}`);
+    lines.push(`Desconto: -${formatCurrency(totalDiscount)}`);
   }
-  if (pending > 0 && totalPaid > 0) {
-    lines.push(`Saldo pendente: ${formatCurrency(pending)}`);
-  } else if (pending === 0 && totalPaid > 0 && total > 0) {
-    lines.push('Situação financeira: *PAGO*');
-  } else if (totalPaid === 0 && total > 0) {
-    lines.push('Situação financeira: *PENDENTE*');
+  lines.push(`*Total: ${formatCurrency(total)}*`);
+  if (!isBudget) {
+    if (totalPaid > 0) {
+      const method = methodNames.length ? methodNames.join(', ') : 'Pago';
+      const date = lastPaidDate ? ` em ${formatDate(lastPaidDate)}` : '';
+      lines.push(`${method}${date}: -${formatCurrency(totalPaid)}`);
+    }
+    if (pending > 0 && totalPaid > 0) {
+      lines.push(`Saldo pendente: ${formatCurrency(pending)}`);
+    } else if (pending === 0 && totalPaid > 0 && total > 0) {
+      lines.push('Situação financeira: *PAGO*');
+    } else if (totalPaid === 0 && total > 0) {
+      lines.push('Situação financeira: *PENDENTE*');
+    }
   }
 
-  // === Prazo de Entrega (mesmo badge do A4) ===
+  // === Prazo de Entrega / Validade (mesmo badge do A4) ===
   lines.push('');
-  lines.push(`Prazo de Entrega: *${pedido.deliveryDate ? formatDate(pedido.deliveryDate) : 'A combinar'}*`);
+  if (isBudget) {
+    lines.push(`Validade do Orçamento: *${pedido.validUntil ? formatDate(pedido.validUntil) : 'A combinar'}*`);
+  } else {
+    lines.push(`Prazo de Entrega: *${pedido.deliveryDate ? formatDate(pedido.deliveryDate) : 'A combinar'}*`);
+  }
 
   // === Observações do pedido (se houver) ===
   if (pedido.notes) {
@@ -595,12 +668,12 @@ export function buildOrderPlainText(
 
 // Renderiza o A4 num iframe oculto e devolve o canvas pronto pra exportar.
 // Usado tanto pelo PDF quanto pela cópia como imagem.
-async function renderA4Canvas(pedido: Pedido): Promise<HTMLCanvasElement> {
+async function renderA4Canvas(pedido: Pedido, mode: PrintMode = 'order'): Promise<HTMLCanvasElement> {
   const [org, settings] = await Promise.all([loadOrganization(), loadSettings()]);
   const pdfOrg = org
     ? { ...org, logoScale: Math.round((org.logoScale ?? 100) * 0.65) }
     : org;
-  const html = buildA4Html(pedido, pdfOrg, settings);
+  const html = buildA4Html(pedido, pdfOrg, settings, mode);
 
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';
@@ -683,16 +756,16 @@ async function renderA4Canvas(pedido: Pedido): Promise<HTMLCanvasElement> {
   }
 }
 
-export async function copyOrderToClipboard(pedido: Pedido): Promise<void> {
+export async function copyOrderToClipboard(pedido: Pedido, mode: PrintMode = 'order'): Promise<void> {
   const [org, settings] = await Promise.all([loadOrganization(), loadSettings()]);
-  const plainText = buildOrderPlainText(pedido, org, settings);
+  const plainText = buildOrderPlainText(pedido, org, settings, mode);
 
   // Tenta copiar como imagem (mesmo visual do PDF) + texto fallback.
   // Em alvos que aceitam imagem (WhatsApp Web, Word, Gmail) cola a imagem;
   // em alvos só-texto (terminal, txt) cola o texto.
   if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
     try {
-      const canvas = await renderA4Canvas(pedido);
+      const canvas = await renderA4Canvas(pedido, mode);
       const blob: Blob = await new Promise((resolve, reject) =>
         canvas.toBlob(b => b ? resolve(b) : reject(new Error('Falha ao gerar imagem')), 'image/png')
       );
@@ -712,8 +785,8 @@ export async function copyOrderToClipboard(pedido: Pedido): Promise<void> {
   await navigator.clipboard.writeText(plainText);
 }
 
-export async function generateOrderPdf(pedido: Pedido) {
-  const canvas = await renderA4Canvas(pedido);
+export async function generateOrderPdf(pedido: Pedido, mode: PrintMode = 'order') {
+  const canvas = await renderA4Canvas(pedido, mode);
   const { default: jsPDF } = await import('jspdf');
 
   const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
@@ -736,12 +809,13 @@ export async function generateOrderPdf(pedido: Pedido) {
     heightLeft -= pageH;
   }
 
-  pdf.save(`${pedido.orderNumber || 'pedido'}.pdf`);
+  const fileName = (pedido as any).orderNumber || (pedido as any).budgetNumber || (mode === 'budget' ? 'orcamento' : 'pedido');
+  pdf.save(`${fileName}.pdf`);
 }
 
-export async function printOrder(pedido: Pedido, format: PrintFormat) {
+export async function printOrder(pedido: Pedido, format: PrintFormat, mode: PrintMode = 'order') {
   const [org, settings] = await Promise.all([loadOrganization(), loadSettings()]);
-  const html = format === 'A4' ? buildA4Html(pedido, org, settings) : buildThermalHtml(pedido, org, settings);
+  const html = format === 'A4' ? buildA4Html(pedido, org, settings, mode) : buildThermalHtml(pedido, org, settings, mode);
   const { w, h } = WINDOW_DIMENSIONS[format];
 
   let printWindow: Window | null = printWindowRef && !printWindowRef.closed ? printWindowRef : null;
@@ -776,4 +850,18 @@ export async function printOrder(pedido: Pedido, format: PrintFormat) {
   } else {
     printWindow.addEventListener('load', () => setTimeout(triggerPrint, 150));
   }
+}
+
+// ── Wrappers para Orçamento ───────────────────────────────────────────
+// Reaproveitam o mesmo motor de impressão dos pedidos, no modo 'budget'.
+export function printBudget(budget: Pedido, format: PrintFormat) {
+  return printOrder(budget, format, 'budget');
+}
+
+export function generateBudgetPdf(budget: Pedido) {
+  return generateOrderPdf(budget, 'budget');
+}
+
+export function copyBudgetToClipboard(budget: Pedido) {
+  return copyOrderToClipboard(budget, 'budget');
 }

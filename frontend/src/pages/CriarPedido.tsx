@@ -470,6 +470,7 @@ const CriarPedido: React.FC = () => {
         quantity: item.quantity,
         unitPrice: Number(item.unitPrice),
         totalPrice: Number(item.totalPrice),
+        discountItem: Number(item.attributes?.discountItem) || 0,
         notes: item.notes,
         attributes: item.attributes || {},
         pricingRuleId: item.pricingRuleId,
@@ -889,6 +890,15 @@ const CriarPedido: React.FC = () => {
         // Criar novo pedido
         await api.post('/api/sales/orders', pedidoData);
         toast.success('Pedido criado com sucesso!');
+        // Marca o orçamento de origem como convertido (APPROVED) para sinalizar
+        // na listagem que ele já gerou pedido e evitar duplicação acidental.
+        if (fromBudgetId) {
+          try {
+            await api.patch(`/api/sales/budgets/${fromBudgetId}/status`, { status: 'APPROVED' });
+          } catch (e) {
+            console.error('Falha ao marcar orçamento como convertido:', e);
+          }
+        }
         // Submit OK em novo pedido descarta o rascunho local.
         if (isNewOrderFromScratch) clearOrderDraft();
       }
@@ -984,7 +994,7 @@ const CriarPedido: React.FC = () => {
             <div>
               <h1 className="text-display flex items-center space-x-2">
                 <span>
-                  {isEditing ? 'Editar Pedido' : fromBudgetId ? 'Gerar Pedido de Oramento' : 'Criar Novo Pedido'}
+                  {isEditing ? 'Editar Pedido' : fromBudgetId ? 'Gerar Pedido de Orçamento' : 'Criar Novo Pedido'}
                 </span>
                 {isEditing && (
                   <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
@@ -994,8 +1004,8 @@ const CriarPedido: React.FC = () => {
               </h1>
               <p className="text-muted-foreground">
                 {isEditing
-                  ? 'Modifique as informaes do pedido existente'
-                  : 'Preencha as informaes para criar um novo pedido ou oramento'
+                  ? 'Modifique as informações do pedido existente'
+                  : 'Preencha as informações para criar um novo pedido ou orçamento'
                 }
               </p>
             </div>

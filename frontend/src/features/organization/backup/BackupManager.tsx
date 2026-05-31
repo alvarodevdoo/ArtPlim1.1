@@ -39,12 +39,21 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
     setUnencryptedExport,
     importPassword,
     setImportPassword,
+    mirrorRestore,
+    setMirrorRestore,
+    pendingFileEncrypted,
+    partialRestore,
+    setPartialRestore,
+    restoreModules,
+    setRestoreModules,
     showImportPasswordModal,
     setShowImportPasswordModal,
     pendingFile,
     handleExportBackup,
     executeRestore,
-    handleImportBackup
+    handleImportBackup,
+    importStatus,
+    importProgress
   } = useBackup({ selectedModules, loadSettings, userRole, customBackup });
 
   const handleImportClick = () => {
@@ -241,41 +250,147 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
                     <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-2 text-primary">
                        <Shield className="w-6 h-6" />
                     </div>
-                    <CardTitle className="text-lg">Desbloquear Backup</CardTitle>
+                    <CardTitle className="text-lg">
+                      {pendingFileEncrypted ? 'Desbloquear Backup' : 'Restaurar Backup'}
+                    </CardTitle>
                     <CardDescription className="text-xs">
-                      Este arquivo `.bdb` está protegido. Informe a senha definida na exportação ou a senha mestre.
+                      {pendingFileEncrypted
+                        ? 'Este arquivo `.bdb` está protegido. Informe a senha definida na exportação ou a senha mestre.'
+                        : 'Confirme as opções abaixo para restaurar este backup.'}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <Input 
-                        type="password"
-                        placeholder="Digite a senha de desbloqueio..."
-                        autoFocus
-                        value={importPassword}
-                        onChange={(e) => setImportPassword(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleConfirmRestore()}
+                    {pendingFileEncrypted && (
+                      <div className="space-y-2">
+                        <Input
+                          type="password"
+                          placeholder="Digite a senha de desbloqueio..."
+                          autoFocus
+                          value={importPassword}
+                          onChange={(e) => setImportPassword(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleConfirmRestore()}
+                        />
+                      </div>
+                    )}
+                    <label
+                      className="flex items-start gap-2 cursor-pointer rounded-lg border p-2 bg-muted/30"
+                      title="Apaga os dados dos módulos contidos no backup nesta organização antes de inserir, deixando o banco idêntico ao backup."
+                    >
+                      <input
+                        type="checkbox"
+                        checked={mirrorRestore}
+                        onChange={(e) => setMirrorRestore(e.target.checked)}
+                        className="mt-0.5 h-3.5 w-3.5 rounded border-input"
+                        disabled={loading}
                       />
+                      <span className="flex flex-col">
+                        <span className="text-xs font-semibold">Restauração espelho</span>
+                        <span className={`text-[10px] ${mirrorRestore ? 'text-red-600' : 'text-muted-foreground'}`}>
+                          {mirrorRestore
+                            ? 'Apaga os dados dos módulos do backup antes de inserir (recomendado para recuperação).'
+                            : 'Mescla com os dados atuais (pode duplicar registros sem chave única).'}
+                        </span>
+                      </span>
+                    </label>
+
+                    {/* Escopo da restauração: sistema inteiro x parcial */}
+                    <div className="rounded-lg border p-2 bg-muted/30 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex flex-col">
+                          <span className="text-xs font-semibold">
+                            {partialRestore ? 'Recuperação parcial' : 'Recuperar sistema inteiro'}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {partialRestore
+                              ? 'Selecione abaixo quais módulos restaurar.'
+                              : 'Restaura todos os módulos contidos no backup.'}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={partialRestore}
+                          disabled={loading}
+                          onClick={() => setPartialRestore(prev => !prev)}
+                          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${partialRestore ? 'bg-primary' : 'bg-input'}`}
+                        >
+                          <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${partialRestore ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                        </button>
+                      </div>
+
+                      {partialRestore && (
+                        <div className="grid grid-cols-2 gap-1.5 pt-1">
+                          {Object.entries(restoreModules).map(([mod, active]) => (
+                            <label
+                              key={mod}
+                              className={`flex items-center gap-2 p-1.5 border rounded-md cursor-pointer transition-colors ${active ? 'bg-primary/5 border-primary' : 'bg-white border-border'}`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={active}
+                                disabled={loading}
+                                onChange={() => setRestoreModules(prev => ({ ...prev, [mod]: !active }))}
+                                className="rounded border-input text-primary h-3.5 w-3.5"
+                              />
+                              <span className="text-[11px] font-medium">
+                                {mod === 'config' ? 'Configurações' :
+                                 mod === 'profiles' ? 'Clientes/Usuários' :
+                                 mod === 'materials' ? 'Insumos/Estoque' :
+                                 mod === 'products' ? 'Produtos/Catálogo' :
+                                 mod === 'production' ? 'Produção' :
+                                 mod === 'sales' ? 'Vendas' :
+                                 mod === 'finance' ? 'Financeiro' :
+                                 mod === 'audit' ? 'Auditoria (logs)' : mod}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
                     </div>
+
                     <div className="flex gap-2">
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         onClick={() => { setShowImportPasswordModal(false); }}
                         className="flex-1"
+                        disabled={loading}
                       >
                         Cancelar
                       </Button>
-                      <Button 
+                      <Button
                         onClick={handleConfirmRestore}
-                        disabled={loading || !importPassword}
+                        disabled={loading || (partialRestore && !Object.values(restoreModules).some(Boolean))}
                         className="flex-1"
                       >
-                        {loading ? 'Abrindo...' : 'Confirmar'}
+                        {loading ? 'Processando...' : 'Confirmar'}
                       </Button>
                     </div>
+
+                    {loading && (
+                      <div className="space-y-2 mt-4">
+                        <div className="flex justify-between text-xs font-medium text-muted-foreground">
+                          <span>{importStatus === 'uploading' ? 'Enviando arquivo...' : 'Restaurando dados...'}</span>
+                          {importStatus === 'uploading' && <span>{importProgress}%</span>}
+                        </div>
+                        <div className="h-1.5 w-full bg-primary/10 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full bg-primary transition-all duration-300 ${importStatus === 'processing' ? 'w-full animate-pulse' : ''}`}
+                            style={{ width: importStatus === 'uploading' ? `${importProgress}%` : '100%' }}
+                          />
+                        </div>
+                        {importStatus === 'processing' && (
+                          <p className="text-[10px] text-center text-amber-600 mt-1">
+                            Processo em andamento no servidor. Isso pode levar alguns minutos. Por favor, aguarde e não feche esta janela.
+                          </p>
+                        )}
+                      </div>
+                    )}
+
                     <p className="text-[10px] text-center text-muted-foreground flex items-center justify-center gap-1">
                       <AlertTriangle className="w-3 h-3 text-amber-500" />
-                      A restauração substituirá dados existentes com o mesmo ID.
+                      {mirrorRestore
+                        ? 'Os dados atuais dos módulos do backup serão apagados e substituídos.'
+                        : 'A restauração substituirá dados existentes com o mesmo ID.'}
                     </p>
                   </CardContent>
                 </Card>

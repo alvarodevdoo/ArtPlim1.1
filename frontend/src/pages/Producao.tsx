@@ -168,18 +168,14 @@ export const Producao: React.FC = () => {
   useEffect(() => {
     if (!connected || !subscribe) return;
 
-    console.log('🔔 Configurando listeners do painel de produção...');
-
     // Listener para novas solicitações
     const unsubscribeChangeRequest = subscribe('change-request', () => {
-      console.log('📢 Nova solicitação recebida, recarregando lista...');
       loadPendingChanges();
       loadStats();
     });
 
     // Listener para decisões
     const unsubscribeChangeDecision = subscribe('change-decision-broadcast', () => {
-      console.log('📢 Decisão processada, recarregando lista...');
       loadPendingChanges();
       loadStats();
     });

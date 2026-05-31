@@ -82,6 +82,7 @@ const Configuracoes: React.FC = () => {
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'empresa');
   const [loading, setLoading] = useState(false);
   const [showChartOfAccounts, setShowChartOfAccounts] = useState(false);
+  const [coaRefreshKey, setCoaRefreshKey] = useState(0);
 
   // Sincroniza aba com URL: troca de aba escreve ?tab=..., e o estado segue a URL (back/forward funcionam)
   useEffect(() => {
@@ -103,6 +104,8 @@ const Configuracoes: React.FC = () => {
     cnpj: '',
     plan: 'basic'
   });
+  // Snapshot do que veio do servidor — usado para enviar SÓ os campos alterados no PUT.
+  const originalOrganizationRef = React.useRef<Record<string, any>>({});
 
   const [settings, setSettings] = useState<OrganizationSettings>({
     id: '',
@@ -162,6 +165,7 @@ const Configuracoes: React.FC = () => {
       const orgData = orgResponse.data.data;
       const settingsData = settingsResponse.data.data;
       setOrganizationData(orgData);
+      originalOrganizationRef.current = orgData ? { ...orgData } : {};
       setSettings(settingsData);
       try {
         localStorage.setItem('cfg.org', JSON.stringify(orgData));
@@ -177,8 +181,30 @@ const Configuracoes: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      // Limpar campos que não devem ser enviados para o update (ID, Slug, etc)
-      const { id, slug, active, createdAt, updatedAt, ...cleanData } = organizationData;
+      // Enviar APENAS os campos do schema de update QUE foram alterados (diff vs. snapshot).
+      // Reduz drasticamente o payload (logos em base64 ficam fora se não mudaram).
+      const allowedFields = [
+        'name', 'slug', 'subdomain', 'razaoSocial', 'cnpj', 'plan',
+        'email', 'phone',
+        'zipCode', 'address', 'addressNumber', 'complement', 'neighborhood', 'city', 'state',
+        'logoFull', 'logoIcon', 'logoScale',
+      ] as const;
+      const original = originalOrganizationRef.current || {};
+      const normalize = (v: any) => (v === '' || v === undefined ? null : v);
+      const cleanData = allowedFields.reduce<Record<string, any>>((acc, key) => {
+        const current = (organizationData as any)[key];
+        const previous = (original as any)[key];
+        if (current === undefined) return acc;
+        if (normalize(current) !== normalize(previous)) {
+          acc[key] = current;
+        }
+        return acc;
+      }, {});
+
+      if (Object.keys(cleanData).length === 0) {
+        toast.info('Nenhuma alteração para salvar.');
+        return;
+      }
 
       await api.put('/api/organization', cleanData);
       toast.success('Dados da empresa atualizados!');
@@ -336,6 +362,7 @@ const Configuracoes: React.FC = () => {
                 setSettings={setSettings}
                 handleSaveSettings={handleSaveSettings}
                 loading={loading}
+                refreshKey={coaRefreshKey}
               />
               <PixSettings
                 settings={settings}
@@ -488,7 +515,7 @@ const Configuracoes: React.FC = () => {
                   <p className="text-xs text-slate-500">Estrutura contábil oficial da organização</p>
                 </div>
               </div>
-              <Button variant="ghost" size="icon" onClick={() => setShowChartOfAccounts(false)} className="rounded-full">
+              <Button variant="ghost" size="icon" onClick={() => { setShowChartOfAccounts(false); setCoaRefreshKey(k => k + 1); }} className="rounded-full">
                 <X className="w-5 h-5 text-slate-400" />
               </Button>
             </div>

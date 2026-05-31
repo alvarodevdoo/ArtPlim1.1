@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent } from '@/components/ui/Card';
-import { 
-  PackagePlus, ArrowDownToLine, TrendingDown, AlertCircle, Loader2, RefreshCw, 
-  Package, X, Settings2, Plus, Trash2 
+import {
+  PackagePlus, ArrowDownToLine, TrendingDown, AlertCircle, Loader2, RefreshCw,
+  Package, X, Settings2, Plus, Trash2, Factory
 } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { ManufactureModal } from '@/features/producao/ManufactureModal';
+import { RecentProductionsPanel } from '@/features/producao/RecentProductionsPanel';
 
 interface Material {
   id: string;
@@ -94,7 +96,8 @@ export default function EstoqueConsumo() {
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [activeTab, setActiveTab] = useState<'materiais' | 'historico'>('materiais');
+  const [activeTab, setActiveTab] = useState<'materiais' | 'historico' | 'manufaturados'>('materiais');
+  const [showManufacture, setShowManufacture] = useState(false);
 
   // Modais
   const [showEntrada, setShowEntrada] = useState(false);
@@ -351,6 +354,9 @@ export default function EstoqueConsumo() {
           <Button variant="outline" onClick={() => { setContaError(false); setShowConsumo(true); }} className="gap-2">
             <TrendingDown size={16} /> Consumo Interno
           </Button>
+          <Button onClick={() => setShowManufacture(true)} className="gap-2 bg-purple-600 hover:bg-purple-700">
+            <Factory size={16} /> Nova Produção
+          </Button>
           <Button onClick={() => setShowReceipt(true)} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
             <PackagePlus size={16} /> Entrada NF
           </Button>
@@ -403,8 +409,23 @@ export default function EstoqueConsumo() {
       <div className="space-y-4">
         <div className="flex gap-4 border-b">
           <button onClick={() => setActiveTab('materiais')} className={`pb-2 text-sm font-semibold transition-all ${activeTab === 'materiais' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground'}`}>POSIÇÃO DE ESTOQUE</button>
+          <button onClick={() => setActiveTab('manufaturados')} className={`pb-2 text-sm font-semibold transition-all ${activeTab === 'manufaturados' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground'}`}>MANUFATURADOS</button>
           <button onClick={() => setActiveTab('historico')} className={`pb-2 text-sm font-semibold transition-all ${activeTab === 'historico' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground'}`}>HISTÓRICO AUDITÁVEL</button>
         </div>
+
+        {activeTab === 'manufaturados' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Produtos fabricados internamente. Clique em "Repetir" para refazer com as mesmas variáveis.
+              </p>
+              <Button onClick={() => setShowManufacture(true)} size="sm" className="gap-2 bg-purple-600 hover:bg-purple-700">
+                <Factory size={14} /> Nova Produção
+              </Button>
+            </div>
+            <RecentProductionsPanel refreshKey={refreshKey} onProduced={refresh} />
+          </div>
+        )}
 
         {activeTab === 'materiais' && (
           <Card className="overflow-hidden border-none shadow-sm">
@@ -723,6 +744,13 @@ export default function EstoqueConsumo() {
            </Button>
         </form>
       </Modal>
+
+      {/* Modal de Produção Interna (Manufaturados) */}
+      <ManufactureModal
+        open={showManufacture}
+        onClose={() => setShowManufacture(false)}
+        onSuccess={refresh}
+      />
 
       <Modal open={showConsumo} onClose={() => { setShowConsumo(false); setContaError(false); }} title="⬇️ Baixa de Consumo Interno">
          {contaError ? (

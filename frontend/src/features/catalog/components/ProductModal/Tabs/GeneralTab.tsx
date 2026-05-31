@@ -115,12 +115,26 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({ draft, setDraft, pricing
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest">Modo de Cálculo</Label>
-                  <select 
+                  <select
                     value={draft.pricingMode}
                     onChange={(e) => {
                       const newMode = e.target.value;
+                      const prevMode = draft.pricingMode;
                       handleChange('pricingMode', newMode);
-                      
+
+                      // Limpa artefatos do motor anterior ao trocar de modo:
+                      // - formulaData é específico da regra anterior (chaves como VALOR_BASE
+                      //   podem não existir ou ter outro significado na nova regra).
+                      // - salePrice (Preço Fixo Base) só faz sentido em SIMPLE_AREA/SIMPLE_UNIT;
+                      //   no motor dinâmico o preço vem 100% da fórmula, então zeramos para
+                      //   não deixar valor órfão pendurado no produto.
+                      if (newMode !== prevMode) {
+                        handleChange('formulaData', {});
+                        if (newMode === 'DYNAMIC_ENGINEER') {
+                          handleChange('salePrice', 0);
+                        }
+                      }
+
                       // Auto-seleção de regra para modos simples
                       if (newMode === 'SIMPLE_AREA') {
                         const m2Rule = pricingRules.find(r => r.name.toLowerCase().includes('m²'));

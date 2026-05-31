@@ -5,6 +5,7 @@ import multipart from '@fastify/multipart';
 import { authMiddleware } from './shared/infrastructure/auth/middleware';
 import { AppError } from './shared/infrastructure/errors/AppError';
 import { WebSocketServer } from './shared/infrastructure/websocket/WebSocketServer';
+import { initSubdomainCorsService } from './shared/infrastructure/cors/SubdomainCorsService';
 
 // Routes
 import { authRoutes } from './modules/auth/auth.routes';
@@ -38,13 +39,50 @@ import biRoutes from './modules/bi/bi.routes';
 import productionOrderRoutes from './modules/production/production-order.routes';
 
 async function registerPlugins(fastify: FastifyInstance) {
-  const allowedOrigins = [
-    'http://localhost:3000',
-    'https://erp.artplim.com.br',
-    'http://erp.artplim.com.br',
-    'https://api.artplim.com.br',
-    'http://api.artplim.com.br'
+  // Origens permitidas: lista separada por vírgula em CORS_ALLOWED_ORIGINS,
+  // com fallback para os defaults de dev.
+  const defaultOrigins = [
+    'http://localhost',
+    'http://localhost:3000'
   ];
+  const envOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map(o => o.trim())
+    .filter(Boolean);
+  const allowedOrigins = envOrigins.length > 0 ? envOrigins : defaultOrigins;
+
+  // Intranet: aceita origens em IPs privados (RFC1918 + loopback) quando
+  // CORS_ALLOW_INTRANET=true. Útil para máquinas em LAN sem domínio.
+  const allowIntranet = String(process.env.CORS_ALLOW_INTRANET || '').toLowerCase() === 'true';
+  const isIntranetOrigin = (origin: string): boolean => {
+    if (!allowIntranet) return false;
+    let host: string;
+    try {
+      host = new URL(origin).hostname;
+    } catch {
+      return false;
+    }
+    // IPv4 RFC1918 + loopback
+    if (/^10\./.test(host)) return true;
+    if (/^192\.168\./.test(host)) return true;
+    if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) return true;
+    if (/^127\./.test(host)) return true;
+    if (host === 'localhost' || host.endsWith('.local')) return true;
+    return false;
+  };
+
+  // Serviço de CORS dinâmico por subdomínio (lê Organization.subdomain do banco).
+  // CORS_BASE_DOMAINS é OBRIGATÓRIO: sem ele, qualquer subdomínio configurado
+  // no banco ficaria inacessível e o sistema dependeria apenas de CORS_ALLOWED_ORIGINS,
+  // o que é considerado configuração vulnerável.
+  const subdomainCors = initSubdomainCorsService(prisma);
+  if (!subdomainCors.hasBaseDomains()) {
+    throw new Error(
+      'CORS_BASE_DOMAINS não definido. Configure a lista de domínios-base ' +
+      '(ex.: CORS_BASE_DOMAINS=artplim.com.br) para liberar acesso por subdomínio.'
+    );
+  }
+  await subdomainCors.refresh();
 
   await fastify.register(cors, {
     origin: (origin, cb) => {
@@ -53,11 +91,24 @@ async function registerPlugins(fastify: FastifyInstance) {
         cb(null, true);
         return;
       }
-      
+
       if (allowedOrigins.includes(origin) || allowedOrigins.some(o => origin.startsWith(o))) {
         cb(null, true);
         return;
       }
+
+      // Subdomínio dinâmico cadastrado em Organization.subdomain
+      if (subdomainCors.isOriginAllowed(origin)) {
+        cb(null, true);
+        return;
+      }
+
+      // Acesso pela intranet (RFC1918) quando habilitado
+      if (isIntranetOrigin(origin)) {
+        cb(null, true);
+        return;
+      }
+
       cb(new Error("Not allowed by CORS"), false);
     },
     credentials: true
@@ -91,7 +142,7 @@ async function registerRoutes(fastify: FastifyInstance, options: { websocketServ
 
   await fastify.register(async function (api) {
     await api.register(authRoutes, { prefix: '/auth' });
-    
+
     // Configurar e Registrar Módulo de Vendas (Novo)
     const salesModule = new SalesModule(
       prisma,
@@ -107,12 +158,12 @@ async function registerRoutes(fastify: FastifyInstance, options: { websocketServ
     await api.register(organizationRoutes, { prefix: '/organization' });
     await api.register(customConfigRoutes, { prefix: '/organization/config' });
     await api.register(wmsRoutes, { prefix: '/wms' });
-    
+
     if (options.websocketServer) {
-        await api.register(productionRoutes, { 
-            prefix: '/production',
-            websocketServer: options.websocketServer
-        });
+      await api.register(productionRoutes, {
+        prefix: '/production',
+        websocketServer: options.websocketServer
+      });
     }
 
     await api.register(productionOrderRoutes, { prefix: '/production' });
@@ -138,6 +189,9 @@ async function registerRoutes(fastify: FastifyInstance, options: { websocketServ
 function setupErrorHandler(fastify: FastifyInstance) {
   fastify.setErrorHandler((error: any, request, reply) => {
     fastify.log.error(error);
+    // Fallback: em produção o logger do Fastify está desabilitado, então erros
+    // ficavam invisíveis. console.error sempre aparece no stdout do container.
+    console.error('[ErrorHandler]', request.method, request.url, error);
 
     if (error instanceof AppError) {
       return reply.status(error.statusCode).send({
@@ -165,9 +219,9 @@ function setupErrorHandler(fastify: FastifyInstance) {
 
     // Se for erro do Zod importado diretamente e der throw, mas Fastify com Zod normalmente cai no error.validation se tiver configurado certo.
     if (error.name === 'ZodError') {
-       const zodError = error as any;
-       const msg = zodError.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ');
-       return reply.status(400).send({
+      const zodError = error as any;
+      const msg = zodError.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ');
+      return reply.status(400).send({
         success: false,
         error: { message: `Validação: ${msg}`, statusCode: 400 }
       });
@@ -205,14 +259,19 @@ export async function buildApp() {
     },
     disableRequestLogging: true
   });
-  
+
   const websocketServer = new WebSocketServer(fastify.server, prisma);
   fastify.decorate('websocketServer', websocketServer);
   const options = { websocketServer };
 
   await registerPlugins(fastify);
-  await registerRoutes(fastify, options);
+  // IMPORTANTE: setErrorHandler precisa ser registrado ANTES das rotas.
+  // Em Fastify, o error handler é capturado por cada escopo encapsulado
+  // (ex: o plugin de /api) no momento do register(). Se setarmos depois,
+  // o plugin fica com o handler default e respostas viram 500 cruas em
+  // vez do nosso shape padronizado.
   setupErrorHandler(fastify);
+  await registerRoutes(fastify, options);
 
   return fastify;
 }

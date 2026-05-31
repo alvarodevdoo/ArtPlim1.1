@@ -1,7 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../../shared/infrastructure/database/prisma';
 import { AppError, ValidationError } from '../../../shared/infrastructure/errors/AppError';
-import { SeedChartOfAccountsUseCase } from '../../chartOfAccounts/useCases/SeedChartOfAccountsUseCase';
 
 
 interface LoginData {
@@ -159,10 +158,6 @@ export class AuthService {
           organizationId: organization.id
         }
       });
-
-      // Alimentar o plano de contas básico
-      const seedUseCase = new SeedChartOfAccountsUseCase();
-      await seedUseCase.execute(organization.id, tx);
 
       // Criar roles padrão da organização (RBAC)
       const roles = [

@@ -214,7 +214,7 @@ export class StockMovementService {
           accountId: financialAccount.id,
           type: 'EXPENSE',
           status: 'PAID',
-          amount: new Prisma.Decimal(totalCostOfConsumption),
+          amount: new Prisma.Decimal(totalValueCalculated),
           description: `Consumo Interno: ${material.name} (Qtde: ${consumeQuantity} ${material.unit})`,
           paidAt: new Date(),
           userId,

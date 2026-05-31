@@ -107,8 +107,6 @@ export function usePedidos() {
   useEffect(() => {
     if (!connected || !subscribe) return;
 
-    console.log('🔌 [usePedidos] Configurando listeners real-time...');
-
     const unsubUpdate = subscribe('order-updated', () => {
       const { debouncedSearch: s, statusFilter: st, dateFilter: d } = filtersRef.current;
       loadPedidos(s, st, d);
@@ -312,8 +310,6 @@ export function usePedidos() {
         const pedido = pedidos.find(p => p.id === pedidoId) || (selectedPedido?.id === pedidoId ? selectedPedido : null);
         
         if (pedido) {
-          console.log('[StatusChange] Redirecionando para edição com autoPay:', pedidoId);
-          
           // Memoriza o status desejado para tentar novamente após o pagamento
           setPendingStatusUpdate({ 
             pedidoId, 
@@ -339,8 +335,6 @@ export function usePedidos() {
     
     // 2. Se temos uma mudança pendente para esse pedido, vamos executá-la
     if (pendingStatusUpdate && pendingStatusUpdate.pedidoId === pedidoId) {
-      console.log('[PaymentSuccess] Executando mudança de status pendente:', pendingStatusUpdate.status);
-      
       const { status, processStatusId } = pendingStatusUpdate;
       setPendingStatusUpdate(null); // Limpamos antes para evitar loops
       

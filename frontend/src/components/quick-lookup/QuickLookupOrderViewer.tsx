@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useQuickLookup } from '@/contexts/QuickLookupContext';
 import api from '@/lib/api';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, cn, getItemLengthUnit, formatLengthFromMm } from '@/lib/utils';
 import { toast } from 'sonner';
 
 /**
@@ -30,6 +30,7 @@ interface OrderItem {
   unitPrice: number;
   totalPrice: number;
   notes?: string;
+  attributes?: any;
 }
 
 interface OrderDetail {
@@ -241,44 +242,71 @@ export const QuickLookupOrderViewer: React.FC = () => {
                     Sem itens registrados.
                   </p>
                 ) : (
-                  <div className="rounded-xl border divide-y bg-background">
-                    {order.items.map((item) => {
-                      const name =
-                        item.product?.name || item.productName || item.customSizeName || 'Item';
-                      const dim =
-                        item.width && item.height
-                          ? `${item.width}×${item.height}`
-                          : null;
-                      return (
-                        <div key={item.id} className="p-3 flex items-start gap-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold truncate">{name}</p>
-                            <p className="text-[11px] text-muted-foreground">
-                              {item.quantity}× {dim ? `· ${dim}` : ''}
-                            </p>
-                            {item.notes && (
-                              <p className="text-[10px] text-muted-foreground italic mt-1 line-clamp-2">
-                                {item.notes}
-                              </p>
-                            )}
-                          </div>
-                          <div className="text-right shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => copyValue('Valor unitário', Number(item.unitPrice))}
-                              className="group inline-flex items-center gap-1 text-xs font-bold text-foreground hover:text-primary transition-colors"
-                              title="Copiar valor unitário"
-                            >
-                              {formatCurrency(Number(item.unitPrice))}
-                              <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            </button>
-                            <p className="text-[10px] text-muted-foreground mt-0.5">
-                              Total {formatCurrency(Number(item.totalPrice))}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
+                  <div className="overflow-hidden rounded-xl border">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-muted/50 border-b text-muted-foreground uppercase">
+                        <tr>
+                          <th className="px-3 py-2 text-[10px] font-black tracking-wider">Item</th>
+                          <th className="px-3 py-2 text-center text-[10px] font-black tracking-wider">Qtd</th>
+                          <th className="px-3 py-2 text-right text-[10px] font-black tracking-wider">Unitário</th>
+                          <th className="px-3 py-2 text-right text-[10px] font-black tracking-wider">Subtotal</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y bg-background">
+                        {order.items.map((item) => {
+                          const name =
+                            item.product?.name || item.productName || item.customSizeName || 'Item';
+                          const qty = Number(item.quantity || 0);
+                          const unit = Number(item.unitPrice || 0);
+                          const net = Number(item.totalPrice || 0);
+                          const gross = unit * qty;
+                          const disc = gross - net;
+                          const hasDisc = disc > 0.009;
+                          const dimUnit = getItemLengthUnit(item);
+                          const hasDim = !!(item.width && item.height);
+                          return (
+                            <tr key={item.id}>
+                              <td className="px-3 py-3 align-top">
+                                <p className="font-bold text-foreground">{name}</p>
+                                {hasDim && (
+                                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                                    {formatLengthFromMm(Number(item.width), dimUnit)} × {formatLengthFromMm(Number(item.height), dimUnit)} {dimUnit}
+                                    <span className="mx-1 text-muted-foreground/40">|</span>
+                                    {((Number(item.width) * Number(item.height) * qty) / 1000000).toFixed(4)} m²
+                                  </p>
+                                )}
+                                {item.notes && (
+                                  <p className="text-[10px] text-muted-foreground italic mt-0.5 line-clamp-2">
+                                    {item.notes}
+                                  </p>
+                                )}
+                              </td>
+                              <td className="px-3 py-3 text-center align-top font-medium">{qty}</td>
+                              <td className="px-3 py-3 text-right align-top">
+                                <button
+                                  type="button"
+                                  onClick={() => copyValue('Valor unitário', unit)}
+                                  className="group inline-flex items-center gap-1 font-medium text-foreground hover:text-primary transition-colors"
+                                  title="Copiar valor unitário"
+                                >
+                                  {formatCurrency(unit)}
+                                  <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </button>
+                              </td>
+                              <td className="px-3 py-3 text-right align-top">
+                                {hasDisc && (
+                                  <>
+                                    <span className="block text-[11px] text-muted-foreground/60 line-through">{formatCurrency(gross)}</span>
+                                    <span className="block text-[11px] text-red-500">- {formatCurrency(disc)}</span>
+                                  </>
+                                )}
+                                <span className="block font-bold text-foreground">{formatCurrency(net)}</span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>

@@ -17,13 +17,15 @@ interface FinanceIntegrationSettingsProps {
   setSettings: React.Dispatch<React.SetStateAction<any>>;
   handleSaveSettings: (e: React.FormEvent) => Promise<void>;
   loading: boolean;
+  refreshKey?: number;
 }
 
 export const FinanceIntegrationSettings: React.FC<FinanceIntegrationSettingsProps> = ({
   settings,
   setSettings,
   handleSaveSettings,
-  loading
+  loading,
+  refreshKey = 0
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [accounts, setAccounts] = useState<any[]>([]);
@@ -45,7 +47,7 @@ export const FinanceIntegrationSettings: React.FC<FinanceIntegrationSettingsProp
       }
     };
     fetchAccounts();
-  }, []);
+  }, [refreshKey]);
 
   const comboboxOptions = accounts.map(a => ({
     id: a.id, // we might be saving the ID or the code? Usually the ID if it's the FK

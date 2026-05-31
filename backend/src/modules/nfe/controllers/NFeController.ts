@@ -71,6 +71,8 @@ export class NFeController {
     try {
       let result = parserService.parse(xmlContent);
       result = await this.autoMapItems(request.user!.organizationId, result, prisma);
+      // Anexa o XML bruto para que o front possa reenviá-lo no import e persistirmos a NF-e original
+      (result as any).rawXml = xmlContent;
 
       return reply.code(200).send({ success: true, data: result });
     } catch (error: any) {
@@ -122,7 +124,8 @@ export class NFeController {
       costDistributionMode: z.enum(['STRICT', 'REDISTRIBUTE']).optional(),
       extraFreightCost: z.number().nonnegative().optional(),
       extraTaxesCost: z.number().nonnegative().optional(),
-      extraOtherCost: z.number().nonnegative().optional()
+      extraOtherCost: z.number().nonnegative().optional(),
+      rawXml: z.string().optional()
     }).passthrough();
 
     let body;
@@ -217,6 +220,7 @@ export class NFeController {
       },
       include: {
         supplier: { select: { name: true, document: true } },
+        createdBy: { select: { name: true } },
         items: { select: { id: true } }
       },
       orderBy: { createdAt: 'desc' },
@@ -238,6 +242,7 @@ export class NFeController {
         totalAmount: r.totalAmount,
         supplierName: r.supplier?.name || '—',
         supplierDocument: r.supplier?.document || null,
+        importedByName: r.createdBy?.name || null,
         itemsImported: r.items.length,
         itemsSkipped: Array.isArray(meta.skippedItems) ? meta.skippedItems.length : 0,
         isReimport: !!meta.isReimport,
@@ -247,6 +252,84 @@ export class NFeController {
     });
 
     return reply.send({ success: true, data });
+  }
+
+  async getImport(request: FastifyRequest, reply: FastifyReply) {
+    const { id } = request.params as { id: string };
+    const prisma = getTenantClient(request.user!.organizationId);
+
+    const r: any = await prisma.materialReceipt.findFirst({
+      where: { id, organizationId: request.user!.organizationId },
+      include: {
+        supplier: { select: { name: true, document: true, email: true, phone: true } },
+        createdBy: { select: { name: true } },
+        items: {
+          include: { material: { select: { name: true, unit: true } } },
+          orderBy: { createdAt: 'asc' }
+        }
+      }
+    });
+
+    if (!r) {
+      return reply.code(404).send({ success: false, message: 'Importação não encontrada.' });
+    }
+
+    let meta: any = {};
+    try { meta = r.notes ? JSON.parse(r.notes) : {}; } catch { meta = {}; }
+
+    // Totais fiscais: usa o que foi persistido; se faltar mas houver XML salvo, re-parseia.
+    let totaisFiscais = meta.totaisFiscais || null;
+    if (!totaisFiscais && r.xmlContent) {
+      try {
+        const parsed: any = new NFeParserService().parse(r.xmlContent);
+        totaisFiscais = parsed.totaisFiscais || null;
+      } catch { /* XML inválido/legado — ignora */ }
+    }
+
+    const isNfe = typeof r.invoiceNumber === 'string' && r.invoiceNumber.length === 44;
+
+    const items = r.items.map((it: any) => {
+      let itMeta: any = {};
+      try { itMeta = it.notes ? JSON.parse(it.notes) : {}; } catch { itMeta = {}; }
+      return {
+        id: it.id,
+        codigo: itMeta.nfeItemCode || null,
+        descricaoNFe: itMeta.nfeItemDesc || null,
+        materialName: it.material?.name || '—',
+        unit: it.material?.unit || null,
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+        totalPrice: it.totalPrice
+      };
+    });
+
+    return reply.send({
+      success: true,
+      data: {
+        id: r.id,
+        chaveAcesso: isNfe ? r.invoiceNumber : null,
+        invoiceNumber: r.invoiceNumber,
+        nfeNumero: meta.nfeNumero || null,
+        issueDate: r.issueDate,
+        importedAt: r.createdAt,
+        totalAmount: r.totalAmount,
+        status: r.status,
+        supplier: {
+          name: r.supplier?.name || '—',
+          document: r.supplier?.document || null,
+          email: r.supplier?.email || null,
+          phone: r.supplier?.phone || null
+        },
+        importedByName: r.createdBy?.name || null,
+        isReimport: !!meta.isReimport,
+        extras: meta.extras || null,
+        totaisFiscais,
+        skippedItems: meta.skippedItems || [],
+        hasXml: Boolean(r.xmlContent),
+        xmlContent: r.xmlContent || null,
+        items
+      }
+    });
   }
 
   async checkImport(request: FastifyRequest, reply: FastifyReply) {

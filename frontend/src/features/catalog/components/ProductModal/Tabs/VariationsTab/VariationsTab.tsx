@@ -14,6 +14,15 @@ import { DraftVariationGroup, DraftOption, ConfigurationKind } from '../../types
 // Temp-ID generator (no external dep needed)
 const tempId = () => `__new_${Math.random().toString(36).slice(2, 9)}_${Date.now()}`;
 
+interface FormulaVariable {
+  id: string;
+  name?: string;
+  label?: string;
+  type?: string;
+  role?: string;
+  visible?: boolean;
+}
+
 interface VariationsTabProps {
   groups: DraftVariationGroup[];
   selectedOptionIds: Record<string, string>; // groupId → optionId
@@ -21,6 +30,10 @@ interface VariationsTabProps {
   onSelectOption: (groupId: string, optionId: string) => void;
   /** Quando definido, força o kind de novos grupos e esconde o seletor */
   forcedKind?: ConfigurationKind;
+  /** Motor de precificação do produto (controla qual segmented control mostrar) */
+  pricingMode?: 'SIMPLE_AREA' | 'SIMPLE_UNIT' | 'DYNAMIC_ENGINEER';
+  /** Variáveis da fórmula do pricingRule selecionado — usadas no motor DYNAMIC */
+  formulaVariables?: FormulaVariable[];
 }
 
 const InlineInput = ({ 
@@ -78,6 +91,8 @@ export const VariationsTab: React.FC<VariationsTabProps> = ({
   onChange,
   onSelectOption,
   forcedKind,
+  pricingMode,
+  formulaVariables = [],
 }) => {
   const { insumos } = useInsumos();
 
@@ -91,7 +106,17 @@ export const VariationsTab: React.FC<VariationsTabProps> = ({
 
   // New Option form (keyed by groupId)
   const [addingToGroup, setAddingToGroup] = useState<string | null>(null);
-  const [newOptionPricingMode, setNewOptionPricingMode] = useState<'ADJUST' | 'FIXED'>('ADJUST');
+  // Escopo da opção ao criar (Acabamentos). Para VARIATION é sempre REPLACE_RATE.
+  //  ADD_FLAT      → priceModifier + FIXED (soma fixo no total)
+  //  ADD_PER_AREA  → priceModifier + PER_AREA (soma ao R$/m²)
+  //  REPLACE_RATE  → fixedValue + PER_AREA (substitui R$/m²)
+  const [newOptionScope, setNewOptionScope] =
+    useState<'ADD_FLAT' | 'ADD_PER_AREA' | 'REPLACE_RATE'>('ADD_FLAT');
+  // Campos de quantidade da opção (Acabamentos) — espelham o painel de edição
+  const [newOptionDefaultQty, setNewOptionDefaultQty] = useState<string>('');
+  const [newOptionMinQty, setNewOptionMinQty] = useState<string>('');
+  const [newOptionMaxQty, setNewOptionMaxQty] = useState<string>('');
+  const [newOptionAllowCustomQty, setNewOptionAllowCustomQty] = useState<boolean>(false);
   const [newOptionValue, setNewOptionValue] = useState('0');
   /** Lista de insumos selecionados (multi-select) para criação em lote */
   const [selectedInsumos, setSelectedInsumos] = useState<SelectedInsumo[]>([]);
@@ -135,16 +160,40 @@ export const VariationsTab: React.FC<VariationsTabProps> = ({
   const handleAddOption = (groupId: string) => {
     const group = groups.find((g) => g.id === groupId);
     const baseOrder = group ? group.options.length : 0;
-    const effectiveMode = group?.kind === 'VARIATION' ? 'FIXED' : newOptionPricingMode;
+    // Para VARIATION sempre criamos como Preço Base que substitui o R$/m².
+    const effectiveScope = group?.kind === 'VARIATION' ? 'REPLACE_RATE' : newOptionScope;
+    const val = parseFloat(newOptionValue) || 0;
+
+    // Mapeia o escopo para os campos do modelo
+    const scopeFields = (() => {
+      switch (effectiveScope) {
+        case 'REPLACE_RATE':
+          return { priceModifier: 0, fixedValue: val, priceModifierType: 'PER_AREA' as const };
+        case 'ADD_PER_AREA':
+          return { priceModifier: val, fixedValue: null, priceModifierType: 'PER_AREA' as const };
+        case 'ADD_FLAT':
+        default:
+          return { priceModifier: val, fixedValue: null, priceModifierType: 'FIXED' as const };
+      }
+    })();
+
+    // Campos de quantidade (só fazem sentido em Acabamentos)
+    const qtyFields = group?.kind === 'FINISHING'
+      ? {
+          defaultQuantity: newOptionDefaultQty.trim() === '' ? null : Number(newOptionDefaultQty),
+          minQuantity:     newOptionMinQty.trim()     === '' ? null : Number(newOptionMinQty),
+          maxQuantity:     newOptionMaxQty.trim()     === '' ? null : Number(newOptionMaxQty),
+          allowCustomQty:  newOptionAllowCustomQty,
+        }
+      : {};
 
     if (selectedInsumos.length > 0) {
       const newOptions: DraftOption[] = selectedInsumos.map((insumo, idx) => ({
         id: tempId(),
         label: insumo.editedLabel.trim() || insumo.rawName.trim(),
         value: (insumo.editedLabel.trim() || insumo.rawName.trim()).toLowerCase().replace(/\s+/g, '_'),
-        priceModifier: effectiveMode === 'ADJUST' ? (parseFloat(newOptionValue) || 0) : 0,
-        priceModifierType: 'FIXED',
-        fixedValue: effectiveMode === 'FIXED' ? (parseFloat(newOptionValue) || 0) : null,
+        ...scopeFields,
+        ...qtyFields,
         materialId: insumo.id,
         isAvailable: true,
         displayOrder: baseOrder + idx + 1,
@@ -157,9 +206,8 @@ export const VariationsTab: React.FC<VariationsTabProps> = ({
         id: tempId(),
         label: serviceOptionName.trim(),
         value: serviceOptionName.trim().toLowerCase().replace(/\s+/g, '_'),
-        priceModifier: effectiveMode === 'ADJUST' ? (parseFloat(newOptionValue) || 0) : 0,
-        priceModifierType: 'FIXED',
-        fixedValue: effectiveMode === 'FIXED' ? (parseFloat(newOptionValue) || 0) : null,
+        ...scopeFields,
+        ...qtyFields,
         materialId: null as any,
         isAvailable: true,
         displayOrder: baseOrder + 1,
@@ -172,7 +220,11 @@ export const VariationsTab: React.FC<VariationsTabProps> = ({
     setSelectedInsumos([]);
     setServiceOptionName('');
     setNewOptionValue('0');
-    setNewOptionPricingMode('ADJUST');
+    setNewOptionScope('ADD_FLAT');
+    setNewOptionDefaultQty('');
+    setNewOptionMinQty('');
+    setNewOptionMaxQty('');
+    setNewOptionAllowCustomQty(false);
     setAddingToGroup(null);
   };
 
@@ -264,31 +316,16 @@ export const VariationsTab: React.FC<VariationsTabProps> = ({
           </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase text-amber-700">Nome do Grupo</label>
-              <input
-                autoFocus
-                value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddGroup()}
-                className="w-full h-10 px-4 rounded-xl border-2 border-amber-100 focus:border-amber-500 focus:outline-none font-bold text-slate-700"
-                placeholder={newGroupKind === 'FINISHING' ? 'Ex: Acabamento, Extras' : 'Ex: Cor, Papel, Tamanho'}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase text-amber-700">Tipo de Seleção</label>
-              <select
-                value={newGroupType}
-                onChange={(e) => setNewGroupType(e.target.value as DraftVariationGroup['type'])}
-                className="w-full h-10 px-4 rounded-xl border-2 border-amber-100 focus:border-amber-500 focus:outline-none font-bold text-slate-700 bg-white"
-              >
-                <option value="SELECT">Lista de Escolha (Select)</option>
-                <option value="BOOLEAN">Sim / Não (Toggle)</option>
-                <option value="NUMBER">Valor Numérico</option>
-                <option value="TEXT">Texto Livre</option>
-              </select>
-            </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase text-amber-700">Nome do Grupo</label>
+            <input
+              autoFocus
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddGroup()}
+              className="w-full h-10 px-4 rounded-xl border-2 border-amber-100 focus:border-amber-500 focus:outline-none font-bold text-slate-700"
+              placeholder={newGroupKind === 'FINISHING' ? 'Ex: Acabamento, Extras' : 'Ex: Cor, Papel, Tamanho'}
+            />
           </div>
           <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-amber-100">
             <Button variant="ghost" onClick={() => setShowAddGroup(false)} className="text-amber-700 font-bold">Cancelar</Button>
@@ -382,6 +419,8 @@ export const VariationsTab: React.FC<VariationsTabProps> = ({
                         onDelete={() => handleDeleteOption(group.id, option.id)}
                         onChange={(patch) => updateOption(group.id, option.id, patch)}
                         isGlobalEditing={isGlobalEditing}
+                        pricingMode={pricingMode}
+                        formulaVariables={formulaVariables}
                       />
                     ))}
 
@@ -426,34 +465,129 @@ export const VariationsTab: React.FC<VariationsTabProps> = ({
                           />
                         </div>
 
-                        {/* ── Precificação da Opção ── */}
+                        {/* ── Precificação da Opção (3 escopos para Acabamentos) ── */}
                         <div className="space-y-1 w-full md:w-1/2">
                           <p className="text-[9px] font-black uppercase text-slate-400" title="Como essa opção afeta o preço do produto?">Regra de Preço</p>
-                          <div className="flex bg-white rounded-lg border-2 border-slate-200 overflow-hidden focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-100 transition-all">
-                            {group.kind === 'VARIATION' ? (
+                          {group.kind === 'VARIATION' ? (
+                            <div className="flex bg-white rounded-lg border-2 border-slate-200 overflow-hidden focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-100 transition-all">
                               <span className="h-10 px-3 bg-slate-50 border-r-2 border-slate-100 text-xs font-bold text-slate-600 flex items-center">Preço (R$)</span>
-                            ) : (
-                            <select
-                              value={newOptionPricingMode}
-                              onChange={(e) => setNewOptionPricingMode(e.target.value as 'ADJUST' | 'FIXED')}
-                              className="h-10 px-3 bg-slate-50 border-r-2 border-slate-100 text-xs font-bold text-slate-600 focus:outline-none cursor-pointer"
-                            >
-                              <option value="ADJUST">Adicional (+ R$)</option>
-                              <option value="FIXED">Preço (R$)</option>
-                            </select>
-                            )}
-                            <input
-                              type="number"
-                              value={newOptionValue}
-                              onChange={(e) => setNewOptionValue(e.target.value)}
-                              className={cn(
-                                "flex-1 h-10 px-3 text-sm font-black text-center focus:outline-none",
-                                newOptionPricingMode === 'ADJUST' ? "text-emerald-600" : "text-indigo-600"
-                              )}
-                              placeholder="0"
-                            />
-                          </div>
+                              <input
+                                type="number"
+                                value={newOptionValue}
+                                onChange={(e) => setNewOptionValue(e.target.value)}
+                                className="flex-1 h-10 px-3 text-sm font-black text-center focus:outline-none text-indigo-600"
+                                placeholder="0"
+                              />
+                            </div>
+                          ) : (
+                            <>
+                              {/* Segmented 3 estados — espelha o seletor da opção já criada */}
+                              <div className="inline-flex w-full rounded-lg overflow-hidden border-2 border-slate-200 bg-slate-50 mb-1">
+                                {([
+                                  { id: 'REPLACE_RATE', label: 'Substitui R$/m²', active: 'bg-indigo-100 text-indigo-700' },
+                                  { id: 'ADD_PER_AREA', label: '+ R$/m²', active: 'bg-violet-100 text-violet-700' },
+                                  { id: 'ADD_FLAT',     label: '+ R$ fixo', active: 'bg-emerald-100 text-emerald-700' },
+                                ] as const).map((s) => (
+                                  <button
+                                    key={s.id}
+                                    type="button"
+                                    onClick={() => setNewOptionScope(s.id)}
+                                    className={cn(
+                                      'flex-1 h-9 text-[10px] font-black uppercase tracking-wider transition-all border-r border-slate-200 last:border-r-0',
+                                      newOptionScope === s.id ? s.active : 'text-slate-500 hover:bg-white'
+                                    )}
+                                  >
+                                    {s.label}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="flex bg-white rounded-lg border-2 border-slate-200 overflow-hidden focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-100 transition-all">
+                                <span className="h-10 px-3 bg-slate-50 border-r-2 border-slate-100 text-xs font-bold text-slate-600 flex items-center">R$</span>
+                                <input
+                                  type="number"
+                                  value={newOptionValue}
+                                  onChange={(e) => setNewOptionValue(e.target.value)}
+                                  className={cn(
+                                    'flex-1 h-10 px-3 text-sm font-black text-center focus:outline-none',
+                                    newOptionScope === 'ADD_FLAT' ? 'text-emerald-600' :
+                                    newOptionScope === 'ADD_PER_AREA' ? 'text-violet-600' : 'text-indigo-600'
+                                  )}
+                                  placeholder="0"
+                                />
+                              </div>
+                            </>
+                          )}
                         </div>
+
+                        {/* ── Painel de QUANTIDADE — espelha o painel do OptionCard editado ── */}
+                        {group.kind === 'FINISHING' && (
+                          <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Wrench className="w-3 h-3 text-emerald-600" />
+                              <p className="text-[9px] font-black uppercase text-emerald-700">
+                                Quantidade consumida deste acabamento
+                              </p>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                              <div>
+                                <label className="text-[8px] font-black uppercase text-slate-500">Padrão</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step="any"
+                                  value={newOptionDefaultQty}
+                                  onChange={(e) => setNewOptionDefaultQty(e.target.value)}
+                                  placeholder="Ex: 8"
+                                  className="w-full h-8 px-2 text-xs border border-slate-200 rounded-md bg-white focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-200"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[8px] font-black uppercase text-slate-500">Mínima</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step="any"
+                                  value={newOptionMinQty}
+                                  onChange={(e) => setNewOptionMinQty(e.target.value)}
+                                  placeholder="—"
+                                  className="w-full h-8 px-2 text-xs border border-slate-200 rounded-md bg-white focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-200"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[8px] font-black uppercase text-slate-500">Máxima</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step="any"
+                                  value={newOptionMaxQty}
+                                  onChange={(e) => setNewOptionMaxQty(e.target.value)}
+                                  placeholder="—"
+                                  className="w-full h-8 px-2 text-xs border border-slate-200 rounded-md bg-white focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-200"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[8px] font-black uppercase text-slate-500">Vendedor edita?</label>
+                                <button
+                                  type="button"
+                                  onClick={() => setNewOptionAllowCustomQty((v) => !v)}
+                                  className={cn(
+                                    'w-full h-8 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors',
+                                    newOptionAllowCustomQty
+                                      ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                                      : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200'
+                                  )}
+                                >
+                                  {newOptionAllowCustomQty ? 'Sim · permite ajustar' : 'Não · qty fixa'}
+                                </button>
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-slate-500 mt-2 leading-tight">
+                              Quantidade padrão consumida quando este acabamento é selecionado no pedido.
+                              Ex: <span className="font-bold">Ilhos = 8</span>, <span className="font-bold">Cabo de Banner = 2</span>.
+                              Quando "Vendedor edita" está ativo, o vendedor pode ajustar a quantidade no pedido.
+                            </p>
+                          </div>
+                        )}
 
                         <div className="flex justify-end gap-2 pt-2 border-t border-slate-200/50">
                           <Button
@@ -483,12 +617,11 @@ export const VariationsTab: React.FC<VariationsTabProps> = ({
                         onClick={() => {
                           setAddingToGroup(group.id);
                           setNewOptionValue('0');
-                          setNewOptionPricingMode('ADJUST');
                           setSelectedInsumos([]);
                         }}
-                        className="flex items-center gap-2 px-4 py-2 text-[10px] font-black uppercase text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-all"
+                        className="flex items-center justify-center gap-2 w-full px-4 py-3 text-xs font-black uppercase tracking-wide text-amber-700 bg-amber-50 hover:bg-amber-100 border-2 border-dashed border-amber-400 hover:border-amber-500 hover:text-amber-800 rounded-xl transition-all shadow-sm hover:shadow"
                       >
-                        <Plus className="w-3.5 h-3.5" /> Adicionar Opção
+                        <Plus className="w-4 h-4" /> Adicionar Opção / Vincular Material
                       </button>
                     )}
                   </div>
@@ -617,7 +750,9 @@ const OptionCard = ({
   onSelect,
   onDelete,
   onChange,
-  isGlobalEditing = false
+  isGlobalEditing = false,
+  pricingMode,
+  formulaVariables = []
 }: {
   option: DraftOption;
   groupKind: ConfigurationKind;
@@ -628,6 +763,8 @@ const OptionCard = ({
   onSelect: () => void;
   onDelete: () => void;
   onChange: (patch: Partial<DraftOption>) => void;
+  pricingMode?: 'SIMPLE_AREA' | 'SIMPLE_UNIT' | 'DYNAMIC_ENGINEER';
+  formulaVariables?: FormulaVariable[];
   isGlobalEditing?: boolean;
 }) => {
   const isFinishing = groupKind === 'FINISHING';
@@ -682,51 +819,295 @@ const OptionCard = ({
           </div>
         </div>
 
-        {/* Unified Price Modifier / Override — oculto para opções-pai (filtro) */}
-        {!(option.allowedChildIds && option.allowedChildIds.length > 0) && (
-        <div className="flex flex-col items-end shrink-0 w-28">
-          {!isGlobalEditing || groupKind === 'VARIATION' ? (
-             <p className="text-[9px] font-black uppercase text-slate-400 mb-0.5">
-               {groupKind === 'VARIATION' ? 'Preço Base' : (option.fixedValue !== null ? 'Preço Base' : 'Adicional (+ R$)')}
-             </p>
-          ) : (
-            <select
-              value={option.fixedValue !== null ? 'FIXED' : 'ADJUST'}
-              onChange={(e) => {
-                if (e.target.value === 'FIXED') {
-                  onChange({ fixedValue: option.priceModifier || 0, priceModifier: 0 });
-                } else {
-                  onChange({ fixedValue: null, priceModifier: option.fixedValue || 0 });
-                }
-              }}
-              className="text-[9px] font-black uppercase text-amber-600 bg-amber-50 rounded px-1 py-0.5 mb-0.5 cursor-pointer border border-amber-200 focus:outline-none"
-            >
-              <option value="ADJUST">Adicional (+ R$)</option>
-              <option value="FIXED">Preço Base</option>
-            </select>
-          )}
+        {/* ── Seletor de Escopo (3 estados) — apenas ACABAMENTOS ────────────
+            Unifica os antigos controles "Adicional/Preço Base" + toggle "+NO M²/+NO TOTAL"
+            em um único segmented control de 3 estados mutuamente exclusivos:
+              • REPLACE_RATE  — Substitui R$/m²   (fixedValue + PER_AREA)
+              • ADD_PER_AREA  — Soma ao R$/m²     (priceModifier + PER_AREA)
+              • ADD_FLAT      — Soma fixo no total (priceModifier + FIXED)
+            Para VARIATION, mantém o display simples (preço base puro). */}
+        {(() => {
+          const isParentFilter =
+            option.allowedChildIds && option.allowedChildIds.length > 0;
+          if (isParentFilter) return null;
 
-          <InlineInput
-            type="number"
-            initialValue={groupKind === 'VARIATION' ? (option.fixedValue ?? option.priceModifier ?? 0) : (option.fixedValue !== null ? option.fixedValue : (option.priceModifier ?? 0))}
-            isEditing={isGlobalEditing}
-            formatAsCurrency={true}
-            onSave={(val) => {
-              const numVal = parseFloat(val) || 0;
-              if (groupKind === 'VARIATION' || option.fixedValue !== null) {
-                onChange({ fixedValue: numVal, priceModifier: 0 });
+          // ─── Motor DINÂMICO: segmented Substitui / Soma / Soma Preço Final ───
+          // Em vez de operar em R$/m² (conceito do motor SIMPLE_AREA), as opções
+          // vinculam-se a variáveis nomeadas da fórmula configurada no produto.
+          if (pricingMode === 'DYNAMIC_ENGINEER' && groupKind !== 'VARIATION') {
+            type DynOp = 'REPLACE_VAR' | 'ADD_VAR' | 'ADD_FINAL';
+            const currentOp: DynOp = (option.formulaOp as DynOp) || 'ADD_FINAL';
+            const currentValue = Number(option.priceModifier ?? 0);
+
+            const applyDyn = (op: DynOp, val: number, target?: string | null) => {
+              const patch: Partial<DraftOption> = {
+                formulaOp: op,
+                priceModifier: val,
+                fixedValue: null,
+              };
+              if (op === 'ADD_FINAL') {
+                patch.formulaVariableTarget = null;
+                patch.priceModifierType = 'FIXED'; // mantém compat com cálculo de modifiers
               } else {
-                onChange({ priceModifier: numVal, fixedValue: null });
+                patch.formulaVariableTarget = target ?? option.formulaVariableTarget ?? null;
+                patch.priceModifierType = 'FIXED';
               }
-            }}
-            className={cn(
-              "text-right font-black",
-              (groupKind === 'VARIATION' || option.fixedValue !== null) ? "text-indigo-600" : "text-emerald-600",
-              isGlobalEditing ? ((groupKind === 'VARIATION' || option.fixedValue !== null) ? "w-full h-8 border-indigo-200 text-center" : "w-full h-8 border-emerald-200 text-center") : "text-sm pr-1"
-            )}
-          />
-        </div>
-        )}
+              onChange(patch);
+            };
+
+            const opMeta: Record<DynOp, { label: string; activeClass: string; valueColor: string; tooltip: string }> = {
+              REPLACE_VAR: {
+                label: 'SUBSTITUI',
+                activeClass: 'bg-indigo-100 text-indigo-700 border-indigo-300',
+                valueColor: 'text-indigo-600',
+                tooltip: 'Substitui o valor da variável selecionada da fórmula.',
+              },
+              ADD_VAR: {
+                label: 'SOMA',
+                activeClass: 'bg-violet-100 text-violet-700 border-violet-300',
+                valueColor: 'text-violet-600',
+                tooltip: 'Soma o valor à variável selecionada da fórmula.',
+              },
+              ADD_FINAL: {
+                label: 'SOMA PREÇO FINAL',
+                activeClass: 'bg-emerald-100 text-emerald-700 border-emerald-300',
+                valueColor: 'text-emerald-600',
+                tooltip: 'Soma fixo no total do item, sem mexer em variáveis da fórmula.',
+              },
+            };
+            const ops: DynOp[] = ['REPLACE_VAR', 'ADD_VAR', 'ADD_FINAL'];
+            const needsVarTarget = currentOp === 'REPLACE_VAR' || currentOp === 'ADD_VAR';
+
+            // Read-only
+            if (!isGlobalEditing) {
+              const meta = opMeta[currentOp];
+              return (
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={cn('px-2 py-0.5 rounded border text-[9px] font-black uppercase tracking-wider', meta.activeClass)}>
+                    {meta.label}
+                  </span>
+                  {needsVarTarget && option.formulaVariableTarget && (
+                    <span className="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-[9px] font-bold text-slate-600 uppercase tracking-wide">
+                      {option.formulaVariableTarget}
+                    </span>
+                  )}
+                  <div className="w-20 text-right">
+                    <InlineInput
+                      type="number"
+                      initialValue={currentValue}
+                      isEditing={false}
+                      formatAsCurrency={true}
+                      onSave={() => {}}
+                      className={cn('text-sm font-black pr-1', meta.valueColor)}
+                    />
+                  </div>
+                </div>
+              );
+            }
+
+            // Editing
+            return (
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <div className="inline-flex rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
+                  {ops.map((o) => {
+                    const meta = opMeta[o];
+                    const isActive = currentOp === o;
+                    return (
+                      <button
+                        key={o}
+                        type="button"
+                        onClick={() => applyDyn(o, currentValue, option.formulaVariableTarget)}
+                        title={meta.tooltip}
+                        className={cn(
+                          'px-2 py-1 text-[9px] font-black uppercase tracking-wider transition-all border-r border-slate-200 last:border-r-0',
+                          isActive ? meta.activeClass : 'bg-transparent text-slate-500 hover:bg-white hover:text-slate-700'
+                        )}
+                      >
+                        {meta.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center gap-2">
+                  {needsVarTarget && (
+                    <select
+                      value={option.formulaVariableTarget || ''}
+                      onChange={(e) => applyDyn(currentOp, currentValue, e.target.value || null)}
+                      className={cn(
+                        'h-8 text-[10px] font-bold px-2 rounded-md border bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 min-w-[120px]',
+                        option.formulaVariableTarget ? 'border-indigo-200 text-indigo-700' : 'border-red-200 text-red-500'
+                      )}
+                    >
+                      <option value="">— Variável —</option>
+                      {formulaVariables.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.name || v.label || v.id}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <InlineInput
+                    type="number"
+                    initialValue={currentValue}
+                    isEditing={true}
+                    formatAsCurrency={true}
+                    onSave={(val) => applyDyn(currentOp, parseFloat(val) || 0, option.formulaVariableTarget)}
+                    className={cn(
+                      'text-right font-black w-32 h-8 text-center',
+                      opMeta[currentOp].valueColor,
+                      currentOp === 'REPLACE_VAR' ? 'border-indigo-200' :
+                      currentOp === 'ADD_VAR' ? 'border-violet-200' : 'border-emerald-200'
+                    )}
+                  />
+                </div>
+                {needsVarTarget && !option.formulaVariableTarget && (
+                  <p className="text-[9px] text-red-500 font-bold italic">
+                    Selecione uma variável da fórmula
+                  </p>
+                )}
+                {formulaVariables.length === 0 && (
+                  <p className="text-[9px] text-amber-600 font-bold italic">
+                    Configure uma regra de fórmula no Motor de Precificação
+                  </p>
+                )}
+              </div>
+            );
+          }
+
+          // Detecta o escopo atual a partir da combinação de campos
+          type Scope = 'REPLACE_RATE' | 'ADD_PER_AREA' | 'ADD_FLAT';
+          const currentScope: Scope =
+            option.fixedValue != null
+              ? (option.priceModifierType === 'FIXED' ? 'ADD_FLAT' : 'REPLACE_RATE')
+              : (option.priceModifierType === 'PER_AREA' ? 'ADD_PER_AREA' : 'ADD_FLAT');
+
+          // Valor numérico exibido independente do escopo
+          const currentValue =
+            option.fixedValue != null
+              ? Number(option.fixedValue)
+              : Number(option.priceModifier ?? 0);
+
+          // Aplica o escopo ao modelo (normaliza priceModifier/fixedValue/type)
+          const applyScope = (scope: Scope, val: number) => {
+            if (scope === 'REPLACE_RATE') {
+              onChange({ fixedValue: val, priceModifier: 0, priceModifierType: 'PER_AREA' });
+            } else if (scope === 'ADD_PER_AREA') {
+              onChange({ fixedValue: null, priceModifier: val, priceModifierType: 'PER_AREA' });
+            } else {
+              onChange({ fixedValue: null, priceModifier: val, priceModifierType: 'FIXED' });
+            }
+          };
+
+          // Para VARIATION mantemos display simples (Preço Base, sem segmented)
+          if (groupKind === 'VARIATION') {
+            return (
+              <div className="flex flex-col items-end shrink-0 w-28">
+                <p className="text-[9px] font-black uppercase text-slate-400 mb-0.5">Preço Base</p>
+                <InlineInput
+                  type="number"
+                  initialValue={option.fixedValue ?? option.priceModifier ?? 0}
+                  isEditing={isGlobalEditing}
+                  formatAsCurrency={true}
+                  onSave={(val) => onChange({ fixedValue: parseFloat(val) || 0, priceModifier: 0 })}
+                  className={cn(
+                    'text-right font-black text-indigo-600',
+                    isGlobalEditing ? 'w-full h-8 border-indigo-200 text-center' : 'text-sm pr-1'
+                  )}
+                />
+              </div>
+            );
+          }
+
+          // Estilos por escopo (cor distinta para cada modo)
+          const scopeMeta: Record<Scope, { label: string; activeClass: string; valueColor: string; tooltip: string }> = {
+            REPLACE_RATE: {
+              label: 'SUBSTITUI R$/M²',
+              activeClass: 'bg-indigo-100 text-indigo-700 border-indigo-300',
+              valueColor: 'text-indigo-600',
+              tooltip: 'Substitui o preço por m² do produto. Multiplica pela área.',
+            },
+            ADD_PER_AREA: {
+              label: '+ R$/M²',
+              activeClass: 'bg-violet-100 text-violet-700 border-violet-300',
+              valueColor: 'text-violet-600',
+              tooltip: 'Soma ao preço por m² do produto. Multiplica pela área.',
+            },
+            ADD_FLAT: {
+              label: '+ R$ FIXO',
+              activeClass: 'bg-emerald-100 text-emerald-700 border-emerald-300',
+              valueColor: 'text-emerald-600',
+              tooltip: 'Soma fixo no total do item. Não multiplica pela área.',
+            },
+          };
+
+          const scopes: Scope[] = ['REPLACE_RATE', 'ADD_PER_AREA', 'ADD_FLAT'];
+
+          // Read-only: só badge do escopo atual + valor
+          if (!isGlobalEditing) {
+            const meta = scopeMeta[currentScope];
+            return (
+              <div className="flex items-center gap-2 shrink-0">
+                <span className={cn(
+                  'px-2 py-0.5 rounded border text-[9px] font-black uppercase tracking-wider',
+                  meta.activeClass
+                )}>
+                  {meta.label}
+                </span>
+                <div className="w-20 text-right">
+                  <InlineInput
+                    type="number"
+                    initialValue={currentValue}
+                    isEditing={false}
+                    formatAsCurrency={true}
+                    onSave={() => {}}
+                    className={cn('text-sm font-black pr-1', meta.valueColor)}
+                  />
+                </div>
+              </div>
+            );
+          }
+
+          // Editing: segmented control de 3 botões + input do valor
+          return (
+            <div className="flex flex-col items-end gap-1 shrink-0">
+              <div className="inline-flex rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
+                {scopes.map((s) => {
+                  const meta = scopeMeta[s];
+                  const isActive = currentScope === s;
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => applyScope(s, currentValue)}
+                      title={meta.tooltip}
+                      className={cn(
+                        'px-2 py-1 text-[9px] font-black uppercase tracking-wider transition-all border-r border-slate-200 last:border-r-0',
+                        isActive
+                          ? meta.activeClass
+                          : 'bg-transparent text-slate-500 hover:bg-white hover:text-slate-700'
+                      )}
+                    >
+                      {meta.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <InlineInput
+                type="number"
+                initialValue={currentValue}
+                isEditing={true}
+                formatAsCurrency={true}
+                onSave={(val) => applyScope(currentScope, parseFloat(val) || 0)}
+                className={cn(
+                  'text-right font-black w-32 h-8 text-center',
+                  scopeMeta[currentScope].valueColor,
+                  currentScope === 'REPLACE_RATE' ? 'border-indigo-200' :
+                  currentScope === 'ADD_PER_AREA' ? 'border-violet-200' : 'border-emerald-200'
+                )}
+              />
+            </div>
+          );
+        })()}
 
         {/* Expand / Delete */}
         <div className="flex items-center gap-1">

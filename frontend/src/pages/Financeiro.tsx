@@ -582,47 +582,47 @@ const Financeiro: React.FC = () => {
           {/* Contas a Receber e Pagar */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Clock className="w-5 h-5 text-orange-500" />
-                  <span>Contas a Receber</span>
-                </CardTitle>
-                <CardDescription>
-                  Valores pendentes de recebimento
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-4">
-                  <p className="text-3xl font-bold text-orange-600">
-                    {formatCurrency(dashboard.pending.receivables)}
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Total a receber
-                  </p>
+              <CardHeader className="py-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <CardTitle className="flex items-center space-x-2">
+                      <Clock className="w-5 h-5 text-orange-500" />
+                      <span>Contas a Receber</span>
+                    </CardTitle>
+                    <CardDescription>
+                      Valores pendentes de recebimento
+                    </CardDescription>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-2xl font-bold text-orange-600 leading-tight">
+                      {formatCurrency(dashboard.pending.receivables)}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">Total a receber</p>
+                  </div>
                 </div>
-              </CardContent>
+              </CardHeader>
             </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <AlertCircle className="w-5 h-5 text-red-500" />
-                  <span>Contas a Pagar</span>
-                </CardTitle>
-                <CardDescription>
-                  Valores pendentes de pagamento
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-4">
-                  <p className="text-3xl font-bold text-red-600">
-                    {formatCurrency(dashboard.pending.payables)}
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Total a pagar
-                  </p>
+              <CardHeader className="py-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <CardTitle className="flex items-center space-x-2">
+                      <AlertCircle className="w-5 h-5 text-red-500" />
+                      <span>Contas a Pagar</span>
+                    </CardTitle>
+                    <CardDescription>
+                      Valores pendentes de pagamento
+                    </CardDescription>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-2xl font-bold text-red-600 leading-tight">
+                      {formatCurrency(dashboard.pending.payables)}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">Total a pagar</p>
+                  </div>
                 </div>
-              </CardContent>
+              </CardHeader>
             </Card>
           </div>
         </>

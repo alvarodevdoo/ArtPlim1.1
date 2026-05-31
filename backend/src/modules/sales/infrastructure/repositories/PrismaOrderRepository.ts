@@ -307,10 +307,15 @@ export class PrismaOrderRepository implements OrderRepository {
       whereClause.customerId = filters.customerId;
     }
 
-    if (filters?.status) {
+    // Semântica do filtro de status:
+    //  - undefined/""  → "Ativos (padrão)": esconde cancelados e status marcados como
+    //                    hideFromFlow (mas inclui ocultos COM pendência financeira)
+    //  - "ALL"         → lista literalmente tudo (cancelados + ocultos do fluxo)
+    //  - <STATUS>      → match exato (CANCELLED, DELIVERED, IN_PRODUCTION, ...)
+    if (filters?.status && filters.status !== 'ALL') {
       whereClause.status = filters.status;
-    } else if (!filters?.search) {
-      // Se não há filtro de status nem busca:
+    } else if (!filters?.status && !filters?.search) {
+      // Sem filtro de status nem busca → aplica regra de fluxo ativo:
       // 1. Ocultar cancelados por padrão no fluxo diário
       // 2. Respeitar a flag hideFromFlow dos status customizados
       // 3. Pedidos com pendência financeira serão adicionados depois
@@ -325,6 +330,7 @@ export class PrismaOrderRepository implements OrderRepository {
       ];
       shouldCheckHiddenWithPendingPayment = true;
     }
+    // status === 'ALL' → não aplica filtro algum, lista tudo
 
     if (filters?.search) {
       whereClause.OR = [
@@ -444,6 +450,11 @@ export class PrismaOrderRepository implements OrderRepository {
     const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
+    // Pedidos cancelados não devem entrar nos cards principais (Total de Pedidos,
+    // Valor Total, Ticket Médio, Crescimento). Mantemos eles na quebra por status
+    // (`byStatus`) para que filtros e relatórios de cancelados continuem funcionando.
+    const activeStatusFilter = { status: { not: 'CANCELLED' as const } };
+
     const [
       totalOrders,
       totalValue,
@@ -452,10 +463,10 @@ export class PrismaOrderRepository implements OrderRepository {
       lastMonthOrders
     ] = await Promise.all([
       this.prisma.order.count({
-        where: { organizationId }
+        where: { organizationId, ...activeStatusFilter }
       }),
       this.prisma.order.aggregate({
-        where: { organizationId },
+        where: { organizationId, ...activeStatusFilter },
         _sum: {
           total: true
         }
@@ -473,6 +484,7 @@ export class PrismaOrderRepository implements OrderRepository {
       this.prisma.order.count({
         where: {
           organizationId,
+          ...activeStatusFilter,
           createdAt: {
             gte: currentMonth
           }
@@ -481,6 +493,7 @@ export class PrismaOrderRepository implements OrderRepository {
       this.prisma.order.count({
         where: {
           organizationId,
+          ...activeStatusFilter,
           createdAt: {
             gte: lastMonth,
             lt: currentMonth

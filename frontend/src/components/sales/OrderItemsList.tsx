@@ -3,7 +3,7 @@ import { statusConfig } from '@/types/pedidos';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Plus, Edit, Trash2, AlertCircle, Ban, Package } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, getItemLengthUnit, formatLengthFromMm } from '@/lib/utils';
 import { ItemPedido, Produto } from '@/types/sales';
 import { ITEM_TYPE_CONFIGS } from '@/types/item-types';
 
@@ -19,6 +19,7 @@ interface OrderItemsListProps {
     onItemStatusChange?: (itemId: string, status: string) => void;
     processStatuses?: any[];
     onRegisterWaste?: (item: ItemPedido) => void;
+    hideWorkflowStatus?: boolean;
 }
 
 export const OrderItemsList: React.FC<OrderItemsListProps> = ({
@@ -30,7 +31,8 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({
     produtos,
     onItemStatusChange,
     processStatuses = [],
-    onRegisterWaste
+    onRegisterWaste,
+    hideWorkflowStatus = false
 }) => {
     const formatarUnidadePreco = (produto?: Produto) => {
         if (!produto) return '/un';
@@ -258,13 +260,16 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({
                                             <p><span className="font-medium">Qtd:</span> {item.quantity} un</p>
 
                                             {/* Show dimensions only for area-based products */}
-                                            {itemProduct?.pricingMode === 'SIMPLE_AREA' && item.width && item.height && (
-                                                <>
-                                                    <p><span className="font-medium">Dimensões:</span> {item.width} × {item.height} mm</p>
-                                                    <p><span className="font-medium">Área:</span> {((item.width * item.height) / 1000000).toFixed(4)} m²</p>
-                                                    <p><span className="font-medium">Área Total:</span> {((item.width * item.height * item.quantity) / 1000000).toFixed(4)} m²</p>
-                                                </>
-                                            )}
+                                            {itemProduct?.pricingMode === 'SIMPLE_AREA' && item.width && item.height && (() => {
+                                                const dimUnit = getItemLengthUnit(item);
+                                                return (
+                                                    <>
+                                                        <p><span className="font-medium">Dimensões:</span> {formatLengthFromMm(item.width, dimUnit)} × {formatLengthFromMm(item.height, dimUnit)} {dimUnit}</p>
+                                                        <p><span className="font-medium">Área:</span> {((item.width * item.height) / 1000000).toFixed(4)} m²</p>
+                                                        <p><span className="font-medium">Área Total:</span> {((item.width * item.height * item.quantity) / 1000000).toFixed(4)} m²</p>
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
 
                                         {/* Simplified item display */}
@@ -272,9 +277,9 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({
 
                                         {/* Notes */}
                                         {item.notes && (
-                                            <div className="mt-2 p-2 bg-muted rounded text-sm">
+                                            <p className="mt-2 text-sm">
                                                 <span className="font-medium">Observações:</span> {item.notes}
-                                            </div>
+                                            </p>
                                         )}
                                     </div>
 
@@ -305,42 +310,46 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({
                                         </div>
                                         {/* Status + Action buttons in same row */}
                                         <div className="flex items-center gap-1 mt-auto">
-                                            <select
-                                                value={(item as any).status || 'DRAFT'}
-                                                onChange={(e) => onItemStatusChange?.(item.id, e.target.value)}
-                                                className={`px-3 py-1 rounded-full text-xs font-medium border cursor-pointer transition-colors ${statusConfig[(item as any).status as keyof typeof statusConfig]?.color || 'bg-gray-100 text-gray-800 border-gray-200'}`}
-                                                style={{ appearance: 'none', paddingRight: '28px', backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 12 12\'%3E%3Cpath fill=\'currentColor\' d=\'M6 9L1 4h10z\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center' }}
-                                            >
-                                                {processStatuses.length > 0 ? (
-                                                    processStatuses.map(ps => (
-                                                        <option key={ps.id} value={ps.mappedBehavior}>
-                                                            {ps.name}
-                                                        </option>
-                                                    ))
-                                                ) : (
-                                                    Object.keys(statusConfig).map(key => (
-                                                        <option key={key} value={key}>
-                                                            {statusConfig[key as keyof typeof statusConfig].label}
-                                                        </option>
-                                                    ))
-                                                )}
-                                            </select>
-                                            {(item as any).status === 'FINISHED' && (
-                                                <Button
-                                                    size="sm"
-                                                    variant="outline"
-                                                    className="text-green-600 border-green-200 hover:bg-green-50 h-7 text-xs px-2"
-                                                    onClick={() => onItemStatusChange?.(item.id, 'DELIVERED')}
-                                                >
-                                                    ✓ Entregue
-                                                </Button>
+                                            {!hideWorkflowStatus && (
+                                                <>
+                                                    <select
+                                                        value={(item as any).status || 'DRAFT'}
+                                                        onChange={(e) => onItemStatusChange?.(item.id, e.target.value)}
+                                                        className={`px-3 py-1 rounded-full text-xs font-medium border cursor-pointer transition-colors ${statusConfig[(item as any).status as keyof typeof statusConfig]?.color || 'bg-gray-100 text-gray-800 border-gray-200'}`}
+                                                        style={{ appearance: 'none', paddingRight: '28px', backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 12 12\'%3E%3Cpath fill=\'currentColor\' d=\'M6 9L1 4h10z\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center' }}
+                                                    >
+                                                        {processStatuses.length > 0 ? (
+                                                            processStatuses.map(ps => (
+                                                                <option key={ps.id} value={ps.mappedBehavior}>
+                                                                    {ps.name}
+                                                                </option>
+                                                            ))
+                                                        ) : (
+                                                            Object.keys(statusConfig).map(key => (
+                                                                <option key={key} value={key}>
+                                                                    {statusConfig[key as keyof typeof statusConfig].label}
+                                                                </option>
+                                                            ))
+                                                        )}
+                                                    </select>
+                                                    {(item as any).status === 'FINISHED' && (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="text-green-600 border-green-200 hover:bg-green-50 h-7 text-xs px-2"
+                                                            onClick={() => onItemStatusChange?.(item.id, 'DELIVERED')}
+                                                        >
+                                                            ✓ Entregue
+                                                        </Button>
+                                                    )}
+                                                    {(item as any).status === 'DELIVERED' && (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                                                            ✓ Entregue
+                                                        </span>
+                                                    )}
+                                                    <div className="w-px h-5 bg-gray-200 mx-1" />
+                                                </>
                                             )}
-                                            {(item as any).status === 'DELIVERED' && (
-                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
-                                                    ✓ Entregue
-                                                </span>
-                                            )}
-                                            <div className="w-px h-5 bg-gray-200 mx-1" />
                                             <Button
                                                 variant="outline"
                                                 size="sm"

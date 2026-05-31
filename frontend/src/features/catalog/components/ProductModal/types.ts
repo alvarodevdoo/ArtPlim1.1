@@ -54,7 +54,14 @@ export interface DraftOption {
   fixedValue?: number | null;
   /** Additional cost modifier (FIXED add-on to base cost) */
   priceModifier: number;
-  priceModifierType: 'FIXED' | 'PERCENTAGE';
+  /**
+   * Como o priceModifier é aplicado:
+   * - FIXED (padrão): soma fixa no total do item (ex: Ilhós R$0,50/un × 10 = R$5)
+   * - PER_AREA: soma ao R$/m² (multiplicado pela área no cálculo final;
+   *   ex: Corte e contorno +R$5/m² sobre adesivo de R$25/m² → R$30/m²)
+   * - PERCENTAGE: legado, não implementado no cálculo atual
+   */
+  priceModifierType: 'FIXED' | 'PERCENTAGE' | 'PER_AREA';
   materialId?: string | null;
   materialName?: string | null;
   isAvailable: boolean;
@@ -67,6 +74,16 @@ export interface DraftOption {
   allowCustomQty?: boolean;
   /** Cascata: IDs de opções de grupos posteriores habilitadas por esta opção */
   allowedChildIds?: string[] | null;
+  /**
+   * Motor DYNAMIC_ENGINEER — operação que esta opção executa quando selecionada:
+   * - REPLACE_VAR: substitui o valor da variável da fórmula apontada por `formulaVariableTarget`
+   * - ADD_VAR:     soma `priceModifier` na variável apontada por `formulaVariableTarget`
+   * - ADD_FINAL:   soma `priceModifier` no preço final do item (sem tocar em variável)
+   * Null/undefined = comportamento legado (motores SIMPLE_AREA/SIMPLE_UNIT via priceModifierType).
+   */
+  formulaOp?: 'REPLACE_VAR' | 'ADD_VAR' | 'ADD_FINAL' | null;
+  /** ID/nome da variável da fórmula alvo (obrigatório para REPLACE_VAR/ADD_VAR). */
+  formulaVariableTarget?: string | null;
 }
 
 export type ConfigurationKind = 'VARIATION' | 'FINISHING';

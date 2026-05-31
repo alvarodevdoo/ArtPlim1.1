@@ -49,7 +49,11 @@ const PedidosFilters: React.FC<PedidosFiltersProps> = React.memo(({
               onChange={(e) => setStatusFilter(e.target.value)}
               className="w-full h-10 px-3 border border-muted-foreground/20 rounded-md bg-background text-sm outline-none transition-all"
             >
-              <option value="">Todos</option>
+              {/* Padrão (sem filtro) = pedidos ativos do fluxo (sem cancelados,
+                  sem status marcados como "ocultar do fluxo"). "Todos" lista
+                  literalmente tudo, incluindo cancelados e ocultos. */}
+              <option value="">Ativos (padrão)</option>
+              <option value="ALL">Todos</option>
               {Object.entries(statusConfig).map(([status, config]) => (
                 <option key={status} value={status}>{config.label}</option>
               ))}

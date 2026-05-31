@@ -85,6 +85,20 @@ export class NFeParserService {
       valorFrete: total ? parseFloat(total.vFrete) : 0,
       valorDesconto: total ? parseFloat(total.vDesc) : 0,
       valorOutros: total ? parseFloat(total.vOutro) : 0,
+      // Totais fiscais completos da NF-e (persistidos no import para exibição posterior)
+      totaisFiscais: total ? {
+        produtos: parseFloat(total.vProd || 0),
+        frete: parseFloat(total.vFrete || 0),
+        seguro: parseFloat(total.vSeg || 0),
+        desconto: parseFloat(total.vDesc || 0),
+        outros: parseFloat(total.vOutro || 0),
+        ipi: parseFloat(total.vIPI || 0),
+        icms: parseFloat(total.vICMS || 0),
+        icmsST: parseFloat(total.vST || 0),
+        pis: parseFloat(total.vPIS || 0),
+        cofins: parseFloat(total.vCOFINS || 0),
+        ii: parseFloat(total.vII || 0),
+      } : null,
       emitente: {
         cnpj: emitente.CNPJ || emitente.CPF,
         razaoSocial: emitente.xNome,

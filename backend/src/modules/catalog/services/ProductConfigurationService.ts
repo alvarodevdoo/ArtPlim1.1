@@ -38,7 +38,7 @@ interface CreateOptionRequest {
   value: string;
   description?: string;
   priceModifier?: number;
-  priceModifierType?: 'FIXED' | 'PERCENTAGE';
+  priceModifierType?: 'FIXED' | 'PERCENTAGE' | 'PER_AREA';
   materialId?: string | null;
   additionalComponents?: AdditionalComponent[];
   removedComponents?: string[];
@@ -53,6 +53,9 @@ interface CreateOptionRequest {
   maxQuantity?: number | null;
   allowCustomQty?: boolean;
   allowedChildIds?: string[] | null;
+  // Motor DYNAMIC_ENGINEER: vínculo da opção a uma variável da fórmula
+  formulaOp?: 'REPLACE_VAR' | 'ADD_VAR' | 'ADD_FINAL' | null;
+  formulaVariableTarget?: string | null;
 }
 
 interface UpdateOptionRequest {
@@ -60,7 +63,7 @@ interface UpdateOptionRequest {
   value?: string;
   description?: string;
   priceModifier?: number;
-  priceModifierType?: 'FIXED' | 'PERCENTAGE';
+  priceModifierType?: 'FIXED' | 'PERCENTAGE' | 'PER_AREA';
   materialId?: string | null;
   additionalComponents?: AdditionalComponent[];
   removedComponents?: string[];
@@ -74,6 +77,8 @@ interface UpdateOptionRequest {
   maxQuantity?: number | null;
   allowCustomQty?: boolean;
   allowedChildIds?: string[] | null;
+  formulaOp?: 'REPLACE_VAR' | 'ADD_VAR' | 'ADD_FINAL' | null;
+  formulaVariableTarget?: string | null;
 }
 
 interface AdditionalComponent {
@@ -332,24 +337,27 @@ export class ProductConfigurationService {
 
     const option = await this.prisma.configurationOption.create({
       data: {
-        configurationId,
+        configuration: { connect: { id: configurationId } },
         label: request.label,
         value: request.value,
         priceModifier: request.priceModifier ?? 0,
         priceModifierType: request.priceModifierType || 'FIXED',
         priceOverride: request.priceOverride ?? null,
         fixedValue: request.fixedValue ?? null,
-        materialId: request.materialId ?? null,
+        // Prisma 7+: materialId só pode ser escrito via a relação `material`.
+        ...(request.materialId ? { material: { connect: { id: request.materialId } } } : {}),
         defaultQuantity: request.defaultQuantity ?? null,
         minQuantity: request.minQuantity ?? null,
         maxQuantity: request.maxQuantity ?? null,
         allowCustomQty: request.allowCustomQty ?? false,
         allowedChildIds: request.allowedChildIds ?? null,
+        formulaOp: request.formulaOp ?? null,
+        formulaVariableTarget: request.formulaVariableTarget ?? null,
         additionalComponents: request.additionalComponents ? JSON.stringify(request.additionalComponents) : null,
         removedComponents: request.removedComponents ? JSON.stringify(request.removedComponents) : null,
         componentModifiers: request.componentModifiers ? JSON.stringify(request.componentModifiers) : null,
         displayOrder: request.displayOrder ?? 1
-      }
+      } as any
     });
 
     return option;
@@ -377,12 +385,21 @@ export class ProductConfigurationService {
         priceModifierType: request.priceModifierType,
         priceOverride: request.priceOverride,
         fixedValue: request.fixedValue,
-        ...(request.materialId !== undefined ? { materialId: request.materialId } : {}),
+        // Prisma 7+: materialId só pode ser escrito via a relação `material`.
+        ...(request.materialId !== undefined
+          ? {
+              material: request.materialId
+                ? { connect: { id: request.materialId } }
+                : { disconnect: true },
+            }
+          : {}),
         ...(request.defaultQuantity !== undefined ? { defaultQuantity: request.defaultQuantity } : {}),
         ...(request.minQuantity !== undefined ? { minQuantity: request.minQuantity } : {}),
         ...(request.maxQuantity !== undefined ? { maxQuantity: request.maxQuantity } : {}),
         ...(request.allowCustomQty !== undefined ? { allowCustomQty: request.allowCustomQty } : {}),
         ...(request.allowedChildIds !== undefined ? { allowedChildIds: request.allowedChildIds } : {}),
+        ...(request.formulaOp !== undefined ? { formulaOp: request.formulaOp } : {}),
+        ...(request.formulaVariableTarget !== undefined ? { formulaVariableTarget: request.formulaVariableTarget } : {}),
         additionalComponents: request.additionalComponents ? JSON.stringify(request.additionalComponents) : undefined,
         removedComponents: request.removedComponents ? JSON.stringify(request.removedComponents) : undefined,
         componentModifiers: request.componentModifiers ? JSON.stringify(request.componentModifiers) : undefined,
@@ -676,6 +693,8 @@ export class ProductConfigurationService {
           description: option.description,
           priceModifier: option.priceModifier,
           priceModifierType: option.priceModifierType || 'FIXED',
+          formulaOp: (option as any).formulaOp ?? null,
+          formulaVariableTarget: (option as any).formulaVariableTarget ?? null,
           additionalComponents: option.additionalComponents ? JSON.parse(option.additionalComponents) : [],
           removedComponents: option.removedComponents ? JSON.parse(option.removedComponents) : [],
           componentModifiers: option.componentModifiers ? JSON.parse(option.componentModifiers) : [],

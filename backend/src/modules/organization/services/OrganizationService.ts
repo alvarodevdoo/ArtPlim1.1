@@ -1,7 +1,10 @@
 import { NotFoundError } from '../../../shared/infrastructure/errors/AppError';
+import { getSubdomainCorsService } from '../../../shared/infrastructure/cors/SubdomainCorsService';
 
 interface UpdateOrganizationInput {
   name?: string;
+  slug?: string;
+  subdomain?: string | null;
   razaoSocial?: string | null;
   cnpj?: string | null;
   plan?: string;
@@ -91,6 +94,12 @@ export class OrganizationService {
       }
     });
 
+    // Buscar subdomínio anterior para limpar do cache de CORS caso troque
+    const previous = await this.prisma.organization.findUnique({
+      where: { id },
+      select: { subdomain: true }
+    });
+
     const organization = await this.prisma.organization.update({
       where: { id },
       data: {
@@ -101,6 +110,17 @@ export class OrganizationService {
         settings: true
       }
     });
+
+    // Mantém o cache de CORS de subdomínios em sincronia com o banco
+    if (Object.prototype.hasOwnProperty.call(updateData, 'subdomain')) {
+      const corsCache = getSubdomainCorsService();
+      if (corsCache) {
+        if (previous?.subdomain && previous.subdomain !== organization.subdomain) {
+          corsCache.remove(previous.subdomain);
+        }
+        corsCache.add(organization.subdomain);
+      }
+    }
 
     return organization;
   }

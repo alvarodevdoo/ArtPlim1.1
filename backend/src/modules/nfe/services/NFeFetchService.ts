@@ -179,7 +179,8 @@ export class NFeFetchService {
 
       // 9. Parsear o XML final
       const parserService = new NFeParserService();
-      return parserService.parse(fullXml);
+      const parsed = parserService.parse(fullXml);
+      return { ...parsed, rawXml: fullXml };
 
     } catch (error: any) {
       if (axios.isAxiosError(error) && error.response) {

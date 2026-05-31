@@ -8,6 +8,11 @@ node_modules/
 .vscode/
 docs/
 
+# Backups automáticos do deploy de produção (deploy-prod.js)
+backups/
+*.sql
+!backend/prisma/migrations/**/migration.sql
+
 # Environment variables
 .env
 .env.local

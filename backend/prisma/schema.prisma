@@ -12,6 +12,7 @@ model Organization {
   razaoSocial            String?
   cnpj                   String?                  @unique
   slug                   String                   @unique
+  subdomain              String?                  @unique
   plan                   String                   @default("basic")
   active                 Boolean                  @default(true)
   email                  String?
@@ -161,6 +162,7 @@ model User {
   cancelledMovements StockMovement[]        @relation("CancelledMovements")
   stockMovements     StockMovement[]        @relation("UserMovements")
   transactions       Transaction[]
+  materialReceipts   MaterialReceipt[]      @relation("MaterialReceiptCreatedBy")
   organization       Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   customRole         Role?                  @relation(fields: [roleId], references: [id])
 
@@ -382,6 +384,7 @@ model Product {
   stockMinQuantity       Float?
   stockQuantity          Float?
   stockUnit              String?
+  averageCost            Decimal                @default(0) @db.Decimal(10, 4)
   trackStock             Boolean                @default(false)
   formulaData            Json?
   localFormulaId         String?
@@ -402,6 +405,8 @@ model Product {
   configurations         ProductConfiguration[]
   standardSizes          ProductStandardSize[]
   productionWastes       ProductionWaste[]
+  productionOrders       ProductionOrder[]      @relation("ProductionOrderProduct")
+  stockMovements         StockMovement[]
   category               Category?              @relation(fields: [categoryId], references: [id])
   organization           Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   pricingRule            PricingRule?           @relation(fields: [pricingRuleId], references: [id])
@@ -467,6 +472,15 @@ model ConfigurationOption {
   priceModifierType    String                   @default("FIXED")
   priceOverride        Decimal?                 @db.Decimal(10, 2)
   fixedValue           Decimal?                 @db.Decimal(10, 2)
+  /// Operação no motor DINÂMICO:
+  ///  - REPLACE_VAR: substitui valor de uma variável da fórmula
+  ///  - ADD_VAR:     soma valor em uma variável da fórmula
+  ///  - ADD_FINAL:   soma fixo no preço final (sem tocar em variáveis)
+  /// Null = comportamento legado (motores SIMPLE_AREA/SIMPLE_UNIT via priceModifierType).
+  formulaOp             String?
+  /// ID/nome da variável da fórmula alvo (ex: "VALOR_BASE"). Usado quando
+  /// formulaOp = REPLACE_VAR ou ADD_VAR. Nulo para ADD_FINAL.
+  formulaVariableTarget String?
   additionalComponents Json?
   removedComponents    Json?
   componentModifiers   Json?
@@ -1274,10 +1288,13 @@ model MaterialReceipt {
   payableId      String?
   orderId        String?
   notes          String?
+  xmlContent     String?               @db.Text
+  createdById    String?
   items          MaterialReceiptItem[]
   organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   payable        AccountPayable?       @relation(fields: [payableId], references: [id])
   supplier       Profile               @relation(fields: [supplierId], references: [id])
+  createdBy      User?                 @relation("MaterialReceiptCreatedBy", fields: [createdById], references: [id])
 
   @@map("material_receipts")
 }
@@ -1403,21 +1420,32 @@ model ChartOfAccount {
 }
 
 model ProductionOrder {
-  id             String           @id @default(uuid())
+  id             String              @id @default(uuid())
   organizationId String
-  orderItemId    String           @unique
-  status         ProductionStatus @default(WAITING)
-  priority       Priority         @default(NORMAL)
+  orderItemId    String?             @unique
+  type           ProductionOrderType @default(SALES_DRIVEN)
+  productId      String?
+  quantity       Decimal?            @db.Decimal(15, 4)
+  variables      Json?
+  machineMinutes Json?
+  totalCost      Decimal?            @db.Decimal(10, 4)
+  unitCost       Decimal?            @db.Decimal(10, 4)
+  status         ProductionStatus    @default(WAITING)
+  priority       Priority            @default(NORMAL)
   pickingList    Json?
   startedAt      DateTime?
   finishedAt     DateTime?
   notes          String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  orderItem      OrderItem        @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
-  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  orderItem      OrderItem?          @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  product        Product?            @relation("ProductionOrderProduct", fields: [productId], references: [id])
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   steps          ProductionStep[]
+  stockMovements StockMovement[]
 
+  @@index([organizationId, type])
+  @@index([productId])
   @@map("production_orders")
 }
 
@@ -1436,38 +1464,44 @@ model ProductionStep {
 }
 
 model StockMovement {
-  id                String            @id @default(uuid())
-  organizationId    String
-  materialId        String
-  userId            String?
-  type              StockMovementType
-  quantity          Decimal           @db.Decimal(15, 4)
-  unitCost          Decimal           @db.Decimal(10, 4)
-  totalCost         Decimal           @db.Decimal(10, 4)
-  oldQuantity       Decimal?          @db.Decimal(15, 4)
-  oldUnitCost       Decimal?          @db.Decimal(10, 4)
-  machineId         String?
-  machineCounter    Int?
-  notes             String?
-  justification     String?
-  movementNumber    String?           @unique
-  documentUrl       String?
-  supplierId        String?
-  documentKey       String?
-  isCancelled       Boolean           @default(false)
-  cancelledAt       DateTime?
-  cancelledById     String?
-  quantityRemaining Decimal?          @db.Decimal(15, 4)
-  createdAt         DateTime          @default(now())
-  cancelledBy       User?             @relation("CancelledMovements", fields: [cancelledById], references: [id])
-  machine           Machine?          @relation(fields: [machineId], references: [id])
-  material          Material          @relation(fields: [materialId], references: [id])
-  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  supplier          Profile?          @relation("SupplierMovements", fields: [supplierId], references: [id])
-  user              User?             @relation("UserMovements", fields: [userId], references: [id])
+  id                  String            @id @default(uuid())
+  organizationId      String
+  materialId          String?
+  productId           String?
+  productionOrderId   String?
+  userId              String?
+  type                StockMovementType
+  quantity            Decimal           @db.Decimal(15, 4)
+  unitCost            Decimal           @db.Decimal(10, 4)
+  totalCost           Decimal           @db.Decimal(10, 4)
+  oldQuantity         Decimal?          @db.Decimal(15, 4)
+  oldUnitCost         Decimal?          @db.Decimal(10, 4)
+  machineId           String?
+  machineCounter      Int?
+  notes               String?
+  justification       String?
+  movementNumber      String?           @unique
+  documentUrl         String?
+  supplierId          String?
+  documentKey         String?
+  isCancelled         Boolean           @default(false)
+  cancelledAt         DateTime?
+  cancelledById       String?
+  quantityRemaining   Decimal?          @db.Decimal(15, 4)
+  createdAt           DateTime          @default(now())
+  cancelledBy         User?             @relation("CancelledMovements", fields: [cancelledById], references: [id])
+  machine             Machine?          @relation(fields: [machineId], references: [id])
+  material            Material?         @relation(fields: [materialId], references: [id])
+  product             Product?          @relation(fields: [productId], references: [id])
+  productionOrder     ProductionOrder?  @relation(fields: [productionOrderId], references: [id])
+  organization        Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier            Profile?          @relation("SupplierMovements", fields: [supplierId], references: [id])
+  user                User?             @relation("UserMovements", fields: [userId], references: [id])
 
   @@index([organizationId])
   @@index([materialId])
+  @@index([productId])
+  @@index([productionOrderId])
   @@index([supplierId])
   @@map("stock_movements")
 }
@@ -1819,4 +1853,11 @@ enum StockMovementType {
   ENTRY
   INTERNAL_CONSUMPTION
   ADJUSTMENT
+  PRODUCTION_CONSUMPTION
+  PRODUCTION_OUTPUT
+}
+
+enum ProductionOrderType {
+  SALES_DRIVEN
+  INTERNAL_MANUFACTURING
 }

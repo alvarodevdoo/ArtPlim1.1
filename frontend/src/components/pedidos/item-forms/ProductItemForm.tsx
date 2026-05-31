@@ -57,9 +57,16 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
     // ── Estados Principais ────────────────────────────────────────────
     const [quantity, setQuantity] = useState<number>(editingData?.quantity || 1);
     const [unitPrice, setUnitPrice] = useState<number | string>(
-        editingData?.unitPrice ?? (produto.pricingMode === 'SIMPLE_AREA' ? 0 : (produto.salePrice || 0))
+        // SIMPLE_AREA e DYNAMIC_ENGINEER começam em 0 — quem dita o preço é
+        // a fórmula/área após o usuário preencher dimensões. Só SIMPLE_UNIT
+        // herda o salePrice (preço-vitrine) como ponto de partida.
+        editingData?.unitPrice ?? (
+            produto.pricingMode === 'SIMPLE_AREA' || produto.pricingMode === 'DYNAMIC_ENGINEER'
+                ? 0
+                : (produto.salePrice || 0)
+        )
     );
-    const [discountItem, setDiscountItem] = useState<number | string>(editingData?.discountItem || 0);
+    const [discountItem, setDiscountItem] = useState<number | string>(editingData?.discountItem ?? editingData?.attributes?.discountItem ?? 0);
     const [notes, setNotes] = useState(editingData?.notes || '');
     // Mantém insumos do item para backward compat no payload (bloco visual removido)
     const materiaisSelecionados: InsumoMaterialSelecionado[] = editingData?.attributes?.insumos || [];
@@ -280,13 +287,15 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 });
 
                 // Inicializar variáveis ocultas (preços base, etc)
+                const isDynamicMotor = produto.pricingMode === 'DYNAMIC_ENGINEER';
                 hiddenFormulaVars.forEach((v: any) => {
                     if (newVars[v.id] === undefined) {
                         let fallbackVal = v.defaultValue !== undefined ? v.defaultValue : (v.value !== undefined ? v.value : null);
-                        
+
                         // Busca se o valor foi configurado nativamente no Produto (Aba de Variáveis Padrão do Catálogo)
                         const productFormulaData = (produto as any)?.formulaData || (produto as any)?.attributes?.formulaData || {};
-                        const definedInProduct = productFormulaData[v.id]?.value ?? productFormulaData[v.name]?.value;
+                        const productEntry = productFormulaData[v.id] ?? productFormulaData[v.name];
+                        const definedInProduct = productEntry?.value;
                         if (definedInProduct !== undefined && definedInProduct !== null && definedInProduct !== '') {
                             fallbackVal = definedInProduct;
                         }
@@ -295,13 +304,21 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                         if ((fallbackVal === null || fallbackVal === undefined) && pricingRule?.referenceValues) {
                             fallbackVal = pricingRule.referenceValues[v.id] || pricingRule.referenceValues[v.name?.toUpperCase()] || null;
                         }
-                        
-                        if (fallbackVal === null || fallbackVal === undefined || fallbackVal === '0' || fallbackVal === 0 || fallbackVal === '') {
+
+                        // No motor DINÂMICO o valor da variável é definido EXCLUSIVAMENTE pela
+                        // configuração do produto (formulaData). Não cai em salePrice/costPrice
+                        // para não vazar o preço-vitrine como VALOR_BASE da fórmula.
+                        if (!isDynamicMotor && (fallbackVal === null || fallbackVal === undefined || fallbackVal === '0' || fallbackVal === 0 || fallbackVal === '')) {
                             fallbackVal = pricingRule?.salePrice || produto.salePrice || produto.costPrice || 0;
                         }
-                        
+
+                        // Respeita o lock configurado no produto (cadeado da aba Variáveis Padrão).
+                        // Se não houver entrada configurada, mantemos travado por padrão.
+                        const lockedFromProduct = productEntry?.locked;
+                        const isLocked = lockedFromProduct !== undefined ? !!lockedFromProduct : true;
+
                         // Forçar a conversão para número
-                        newVars[v.id] = { value: Number(fallbackVal) || 0, locked: true };
+                        newVars[v.id] = { value: Number(fallbackVal) || 0, locked: isLocked };
                     }
                 });
 
@@ -313,9 +330,12 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
     }, [produto.id]);
 
     // ── Sincronização de Composição com Regra Dinâmica ──────────────
-    // Se a composição (Variações selecionadas) calcular um preço (ex: R$ 80 do Vinil),
-    // devemos "injetar" esse preço na variável da fórmula (ex: VALOR_BASE)
+    // Em motores não-dinâmicos, se a composição calcula um preço, injetamos
+    // esse valor nas variáveis ocultas da fórmula. No motor DYNAMIC_ENGINEER
+    // o cálculo é feito exclusivamente pela fórmula com os valores configurados
+    // no produto — a composição não deve interferir.
     useEffect(() => {
+        if (produto.pricingMode === 'DYNAMIC_ENGINEER') return;
         if (composition?.unitSuggestedPrice && composition.unitSuggestedPrice > 0) {
             let changed = false;
             const updatedVars = { ...dynamicVariables };
@@ -330,7 +350,7 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 setDynamicVariables(updatedVars);
             }
         }
-    }, [composition?.unitSuggestedPrice, hiddenFormulaVars]);
+    }, [composition?.unitSuggestedPrice, hiddenFormulaVars, produto.pricingMode]);
 
     // ── Checagem reativa de estoque (debounced) ───────────────────────
     useEffect(() => {
@@ -356,7 +376,48 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
     // ── Lógica de Cálculo de Preço (Motor) ──────────────────────────
     const [formulaResultValue, setFormulaResultValue] = useState<number>(0);
     const lastSuggestedRef = React.useRef<number>(0);
-    const isPriceManualRef = React.useRef<boolean>(false);
+    // Ao editar um item já existente, o preço salvo é um snapshot que o usuário
+    // aprovou (pode ter sido negociado manualmente). Marcamos como "manual" para
+    // que o motor de preço sugerido não sobrescreva o valor carregado.
+    const isPriceManualRef = React.useRef<boolean>(
+        editingData?.unitPrice != null && Number(editingData.unitPrice) > 0
+    );
+
+    // ── Motor DINÂMICO: ajustes vindos de opções selecionadas ─────────────────
+    // Cada opção pode ter formulaOp = REPLACE_VAR | ADD_VAR | ADD_FINAL:
+    //  - REPLACE_VAR/ADD_VAR substituem ou somam à variável `formulaVariableTarget`
+    //    da fórmula (avaliados ANTES do cálculo da fórmula).
+    //  - ADD_FINAL soma um valor fixo ao preço final DEPOIS da fórmula.
+    const dynamicFormulaAdjustments = useMemo(() => {
+        const replacements: Record<string, number> = {};
+        const additions: Record<string, number> = {};
+        let finalAddition = 0;
+        if (produto.pricingMode !== 'DYNAMIC_ENGINEER') {
+            return { replacements, additions, finalAddition };
+        }
+        // Indexa todas as opções de todos os grupos por id para lookup rápido
+        const optById = new Map<string, any>();
+        for (const cfg of configuracoes) {
+            for (const opt of (cfg.options || [])) optById.set(opt.id, opt);
+        }
+        for (const id of flatSelectedOptionIds) {
+            const opt = optById.get(id);
+            if (!opt?.formulaOp) continue;
+            const customQty = opcoesQuantidades?.[id];
+            const qty = (opt.allowCustomQty && !opt.materialId && customQty != null)
+                ? Number(customQty) || 0
+                : 1;
+            const baseVal = Number(opt.priceModifier ?? 0) * qty;
+            if (opt.formulaOp === 'REPLACE_VAR' && opt.formulaVariableTarget) {
+                replacements[opt.formulaVariableTarget] = baseVal;
+            } else if (opt.formulaOp === 'ADD_VAR' && opt.formulaVariableTarget) {
+                additions[opt.formulaVariableTarget] = (additions[opt.formulaVariableTarget] || 0) + baseVal;
+            } else if (opt.formulaOp === 'ADD_FINAL') {
+                finalAddition += baseVal * (Number(quantity) || 1);
+            }
+        }
+        return { replacements, additions, finalAddition };
+    }, [produto.pricingMode, configuracoes, flatSelectedOptionIds, opcoesQuantidades, quantity]);
 
     useEffect(() => {
         if (!pricingRule?.formulaString) return;
@@ -367,11 +428,22 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
             inputs[`${id.toUpperCase()}_UNIT`] = data.unit || 'mm';
         });
 
+        // Aplica ajustes das opções (motor dinâmico): REPLACE_VAR sobrescreve,
+        // ADD_VAR soma. ADD_FINAL não toca em variáveis — é somado depois.
+        const { replacements, additions } = dynamicFormulaAdjustments;
+        for (const [key, val] of Object.entries(replacements)) {
+            inputs[key.toUpperCase()] = val;
+        }
+        for (const [key, val] of Object.entries(additions)) {
+            const upper = key.toUpperCase();
+            inputs[upper] = (Number(inputs[upper]) || 0) + val;
+        }
+
         try {
             const result = calculatePricingResult(pricingRule.formulaString, pricingRule.variables, inputs);
             setFormulaResultValue(Number(result.value || 0));
         } catch (e) { console.error("Erro fórmula", e); }
-    }, [pricingRule, dynamicVariables, quantity]);
+    }, [pricingRule, dynamicVariables, quantity, dynamicFormulaAdjustments]);
 
     useEffect(() => {
         if (compLoading && Number(unitPrice) > 0) return;
@@ -391,10 +463,27 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
         const a = Number(norm['ALTURA'] || 0);
         const areaFactor = (l > 0 && a > 0) ? ((l * a) / 1000000) : 1;
 
+        // Modificadores das opções, divididos por escopo (backend retorna ambos):
+        //  - flatModifiers: soma fixa no total (Ilhós, Montagem, Laminação)
+        //  - perAreaModifiers: soma ao R$/m² (Corte e contorno) — entra no rate
+        const flatMods = Number(composition?.flatModifiers ?? 0);
+        const perAreaMods = Number(composition?.perAreaModifiers ?? 0);
+        // Fallback para resposta legada (backend antigo sem split):
+        const legacyTotalMods = Number(composition?.totalModifiers ?? 0);
+        const compositionModifiers = (flatMods + perAreaMods) > 0
+            ? flatMods + perAreaMods
+            : legacyTotalMods;
+
         // Lógica de busca do preço base (usada pelo SIMPLE e para exibição de fallback)
         const getBaseValue = () => {
             // 1. Se a composição (Variações) deu um preço, ele é o rei absoluto.
-            if (composition?.unitSuggestedPrice && composition.unitSuggestedPrice > 0) return composition.unitSuggestedPrice;
+            //    Para AREA: retornamos rate por m² = unitSuggestedPrice - flatModifiers
+            //    (mantemos perAreaModifiers porque eles SÃO parte do rate).
+            //    Caso não tenhamos split disponível, subtraímos o total (legado).
+            if (composition?.unitSuggestedPrice && composition.unitSuggestedPrice > 0) {
+                const subtract = (flatMods + perAreaMods) > 0 ? flatMods : compositionModifiers;
+                return Math.max(0, composition.unitSuggestedPrice - subtract);
+            }
             
             // 2. Se a configuração de fórmula/Variável Padrão tem um Valor Base
             const pVar = Object.entries(dynamicVariables).find(([k]) => 
@@ -416,6 +505,9 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
         const basePrice = getBaseValue();
 
         if (produto.pricingMode === 'SIMPLE_AREA') {
+            // basePrice já é o rate por m² (sem flatMods). perAreaMods JÁ está dentro
+            // dele (porque getBaseValue só subtrai flatMods). Após multiplicar pela
+            // área, somamos só os flatMods como adição final.
             if (l > 0 && a > 0) {
                 suggested = basePrice * areaFactor;
             } else {
@@ -424,6 +516,11 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                     suggested = basePrice * (areaVar / 1000000);
                 }
             }
+            // Flat modifiers (Ilhós, Montagem, Laminação) — não diluem pela área
+            const flatToAdd = (flatMods + perAreaMods) > 0 ? flatMods : compositionModifiers;
+            if (suggested > 0 && flatToAdd > 0) {
+                suggested += flatToAdd;
+            }
         } else if (produto.pricingMode === 'DYNAMIC_ENGINEER') {
             // No modo dinâmico, se a formula Result já trouxe algo, respeitamos!
             if (formulaResultValue > 0) {
@@ -431,6 +528,16 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
             } else if (l > 0 && a > 0 && basePrice > 0) {
                 // Apenas fallback seguro caso a fórmula tenha retornado 0, mas existe price e área
                 suggested = basePrice * areaFactor;
+                const flatToAdd = (flatMods + perAreaMods) > 0 ? flatMods : compositionModifiers;
+                if (suggested > 0 && flatToAdd > 0) {
+                    suggested += flatToAdd;
+                }
+            }
+            // Opções com formulaOp = ADD_FINAL somam direto no preço final do item
+            // (sem multiplicar por área e sem entrar em variáveis da fórmula).
+            const finalAdd = Number(dynamicFormulaAdjustments?.finalAddition || 0);
+            if (finalAdd !== 0) {
+                suggested = (suggested || 0) + finalAdd;
             }
         }
 
@@ -438,7 +545,11 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
             suggested = Number(formulaResultValue);
         }
 
-        if (suggested <= 0 && composition?.unitSuggestedPrice) {
+        if (suggested <= 0 && composition?.unitSuggestedPrice && produto.pricingMode !== 'DYNAMIC_ENGINEER') {
+            // SIMPLE_UNIT (sem dimensões): unitSuggestedPrice já contém salePrice + modifiers,
+            // pode ser usado direto sem dupla contagem.
+            // No motor DYNAMIC_ENGINEER o cálculo deve seguir estritamente a fórmula —
+            // não cair em unitSuggestedPrice (que reflete a lógica de outros motores).
             suggested = composition.unitSuggestedPrice;
         }
 
@@ -453,7 +564,7 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                 lastSuggestedRef.current = rounded;
             }
         }
-    }, [composition, formulaResultValue, dynamicVariables, globalUnit, pricingRule, produto, quantity, inputVars]);
+    }, [composition, formulaResultValue, dynamicVariables, globalUnit, pricingRule, produto, quantity, inputVars, dynamicFormulaAdjustments]);
 
     // ── Validação de Desconto ─────────────────────────────────────────
     const effectiveThreshold = useMemo(() => {
@@ -555,7 +666,7 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                     authorizationRequestId: requestId,
                     width: normalizedDims.width || null,
                     height: normalizedDims.height || null,
-                    notes, attributes: { dynamicVariables, insumos: materiaisSelecionados, selectedOptions: legacySelectedOptions, selectedOptionsMulti: opcoesSelecionadas, optionQuantities: opcoesQuantidades }
+                    notes, attributes: { dynamicVariables, insumos: materiaisSelecionados, selectedOptions: legacySelectedOptions, selectedOptionsMulti: opcoesSelecionadas, optionQuantities: opcoesQuantidades, discountItem: Number(discountItem) || 0 }
                 });
             }
         } catch (err) {
@@ -607,7 +718,7 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
             discountStatus: isPriceUnlocked ? 'APPROVED' : 'NONE',
             width: normalizedDims.width || null,
             height: normalizedDims.height || null,
-            notes, attributes: { dynamicVariables, insumos: materiaisSelecionados, selectedOptions: legacySelectedOptions, selectedOptionsMulti: opcoesSelecionadas, optionQuantities: opcoesQuantidades }
+            notes, attributes: { dynamicVariables, insumos: materiaisSelecionados, selectedOptions: legacySelectedOptions, selectedOptionsMulti: opcoesSelecionadas, optionQuantities: opcoesQuantidades, discountItem: Number(discountItem) || 0 }
         });
     };
 
@@ -687,15 +798,16 @@ const ProductItemForm: React.FC<ProductItemFormProps> = ({
                     )}
 
                     {produto.pricingMode === 'DYNAMIC_ENGINEER' && (
-                        <DynamicRuleSection 
+                        <DynamicRuleSection
                             inputVars={inputVars}
                             hiddenFormulaVars={hiddenFormulaVars}
-                            dynamicVariables={dynamicVariables} 
-                            handleDynamicVarChange={handleDynamicVarChange} 
-                            handleIndividualUnitChange={handleIndividualUnitChange} 
-                            globalUnit={globalUnit} 
-                            produto={produto} 
-                            pricingRule={pricingRule} 
+                            dynamicVariables={dynamicVariables}
+                            handleDynamicVarChange={handleDynamicVarChange}
+                            handleIndividualUnitChange={handleIndividualUnitChange}
+                            globalUnit={globalUnit}
+                            produto={produto}
+                            pricingRule={pricingRule}
+                            formulaAdjustments={dynamicFormulaAdjustments}
                         />
                     )}
 

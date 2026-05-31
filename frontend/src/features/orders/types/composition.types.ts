@@ -31,6 +31,15 @@ export interface CompositionResult {
   totalCost: number;
   suggestedPrice: number;
   unitSuggestedPrice?: number; // Preço unitário pronto vindo do backend
+  /**
+   * Soma dos priceModifier × qty das opções selecionadas (= flatModifiers + perAreaModifiers).
+   * Mantido para compatibilidade. Para produtos AREA usar flatModifiers/perAreaModifiers.
+   */
+  totalModifiers?: number;
+  /** priceModifierType=FIXED — soma fixa no total (ex: Ilhós R$0,50 × 10 = R$5 fixo) */
+  flatModifiers?: number;
+  /** priceModifierType=PER_AREA — soma ao R$/m² (ex: Corte e contorno +R$5/m²) */
+  perAreaModifiers?: number;
   suggestedMarkup: number;
   currentMargin: number;      // 0.0–1.0
   breakdown: CompositionLineItem[];

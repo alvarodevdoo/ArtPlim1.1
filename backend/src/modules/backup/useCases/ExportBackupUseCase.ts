@@ -6,14 +6,13 @@ export class ExportBackupUseCase {
 
   constructor(private prisma: PrismaClient) {}
 
-  // Mapeamento de tabelas por módulo (Nomes Reais do Prisma Schema)
   private readonly moduleMap: Record<BackupModule, string[]> = {
-    config: ['organization', 'organizationSettings', 'automationRule'],
+    config: ['organization', 'organizationSettings', 'role', 'configurationTemplate', 'automationRule', 'notifications'],
     profiles: ['profile', 'user'],
-    materials: ['materialType', 'material', 'insumoFornecedor', 'materialSupplier', 'inventoryItem', 'inventoryMovement'],
-    products: ['pricingRule', 'product', 'productComponent', 'productConfiguration', 'configurationOption', 'fichaTecnicaInsumo'],
-    production: ['processStatus', 'machine', 'productionQueue', 'productionOperation'],
-    sales: ['budget', 'budgetItem', 'order', 'orderItem', 'delivery', 'deliveryItem'],
+    materials: ['materialType', 'spedAccountMapping', 'material', 'insumoFornecedor', 'materialSupplier', 'inventoryItem', 'inventoryAlert', 'inventoryMovement', 'stockMovement', 'productionMaterial', 'materialReceipt', 'materialReceiptItem'],
+    products: ['finish', 'standardSize', 'pricingRule', 'product', 'productStandardSize', 'productComponent', 'productConfiguration', 'configurationOption', 'optionIncompatibility', 'fichaTecnicaInsumo', 'productOperation'],
+    production: ['processStatus', 'machine', 'productionQueue', 'productionOperation', 'productionWaste', 'productionOrder'],
+    sales: ['budget', 'budgetItem', 'order', 'orderStatusHistory', 'pendingChanges', 'orderItem', 'orderItemConfiguration', 'delivery', 'deliveryItem'],
     finance: ['account', 'chartOfAccount', 'category', 'paymentMethod', 'transaction', 'accountPayable', 'accountReceivable'],
     audit: ['auditLog'],
   };
@@ -45,6 +44,9 @@ export class ExportBackupUseCase {
           case 'organization':
             where = { id: organizationId };
             break;
+          case 'organizationSettings':
+            where = { organizationId };
+            break;
           case 'insumoFornecedor':
           case 'materialSupplier':
           case 'inventoryItem':
@@ -52,13 +54,26 @@ export class ExportBackupUseCase {
             break;
           case 'productComponent':
           case 'productConfiguration':
+          case 'productStandardSize':
+          case 'productOperation':
             where = { product: { organizationId } };
             break;
           case 'configurationOption':
             where = { configuration: { product: { organizationId } } };
             break;
+          case 'optionIncompatibility':
+            where = { optionA: { configuration: { product: { organizationId } } } };
+            break;
+          case 'fichaTecnicaInsumo':
+            where = { organizationId };
+            break;
           case 'orderItem':
+          case 'orderStatusHistory':
+          case 'pendingChanges':
             where = { order: { organizationId } };
+            break;
+          case 'orderItemConfiguration':
+            where = { orderItem: { order: { organizationId } } };
             break;
           case 'budgetItem':
             where = { budget: { organizationId } };
@@ -66,8 +81,23 @@ export class ExportBackupUseCase {
           case 'deliveryItem':
             where = { delivery: { organizationId } };
             break;
+          case 'delivery':
+            where = { organizationId };
+            break;
           case 'productionOperation':
             where = { productionQueue: { organizationId } };
+            break;
+          case 'productionWaste':
+            where = { order: { organizationId } };
+            break;
+          case 'stockMovement':
+            where = { organizationId };
+            break;
+          case 'materialReceipt':
+            where = { organizationId };
+            break;
+          case 'materialReceiptItem':
+            where = { receipt: { organizationId } };
             break;
         }
 

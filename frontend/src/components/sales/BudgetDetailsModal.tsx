@@ -10,7 +10,7 @@ import {
     Calculator,
     Package
 } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, getItemLengthUnit, formatLengthFromMm } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { calculatePricingResult } from '@/lib/pricing/formulaUtils';
@@ -77,7 +77,6 @@ export const BudgetDetailsModal: React.FC<BudgetDetailsModalProps> = ({ budget, 
     if (!isOpen || !budget) return null;
 
     const isExpired = budget.status === 'EXPIRED' || (budget.validUntil && new Date(budget.validUntil).getTime() < new Date().setHours(0,0,0,0));
-    console.log('[DEBUG] Budget Status:', budget.status, 'Valid Until:', budget.validUntil, 'isExpired:', isExpired);
 
     const handleRecalculate = async () => {
         setIsRecalculating(true);
@@ -166,8 +165,6 @@ export const BudgetDetailsModal: React.FC<BudgetDetailsModalProps> = ({ budget, 
                 String(newDate.getMonth() + 1).padStart(2, '0') + '-' + 
                 String(newDate.getDate()).padStart(2, '0');
 
-            console.log('[DEBUG] Recalculating with:', updatedItems.length, 'items');
-
             const payload = {
                 customerId: budget.customer?.id || (budget as any).customerId,
                 items: updatedItems.map(i => ({
@@ -199,8 +196,11 @@ export const BudgetDetailsModal: React.FC<BudgetDetailsModalProps> = ({ budget, 
     };
 
     return (
-        <div className="modal-overlay">
-            <Card className="w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
+        <div className="modal-overlay" onClick={onClose}>
+            <Card
+                className="w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200"
+                onClick={(e) => e.stopPropagation()}
+            >
                 <CardHeader className="border-b bg-gray-50 flex flex-row items-center justify-between p-4 rounded-t-xl">
                     <CardTitle className="text-xl flex items-center space-x-2">
                         <Calculator className="w-6 h-6 text-primary" />
@@ -277,14 +277,27 @@ export const BudgetDetailsModal: React.FC<BudgetDetailsModalProps> = ({ budget, 
                             </h3>
                             <div className="bg-gray-50 p-6 rounded-xl border-2 border-dashed border-gray-200">
                                 <div className="space-y-3">
-                                    <div className="flex justify-between text-gray-600">
-                                        <span>Subtotal</span>
-                                        <span className="font-medium">{formatCurrency(budget.subtotal || budget.total)}</span>
-                                    </div>
-                                    <div className="flex justify-between text-gray-600">
-                                        <span>Desconto</span>
-                                        <span className="font-medium">R$ 0,00</span>
-                                    </div>
+                                    {(() => {
+                                        const totalDiscount = budget.items.reduce((sum, it) => {
+                                            const d = Number(it.unitPrice || 0) * Number(it.quantity || 0) - Number(it.totalPrice || 0);
+                                            return sum + (d > 0.009 ? d : 0);
+                                        }, 0);
+                                        const grossSubtotal = Number(budget.total) + totalDiscount;
+                                        return (
+                                            <>
+                                                <div className="flex justify-between text-gray-600">
+                                                    <span>Subtotal</span>
+                                                    <span className="font-medium">{formatCurrency(grossSubtotal)}</span>
+                                                </div>
+                                                <div className="flex justify-between text-gray-600">
+                                                    <span>Desconto</span>
+                                                    <span className={`font-medium ${totalDiscount > 0 ? 'text-red-500' : ''}`}>
+                                                        {totalDiscount > 0 ? `- ${formatCurrency(totalDiscount)}` : formatCurrency(0)}
+                                                    </span>
+                                                </div>
+                                            </>
+                                        );
+                                    })()}
                                     <div className="border-t pt-4 flex justify-between">
                                         <span className="text-xl font-bold">Total</span>
                                         <span className="text-2xl font-black text-primary">{formatCurrency(budget.total)}</span>
@@ -315,11 +328,37 @@ export const BudgetDetailsModal: React.FC<BudgetDetailsModalProps> = ({ budget, 
                                         <tr key={item.id} className="hover:bg-gray-50">
                                             <td className="px-4 py-4">
                                                 <p className="font-bold text-gray-900">{item.product.name}</p>
+                                                {item.width && item.height && (() => {
+                                                    const dimUnit = getItemLengthUnit(item);
+                                                    return (
+                                                        <p className="text-xs text-gray-500 mt-1">
+                                                            <span className="font-medium">Dimensões:</span> {formatLengthFromMm(item.width, dimUnit)} × {formatLengthFromMm(item.height, dimUnit)} {dimUnit}
+                                                            <span className="mx-1.5 text-gray-300">|</span>
+                                                            <span className="font-medium">Área:</span> {((item.width * item.height) / 1000000).toFixed(4)} m²
+                                                            <span className="mx-1.5 text-gray-300">|</span>
+                                                            <span className="font-medium">Área Total:</span> {((item.width * item.height * item.quantity) / 1000000).toFixed(4)} m²
+                                                        </p>
+                                                    );
+                                                })()}
                                                 {item.notes && <p className="text-xs text-muted-foreground mt-1 italic">"{item.notes}"</p>}
                                             </td>
                                             <td className="px-4 py-4 text-center font-medium">{item.quantity}</td>
                                             <td className="px-4 py-4 text-right font-medium">{formatCurrency(item.unitPrice)}</td>
-                                            <td className="px-4 py-4 text-right font-bold text-primary">{formatCurrency(item.totalPrice)}</td>
+                                            <td className="px-4 py-4 text-right">
+                                                {(() => {
+                                                    const disc = Number(item.unitPrice || 0) * Number(item.quantity || 0) - Number(item.totalPrice || 0);
+                                                    if (disc > 0.009) {
+                                                        return (
+                                                            <>
+                                                                <span className="block text-xs text-gray-400 line-through">{formatCurrency(item.unitPrice * item.quantity)}</span>
+                                                                <span className="block text-[11px] text-red-500">- {formatCurrency(disc)}</span>
+                                                                <span className="block font-bold text-primary">{formatCurrency(item.totalPrice)}</span>
+                                                            </>
+                                                        );
+                                                    }
+                                                    return <span className="font-bold text-primary">{formatCurrency(item.totalPrice)}</span>;
+                                                })()}
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>

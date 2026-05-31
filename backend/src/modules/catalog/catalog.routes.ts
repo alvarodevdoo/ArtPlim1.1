@@ -114,7 +114,9 @@ const createOptionSchema = z.object({
   value: z.string().min(1),
   description: z.string().optional(),
   priceModifier: z.number().optional(),
-  priceModifierType: z.enum(['FIXED', 'PERCENTAGE']).optional(),
+  // FIXED: adição fixa no total. PER_AREA: soma ao R$/m² (multiplicado pela área).
+  // PERCENTAGE mantido por compat — não implementado no cálculo atual.
+  priceModifierType: z.enum(['FIXED', 'PERCENTAGE', 'PER_AREA']).optional(),
   additionalComponents: z.array(z.object({
     materialId: z.string().uuid(),
     consumptionMethod: z.string(),
@@ -140,6 +142,9 @@ const createOptionSchema = z.object({
   maxQuantity: z.preprocess((val) => (val === '' || val === null || val === undefined) ? null : isNaN(Number(val)) ? null : Number(val), z.number().nullable().optional()),
   allowCustomQty: z.boolean().optional(),
   allowedChildIds: z.array(z.string()).nullable().optional(),
+  // Motor DYNAMIC_ENGINEER: vincula a opção a uma variável da fórmula.
+  formulaOp: z.preprocess((val) => val === '' ? null : val, z.enum(['REPLACE_VAR', 'ADD_VAR', 'ADD_FINAL']).nullable().optional()),
+  formulaVariableTarget: z.preprocess((val) => val === '' ? null : val, z.string().nullable().optional()),
 });
 
 const createTemplateSchema = z.object({

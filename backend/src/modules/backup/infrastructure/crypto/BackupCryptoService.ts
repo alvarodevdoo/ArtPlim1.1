@@ -28,7 +28,7 @@ export class BackupCryptoService {
    * Gera uma Chave Mestre (DEK) aleatória e o cabeçalho envolpape criptografado (Envelope).
    * Retorna também o DEK para ser usado na criptografia do fluxo (stream).
    */
-  static createEncryptionEnvelope(masterPasswordPlain: string | null, userPasswordPlain?: string) {
+  static createEncryptionEnvelope(masterPasswordPlain: string | null, userPasswordPlain?: string, recoveryToken?: string | null) {
     const DEK = crypto.randomBytes(32); // Chave usada para criptografar os dados (ZIP)
     const streamIV = crypto.randomBytes(16); // IV para o AES-256-CBC do stream
 
@@ -50,7 +50,8 @@ export class BackupCryptoService {
       streamIV: streamIV.toString('hex'),
       dekHash: crypto.createHash('sha256').update(DEK).digest('hex'), // Para validar a senha instantaneamente
       ownerKeys: masterPasswordPlain ? enveloper(masterPasswordPlain) : null,
-      userKeys: userPasswordPlain ? enveloper(userPasswordPlain) : null
+      userKeys: userPasswordPlain ? enveloper(userPasswordPlain) : null,
+      recoveryKeys: recoveryToken ? enveloper(recoveryToken) : null
     };
 
     // Formata o cabeçalho como JSON de linha única seguido de quebra de linha
@@ -77,8 +78,7 @@ export class BackupCryptoService {
         const key = crypto.pbkdf2Sync(passwordAttempt, salt, 100000, 32, 'sha256');
         const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
         
-        // Desativa autopadding pre-emptivamente ou não, dependendo se sabermos que tem 32 bytes
-        decipher.setAutoPadding(false);
+        // Remove autopadding manual overrides para que o PKCS7 funcione corretamente
         let dek = decipher.update(encryptedDek);
         dek = Buffer.concat([dek, decipher.final()]);
         
@@ -103,6 +103,11 @@ export class BackupCryptoService {
     // Se ainda não abriu e tem cofre de usuário
     if (!DEK && headerObject.userKeys) {
        DEK = unlockData(headerObject.userKeys);
+    }
+    
+    // Se ainda não abriu e tem chave de recuperação
+    if (!DEK && headerObject.recoveryKeys) {
+       DEK = unlockData(headerObject.recoveryKeys);
     }
 
     if (!DEK) throw new Error('Acesso negado: Senha incorreta para descriptografar o backup.');

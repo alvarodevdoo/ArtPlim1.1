@@ -46,6 +46,10 @@ interface NFeImportPayload {
   extraFreightCost?: number;
   extraTaxesCost?: number;
   extraOtherCost?: number;
+  // XML bruto da NF-e, persistido para reexibição/reexportação futura
+  rawXml?: string;
+  // Totais fiscais da NF-e (frete, impostos, descontos) capturados no parse
+  totaisFiscais?: Record<string, number> | null;
 }
 
 export class NFeImportService {
@@ -113,6 +117,8 @@ export class NFeImportService {
           impostos: payload.extraTaxesCost || 0,
           outras: payload.extraOtherCost || 0
         },
+        // Totais fiscais da própria NF-e (frete, impostos, descontos embutidos na nota)
+        totaisFiscais: (payload as any).totaisFiscais || null,
         isReimport: previousReceipts.length > 0
       };
 
@@ -120,11 +126,13 @@ export class NFeImportService {
         data: {
           organizationId,
           supplierId: supplier.id,
+          createdById: userId || null,
           invoiceNumber: payload.chaveAcesso,
           totalAmount: new Prisma.Decimal(payload.valorTotalNota),
           issueDate: new Date(payload.dataEmissao || new Date()),
           status: 'BILLED',
-          notes: JSON.stringify(receiptNotes)
+          notes: JSON.stringify(receiptNotes),
+          xmlContent: payload.rawXml || null
         }
       });
 
@@ -354,6 +362,30 @@ export class NFeImportService {
             averageCost: new Prisma.Decimal(newCost),
           }
         });
+      }
+
+      // Registro de auditoria: quem importou esta NF-e e o que entrou.
+      if (userId) {
+        try {
+          await tx.auditLog.create({
+            data: {
+              organizationId,
+              userId,
+              action: 'NFE_IMPORT',
+              tableName: 'MaterialReceipt',
+              recordId: receipt.id,
+              newValues: {
+                chaveAcesso: payload.chaveAcesso,
+                supplierId: supplier.id,
+                totalAmount: payload.valorTotalNota,
+                itemsImported: itemsToImport.length,
+                isReimport: previousReceipts.length > 0
+              } as any
+            }
+          });
+        } catch (auditErr: any) {
+          console.error('[NFe Import] Falha ao registrar auditoria:', auditErr.message);
+        }
       }
 
       return receipt;

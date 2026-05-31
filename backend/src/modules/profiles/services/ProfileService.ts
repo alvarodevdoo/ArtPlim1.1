@@ -199,9 +199,7 @@ export class ProfileService {
           paymentTerms: normalizedData.paymentTerms,
           paymentMode: normalizedData.paymentMode ?? undefined,
           paymentDayOfMonth: normalizedData.paymentDayOfMonth ?? null,
-          ...(normalizedData.defaultPaymentMethodId
-              ? { defaultPaymentMethod: { connect: { id: normalizedData.defaultPaymentMethodId } } }
-              : {}),
+          defaultPaymentMethodId: normalizedData.defaultPaymentMethodId ?? null,
           userId: userId,
           exemptFromDeposit: normalizedData.exemptFromDeposit
         }

@@ -21,8 +21,12 @@ export const PriceSummaryPanel: React.FC<PriceSummaryPanelProps> = ({
   const { hasPermission } = useAuth();
   const canSeeCosts = hasPermission('finance.costs');
 
-  const totalNegotiated = (negotiatedPrice * quantity) - discountItem;
+  const grossTotal = negotiatedPrice * quantity;
+  const totalNegotiated = grossTotal - discountItem;
+  const hasDiscount = discountItem > 0.009;
+  const netUnit = quantity > 0 ? totalNegotiated / quantity : totalNegotiated;
   const totalCost = composition?.totalCost || 0;
+  const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
     <div className="flex items-center gap-5 min-w-0">
@@ -52,12 +56,17 @@ export const PriceSummaryPanel: React.FC<PriceSummaryPanelProps> = ({
         <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-wider">
           Total do Item
         </span>
+        {hasDiscount && (
+          <span className="text-xs text-slate-600/100 tabular-nums leading-tight">
+            {fmt(grossTotal)}
+          </span>
+        )}
         <div className="flex items-baseline gap-2">
           <span className="text-xl font-black text-indigo-600 tabular-nums leading-tight">
-            R$ {totalNegotiated.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {fmt(totalNegotiated)}
           </span>
-          <span className="text-[10px] font-semibold text-slate-400 tabular-nums whitespace-nowrap">
-            (R$ {negotiatedPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / un)
+          <span className="text-[10px] font-semibold text-slate-700/60 tabular-nums whitespace-nowrap">
+            ({fmt(hasDiscount ? netUnit : negotiatedPrice)} / un)
           </span>
         </div>
       </div>

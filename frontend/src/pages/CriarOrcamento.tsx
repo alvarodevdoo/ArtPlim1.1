@@ -155,6 +155,7 @@ const CriarOrcamento: React.FC = () => {
                     quantity: Number(item.quantity),
                     unitPrice: Number(item.unitPrice),
                     totalPrice: Number(item.totalPrice),
+                    discountItem: Number(item.attributes?.discountItem) || 0,
                     notes: item.notes,
                     attributes: item.attributes || {},
                     pricingRuleId: item.pricingRuleId,
@@ -469,6 +470,7 @@ const CriarOrcamento: React.FC = () => {
                         onRemove={removerItem}
                         editingItemId={editingItem?.id}
                         produtos={produtos}
+                        hideWorkflowStatus
                     />
 
                     {/* Observações */}

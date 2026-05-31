@@ -27,4 +27,9 @@ export async function nfeRoutes(fastify: FastifyInstance) {
   fastify.get('/imports/check', {
     preHandler: [fastify.authenticate]
   }, nfeController.checkImport.bind(nfeController));
+
+  // 6. Detalhe completo de uma importação (NF-e completa)
+  fastify.get('/imports/:id', {
+    preHandler: [fastify.authenticate]
+  }, nfeController.getImport.bind(nfeController));
 }
